@@ -359,7 +359,7 @@ const workInProgress = () => ui.busy() || posting.busy() || [...jobs.values()].s
 if (PORT === 8785) watchBridgeCode({ busy: workInProgress, server, log })
 
 // กันเครื่องหลับเองระหว่างมีงาน หรือเปิดโหมดผลิตต่อเนื่องไว้ (รอคลิปถัดไป) — เฉพาะตัวจริง
-if (PORT === 8765) createKeepAwake({ busy: () => workInProgress() || ui.production.active(), log })
+if (PORT === 8785) createKeepAwake({ busy: () => workInProgress() || ui.production.active(), log })
 
 // ตอนรีสตาร์ทตัวเอง ตัวเก่าอาจยังไม่ปล่อย port — ลองใหม่ทุกครึ่งวินาทีสูงสุด 15 วิ
 let listenTries = 0
