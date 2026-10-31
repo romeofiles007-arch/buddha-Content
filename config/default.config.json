@@ -16,7 +16,7 @@
     "_genre": "แนวของหัวข้อที่ให้ AI เสนอ — mix (สุ่มคนละแนวทุกหัวข้อ) หรือชื่อแนวจาก GENRES ใน extension/prompts.js"
   },
   "tts": {
-    "engine": "elevenlabs",
+    "engine": "edge",
     "_options": [
       "voxcpm",
       "my-voice",
@@ -63,8 +63,8 @@
     },
     "elevenlabs": {
       "_note": "ElevenLabs — เสียงที่โคลนไว้ในบัญชี อ้างด้วย Voice ID · ต้องมี ELEVENLABS_API_KEY ใน .env · ใช้เครดิตตามจำนวนตัวอักษรของบท",
-      "voiceId": "7pvyWmzdRPOd6aNRqaHi",
-      "voiceName": "Khathawuth V1",
+      "voiceId": "",
+      "voiceName": "",
       "model": "eleven_v4",
       "_model": "eleven_v4 (รองรับไทย ล่าสุด) | eleven_v3 (รองรับไทย) | eleven_multilingual_v2 | eleven_flash_v2_5 (สองรุ่นหลังไม่รองรับไทย)"
     },

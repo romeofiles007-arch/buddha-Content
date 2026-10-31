@@ -21,7 +21,9 @@ for (const dir of ['ffmpeg', 'node']) {
  *   config/default.config.json   ค่าเริ่มต้นที่มากับแพ็กเกจ — ถูกทับได้ทุกครั้งที่ลูกค้าวางแพ็กเกจรุ่นใหม่
  *   config/project.config.json   ค่าที่ลูกค้าตั้งเอง — แพ็กเกจไม่มีไฟล์นี้ วางทับแล้วค่าของลูกค้าจึงไม่หาย
  * ค่าของลูกค้าชนะ · key ที่รุ่นใหม่เพิ่มมา (ลูกค้ายังไม่มี) ได้จากค่าเริ่มต้น
- * เครื่องพัฒนาไม่มี default.config.json → อ่าน project.config.json ไฟล์เดียวเหมือนเดิม
+ * GitHub ก็เหมือนกัน: repo มีแค่ default.config.json (สร้างด้วย scripts/make-default-config.mjs — เสียง Edge ปิด Kie)
+ * ส่วน project.config.json อยู่ใน .gitignore — ค่าของเรา (เสียงที่โคลนไว้ ฯลฯ) จึงไม่ติดไปเครื่องลูกค้า
+ * ไม่มี default.config.json → อ่าน project.config.json ไฟล์เดียวเหมือนเดิม
  */
 export const CONFIG_FILE = join(ROOT, 'config', 'project.config.json')
 export const DEFAULT_CONFIG_FILE = join(ROOT, 'config', 'default.config.json')
