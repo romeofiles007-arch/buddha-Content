@@ -1,0 +1,71 @@
+{
+  "manifest_version": 3,
+  "name": "ธรรมะ Auto Bridge",
+  "version": "1.0.0",
+  "description": "ขับ ChatGPT และ Google Flow พร้อม Kie API ในเครื่องเพื่อทำคลิปการ์ตูนธรรมะอัตโนมัติ",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3znS01R+XVB5+uB5TRaudUkWEvvyP+A/jYwaQ+UyaTeMRvpFCML1wlB4kl5T3u6GUIb5BCDLOJurjqdGuj8ldfF05fH5ZFBx2Z0hszSgMplnhU+CxeZG2RL5SRDeViBUb8aakblt3l3tah8dUf0JpGqtkn2FTw+t4KbvMIqaAWZJ9GsqGkC5msMGoWFcoj/G5EUgg7ZJujxBjSrn3OnnE187uwpTJAO47vGKcZCw0vZU4iUqzntlRDPzT414ClPQFzRKVfuLTTUTCGxJn7MUePNjJLYKNfDoGqJC5exILMFn5CxD8JPivtpbromGrtSELQnKezMSY18f+OZGaliwuQIDAQAB",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "alarms",
+    "nativeMessaging",
+    "sidePanel",
+    "notifications",
+    "debugger",
+    "system.display"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://flow.google.com/*",
+    "https://labs.google/*",
+    "https://*.googleusercontent.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "selectors.js",
+        "content-common.js",
+        "content-chatgpt.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://flow.google.com/*"
+      ],
+      "js": [
+        "content-flow-agent.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "ธรรมะ Auto — เปิดแผงทำคลิป",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}

@@ -1,0 +1,44 @@
+/* The selected content category owns the whole app, independently of department. */
+.categoryPicker {
+  display: grid; gap: 7px; margin: 0 0 16px; padding: 13px 14px;
+  color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+.categoryPicker select { font-size: 14px; min-height: 44px; color: var(--ink); background: var(--panel); }
+html[data-category] .brand-lockup { font-size: 22px; border-radius: 10px; font-weight: 650; }
+html[data-category] main > section:not(.studioHero), html[data-category] .modal { border-radius: 12px; }
+html[data-category] .heroBanner { border-radius: 12px; }
+/* Keep the actor on a fixed stage while status messages wrap or progress appears. */
+html[data-category] .heroBanner { height: 260px; min-height: 260px; }
+html[data-category] .heroActor { position: absolute; left: 8px; bottom: 18px; }
+html[data-category] .heroText { margin-left: 150px; }
+@media (max-width: 380px) { html[data-category] .heroText { margin-left: 127px; } }
+@media (min-width: 600px) {
+  html[data-category] .heroBanner { height: 300px; min-height: 300px; }
+  html[data-category] .heroActor { left: 24px; }
+  html[data-category] .heroText { margin-left: 220px; }
+}
+html[data-category] .heroTitle { font-weight: 650; }
+html[data-category] .heroStep { color: var(--temple-gold); }
+html[data-category] .heroBanner { background: linear-gradient(90deg, color-mix(in srgb,var(--temple-wood) 15%,transparent), color-mix(in srgb,var(--temple-wood) 88%,transparent) 52%, color-mix(in srgb,var(--temple-wood) 93%,transparent)),var(--world-image) center 42% / cover no-repeat,var(--temple-wood); }
+html[data-category] .primary, html[data-category] .ghost, html[data-category] .stop, html[data-category] .seg { border-radius: 7px; }
+html[data-category] .heroCrew button { border-radius: 8px; }
+html[data-category] .agentBlock .blockTitle { font-weight: 650; }
+html[data-category] .stepNo { border-radius: 6px; }
+html[data-category] .crewTip { background: var(--temple-wood); border-color: var(--line); }
+html[data-category] .crewTip small { color: #e8ddc6; }
+#posting {
+  --bg: var(--category-bg); --panel: var(--category-panel); --ink: var(--category-ink); --muted: var(--category-muted);
+  --line: var(--category-line); --accent: var(--category-accent); --accent-ink: var(--category-accent-ink); --pick: var(--category-pick);
+}
+/* หมวดพุทธประวัติ: ทองชัดบนปุ่มหลัก ใช้หมึกเข้มเพื่อให้อ่านได้ */
+html[data-category='buddha'] .primary,
+html[data-category='buddha'] #autoControlBlock .primary,
+html[data-category='buddha'] #autoSection .seg button[aria-pressed='true'],
+html[data-category='buddha'] main > section.step.agentSetting .seg button[aria-pressed='true'],
+html[data-category='buddha'] .overlay .seg button[aria-pressed='true'] {
+  background: var(--action); color: var(--action-ink); border-color: var(--line); box-shadow: none;
+}
+html[data-category='buddha'] .primary:hover:not(:disabled),
+html[data-category='buddha'] #autoControlBlock .primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--action) 88%, var(--panel)); color: var(--action-ink);
+}

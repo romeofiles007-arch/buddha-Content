@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="ธรรมะ Auto — วัดและธรรมจักร">
+  <rect width="128" height="128" rx="28" fill="#8f301d"/>
+  <g fill="#f4ca78">
+    <path d="M24 65 35 61 57 39 64 16 71 39 93 61 104 65 100 73 64 48 28 73Z"/>
+    <rect x="35" y="74" width="7" height="24" rx="1.5"/>
+    <rect x="86" y="74" width="7" height="24" rx="1.5"/>
+    <rect x="30" y="98" width="68" height="5" rx="1.5"/>
+    <rect x="23" y="105" width="82" height="6" rx="2"/>
+  </g>
+  <g fill="none" stroke="#fff5db" stroke-width="3" stroke-linecap="round">
+    <circle cx="64" cy="78" r="14"/>
+    <path d="M64 64v28M50 78h28M54.1 68.1l19.8 19.8M54.1 87.9l19.8-19.8"/>
+  </g>
+  <circle cx="64" cy="78" r="3.5" fill="#fff5db"/>
+</svg>

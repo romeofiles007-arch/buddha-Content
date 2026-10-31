@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ธรรมะสำหรับพุทธศาสนิกชน">
+  <rect width="64" height="64" rx="12" fill="#56512f"/>
+  <g fill="none" stroke="#f3e7bd" stroke-width="2.3" stroke-linecap="round">
+    <circle cx="32" cy="32" r="19"/><circle cx="32" cy="32" r="5"/>
+    <path d="M32 9v18m0 10v18M9 32h18m10 0h18M16 16l12 12m8 8 12 12M16 48l12-12m8-8 12-12"/>
+  </g>
+</svg>

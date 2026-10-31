@@ -1,0 +1,42 @@
+node_modules/
+tts/.venv/
+tts/voices/*.wav
+projects/*/02_audio/segments/
+projects/*/05_images/
+projects/*/06_render/
+projects/_selftest/
+.env
+bridge/bridge.log
+native/host.bat
+native/com.dhamma_auto.bridge.json
+tts/voices/*/
+tts/myvoice/transliterate_user.json
+__pycache__/
+projects/_previews/
+tts/.venv-edge/
+projects/_trash/
+bridge/jobs.json
+characters/
+bridge/jobs-*.json
+
+# งานของผู้ใช้ (บท เสียงพากย์ ภาพ วิดีโอ) — ไม่ขึ้น repo สาธารณะ
+projects/*/
+projects/_autopilot_last.json
+projects/selected_topic.json
+
+# ทดสอบเปรียบเทียบโมเดลเสียง (venv + โมเดล + ผลลัพธ์ ขนาดใหญ่)
+tts/eval/
+tts/.venv-voxcpm/
+
+# แพ็กเกจส่งลูกค้า (scripts/build-package.mjs) — ใหญ่หลายร้อย MB และมีไบนารีแถม
+dist/
+runtime/
+native/.keys/
+refs/
+
+# ไม่ขึ้น repo สาธารณะ: โปรไฟล์ Chrome/ไฟล์สำรองของเครื่องมือออกแบบ · ตั้งค่าเครื่องนี้ · สถานะ/ประวัติของผู้ใช้
+.impeccable/
+.claude/
+desktop.ini
+projects/*.json
+Ex sample audio to scritp.txt

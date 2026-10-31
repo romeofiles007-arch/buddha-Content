@@ -1,0 +1,454 @@
+/**
+ * Service worker — วนรับงานจาก bridge แล้วส่งต่อให้ content script ของเว็บที่เกี่ยวข้อง
+ *
+ * ข้อควรระวังของ MV3: service worker ถูกฆ่าเมื่อ idle ~30 วิ
+ * จึงตั้ง alarm ทุก 1 นาทีมาปลุกให้ poll ใหม่ และ long-poll ฝั่ง bridge ตั้งไว้ 25 วิ
+ * เพื่อให้จบก่อนถูกฆ่า
+ */
+
+const NATIVE_HOST = 'com.dhamma_auto.bridge'
+
+const AGENTS = {
+  chatgpt: { match: 'https://chatgpt.com/', pattern: ['https://chatgpt.com/*', 'https://chat.openai.com/*'], key: 'chatTabId' },
+  // Google Flow ย้ายจาก labs.google/fx/tools/flow มาที่ flow.google.com แล้ว
+  // ?hl=en: บัญชีที่ตั้งภาษาไทย Flow จะเป็นภาษาไทย (ปุ่ม "โปรเจ็กต์ใหม่") — ตัวขับหาปุ่มจากข้อความอังกฤษ จึงบังคับภาษาอังกฤษเสมอ
+  flow: { match: 'https://flow.google.com/?hl=en', pattern: 'https://flow.google.com/*', key: 'flowTabId' },
+}
+const CONTENT_FILES = {
+  chatgpt: ['selectors.js', 'content-common.js', 'content-chatgpt.js'],
+  flow: ['content-flow-agent.js'],
+}
+
+async function settings() {
+  const { port = 8785, token = '', enabled = false } = await chrome.storage.local.get(['port', 'token', 'enabled'])
+  return { base: `http://127.0.0.1:${port}`, token, enabled }
+}
+
+async function post(path, body) {
+  const { base, token } = await settings()
+  return fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-bridge-token': token },
+    body: JSON.stringify(body),
+  })
+}
+
+/** ส่งผลลัพธ์ให้ bridge จนกว่าจะรับจริง — bridge อาจกำลังเปิดใหม่ หรือเน็ตในเครื่องสะดุดชั่วครู่ */
+async function postReliable(path, body, { tries = 8 } = {}) {
+  let lastError = ''
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await post(path, body)
+      if (res.ok) return { ok: true }
+      lastError = `bridge ตอบ ${res.status}: ${await res.text()}`
+      if (res.status === 400 || res.status === 404) break // ส่งซ้ำก็ไม่ผ่าน
+    } catch (err) {
+      lastError = String(err?.message ?? err)
+    }
+    await new Promise((r) => setTimeout(r, Math.min(15_000, 1000 * 2 ** i)))
+  }
+  return { ok: false, error: lastError }
+}
+
+async function setStatus(text) {
+  await chrome.storage.local.set({ status: text, statusAt: Date.now() })
+}
+
+/**
+ * หา tab ของเว็บเป้าหมาย — ใช้แท็บที่เปิดอยู่แล้วเสมอ (แท็บเดียวกับที่แผงข้างใช้) มีไม่มีจริงๆ ค่อยเปิดใหม่
+ * เลขแท็บเก็บใน storage.session ร่วมกับแผงข้าง (chatTabId / flowTabId)
+ */
+const opening = {} // agent → Promise ระหว่างเปิดแท็บใหม่ กันเปิดซ้อนสองแท็บ
+async function ensureTab(agent) {
+  const { pattern, match, key } = AGENTS[agent]
+  const tabs = await chrome.tabs.query({ url: pattern })
+  const { [key]: savedId } = await chrome.storage.session.get(key)
+  const existing = tabs.find((t) => t.id === savedId) ?? tabs.find((t) => !t.discarded) ?? tabs[0]
+  if (existing) {
+    if (existing.id !== savedId) await chrome.storage.session.set({ [key]: existing.id })
+    return existing
+  }
+  if (opening[agent]) return opening[agent]
+  opening[agent] = openTab(match, key).finally(() => delete opening[agent])
+  return opening[agent]
+}
+
+async function openTab(match, key) {
+  const tab = await chrome.tabs.create({ url: match, active: false })
+  await chrome.storage.session.set({ [key]: tab.id })
+  await new Promise((resolve) => {
+    const listener = (id, info) => {
+      if (id === tab.id && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener)
+        resolve()
+      }
+    }
+    chrome.tabs.onUpdated.addListener(listener)
+    setTimeout(resolve, 30_000)
+  })
+  await new Promise((r) => setTimeout(r, 2000)) // เผื่อ SPA render ต่ออีกนิด
+  return tab
+}
+
+/**
+ * Flow ซ่อนปุ่ม Agent เมื่อหน้าแคบ (แบบมือถือ) — แผงข้างของ Chrome กว้างๆ บีบแท็บเหลือ ~350-700px ได้ (เจอจริง ต.ค. 2026)
+ * → หน้าแคบกว่านี้ ย้ายแท็บ Flow ไปหน้าต่างของตัวเอง (ไม่มีแผงข้าง) แล้วโหลดหน้าใหม่ให้ Flow วาดช่องพิมพ์แบบกว้าง
+ *
+ * ต้องวัดตอนแท็บอยู่หน้าสุดและโหลดเสร็จแล้วเท่านั้น: แท็บเบื้องหลังรายงานความกว้างเก่า (ก่อนแผงข้างบีบ)
+ * เคยวัดตอนแท็บยังอยู่เบื้องหลังได้ ≥1100 → ไม่ย้าย → พอสลับมาหน้าสุดเหลือ 713px แล้วเฟล (24 ต.ค. 2026)
+ * คืนค่า true เมื่อย้ายหน้าต่างแล้ว (ผู้เรียกต้องโหลดหน้าใหม่)
+ */
+const FLOW_MIN_WIDTH = 1100
+async function flowWidth(tabId) {
+  const [probe] = await chrome.scripting.executeScript({ target: { tabId }, func: () => window.innerWidth }).catch(() => [])
+  return probe?.result ?? 0
+}
+async function ensureWideFlow(tab) {
+  const width = await flowWidth(tab.id)
+  if (!width || width >= FLOW_MIN_WIDTH) return false // วัดไม่ได้ → ไม่ย้าย ตัวขับใน content script แจ้ง error เองถ้าแคบจริง
+  const win = await chrome.windows.create({
+    tabId: tab.id,
+    ...(await flowWindowBounds(tab.windowId)),
+    focused: true, // ต้องมองเห็นได้ — หน้าต่างที่ถูกบังมิด Chrome หยุดวาดหน้าเว็บ งาน Flow ค้าง
+  })
+  console.log(`ย้าย Flow ไปหน้าต่างแยก (เดิมกว้าง ${width}px) → window ${win?.id}`)
+  return true
+}
+
+/**
+ * ตำแหน่งหน้าต่าง Flow: กลางจอที่ใหญ่ที่สุด (พื้นที่ใช้งาน กว้าง×สูง) — เครื่องที่มีหลายจอ จอเล็ก 1366×768 เตี้ยเกินสำหรับ Flow
+ * ขนาด 1400×900 ย่อลงให้พอดีจอถ้าจอเล็กกว่า · อ่านจอไม่ได้ → เปิดตรงหน้าต่างเดิม
+ */
+async function flowWindowBounds(fromWindowId) {
+  const displays = await chrome.system?.display?.getInfo().catch(() => null)
+  const areas = (displays ?? []).map((d) => d.workArea).filter((a) => a?.width > 0 && a?.height > 0)
+  if (areas.length) return pickFlowBounds(areas)
+  const from = await chrome.windows.get(fromWindowId).catch(() => null)
+  return { left: from?.left ?? 0, top: from?.top ?? 0, width: 1400, height: 900 }
+}
+
+function pickFlowBounds(areas) {
+  const big = areas.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a))
+  const width = Math.min(1400, big.width)
+  const height = Math.min(900, big.height)
+  return {
+    left: big.left + Math.round((big.width - width) / 2),
+    top: big.top + Math.round((big.height - height) / 2),
+    width,
+    height,
+  }
+}
+
+/** โหลด URL ในแท็บแล้วรอจนเสร็จ (สูงสุด 30 วิ) + เผื่อ SPA render อีกนิด */
+async function loadInTab(tabId, url, settleMs) {
+  await chrome.tabs.update(tabId, { url, active: true })
+  await new Promise((resolve) => {
+    const listener = (id, info) => {
+      if (id === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener)
+        resolve()
+      }
+    }
+    chrome.tabs.onUpdated.addListener(listener)
+    setTimeout(resolve, 30_000)
+  })
+  await new Promise((r) => setTimeout(r, settleMs))
+}
+
+/** เปิด Flow เป็นภาษาอังกฤษ — ตัวขับอ่านข้อความบนปุ่มภาษาอังกฤษ */
+function withEnglish(url) {
+  const u = new URL(url)
+  u.searchParams.set('hl', 'en')
+  return u.toString()
+}
+
+async function handleJob(job) {
+  await setStatus(`กำลังทำ ${job.kind}`)
+  const tab = await ensureTab(job.payload.agent ?? jobAgent(job))
+  const agent = job.payload.agent ?? jobAgent(job)
+
+  // Flow: เริ่มจากหน้าแรกทุกครั้ง → content script กด New project ได้ project ใหม่ต่อคลิป
+  if (agent === 'flow' && job.kind === 'generate-images') {
+    // คลิปนี้เคยมี project ใน Flow แล้ว → กลับไป project เดิม (ตัวละครเดิม ไม่เปิด project ใหม่ทุกครั้งที่ลองซ้ำ)
+    const url = /^https:\/\/flow\.google\.com\/project\//.test(job.payload.projectUrl ?? '') ? withEnglish(job.payload.projectUrl) : AGENTS.flow.match
+    await loadInTab(tab.id, url, 3000)
+    // วัดหลังแท็บขึ้นหน้าสุดแล้ว (ความกว้างจริงหลังแผงข้างบีบ) — แคบเกิน → ย้ายหน้าต่างแล้วโหลดใหม่ในหน้าต่างกว้าง
+    if (await ensureWideFlow(tab)) await loadInTab(tab.id, url, 3000)
+  }
+
+  // ChatGPT: แชตใหม่ = โหลดหน้าแรกใหม่ (แบบเดียวกับแผงข้าง) — กดปุ่ม New chat จาก content script ไม่ได้ผลกับหน้ารุ่นใหม่ (ต.ค. 2026)
+  // โหลดจากตรงนี้ก่อนส่งงาน เพราะถ้าให้ content script โหลดหน้าเอง ตัวมันจะหายไปกลางงาน
+  if (agent === 'chatgpt' && job.kind === 'prompt' && job.payload.newChat !== false) {
+    await chrome.tabs.update(tab.id, { url: AGENTS.chatgpt.match })
+    await new Promise((resolve) => {
+      const listener = (id, info) => {
+        if (id === tab.id && info.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener)
+          resolve()
+        }
+      }
+      chrome.tabs.onUpdated.addListener(listener)
+      setTimeout(resolve, 30_000)
+    })
+    await new Promise((r) => setTimeout(r, 2500)) // หน้า SPA render ช่องพิมพ์ต่ออีกนิด
+  }
+
+  const response = await chrome.tabs.sendMessage(tab.id, { type: 'RUN_JOB', job }).catch(async (err) => {
+    // content script ยังไม่ถูกฉีด (เช่นเปิดหน้าค้างไว้ตั้งแต่ก่อนติดตั้ง) → ฉีดเองแล้วลองใหม่
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: CONTENT_FILES[agent] ?? CONTENT_FILES.chatgpt,
+    })
+    return chrome.tabs.sendMessage(tab.id, { type: 'RUN_JOB', job })
+  })
+
+  if (response?.ok) {
+    await setStatus(`เสร็จ ${job.kind}`)
+  } else if (response) {
+    await postReliable('/error', { id: job.id, message: response.error ?? 'ไม่มีคำตอบจาก content script' })
+    await setStatus(`ล้มเหลว: ${response.error ?? 'ไม่ทราบสาเหตุ'}`)
+  }
+  // ไม่มี response = service worker ถูกปลุกใหม่ระหว่างรอ — content script ยังทำงานต่อและส่งผลเอง
+}
+
+function jobAgent(job) {
+  return job.agent ?? 'chatgpt'
+}
+
+/**
+ * แต่ละเว็บ (ChatGPT / Flow) มีคิวของตัวเอง — งาน Flow ที่ใช้ 30 นาทีต้องไม่บังงาน ChatGPT
+ * และห้ามรับงานใหม่ของเว็บเดียวกันจนกว่างานเดิมจะจบ (ใช้แท็บเดียวกัน)
+ */
+const busy = new Set()
+let polling = false
+async function pollLoop() {
+  if (polling) return
+  polling = true
+  try {
+    for (;;) {
+      const { base, token, enabled } = await settings()
+      if (!enabled || !token) {
+        await setStatus('ปิดอยู่')
+        return
+      }
+      // แผงข้างกำลังถาม ChatGPT ตรงๆ (หัวข้อ/บท/prompt ภาพ) → ยังไม่รับงาน ChatGPT จาก bridge
+      // ไม่งั้นงานจากคิว (เช่น AI ตรวจคลิปของโหมดโพสต์) โหลดแท็บใหม่ทับคำตอบที่กำลังมา
+      const { chatAskUntil = 0 } = await chrome.storage.session.get('chatAskUntil')
+      const free = Object.keys(AGENTS).filter((a) => !busy.has(a) && !(a === 'chatgpt' && chatAskUntil > Date.now()))
+      if (!free.length) {
+        await new Promise((r) => setTimeout(r, 5000))
+        continue
+      }
+      const results = await Promise.all(
+        free.map(async (agent) => {
+          try {
+            const res = await fetch(`${base}/job?agent=${agent}`, { headers: { 'x-bridge-token': token } })
+            if (res.status === 401) return 'auth'
+            if (res.status !== 200) return 'idle'
+            const job = await res.json()
+            busy.add(agent)
+            handleJob({ ...job, agent })
+              .catch((err) => {
+                let message = String(err?.message ?? err)
+                // แท็บหายกลางงาน = มีคนปิดแท็บ/หน้าต่าง Flow (เช่นหน้าต่างแยกที่ extension เปิดให้ตอนหน้าแคบ)
+                if (/No tab with id/i.test(message)) {
+                  message = `แท็บ ${agent === 'flow' ? 'Google Flow' : 'ChatGPT'} ถูกปิดระหว่างทำงาน — อย่าปิดหน้าต่าง/แท็บที่ extension เปิดให้ กดทำต่อได้เลย (${message})`
+                }
+                return postReliable('/error', { id: job.id, message })
+              })
+              .finally(() => busy.delete(agent))
+            return 'job'
+          } catch {
+            return 'offline'
+          }
+        }),
+      )
+      if (results.includes('auth')) {
+        await setStatus('token ไม่ตรงกับ .env')
+        return
+      }
+      if (results.every((r) => r === 'offline')) {
+        await setStatus('ต่อ bridge ไม่ได้ — รัน node bridge/server.js หรือยัง')
+        await new Promise((r) => setTimeout(r, 5000))
+      } else if (!results.includes('job') && !busy.size) {
+        await setStatus('รองาน...')
+      }
+    }
+  } finally {
+    polling = false
+  }
+}
+
+/**
+ * แผงข้างเปิดมาแล้วพร้อมใช้: ให้ native host เปิด bridge (ถ้ายังไม่เปิด) และส่ง token มา
+ * ตั้งค่าเองทั้งหมด — ผู้ใช้ไม่ต้องคัดลอกรหัสหรือรันไฟล์ใดๆ
+ */
+async function ensureApp() {
+  let info
+  try {
+    info = await chrome.runtime.sendNativeMessage(NATIVE_HOST, { type: 'ensure' })
+  } catch (err) {
+    const notInstalled = /not found|forbidden/i.test(String(err?.message))
+    return {
+      ok: false,
+      error: notInstalled
+        ? 'ยังไม่ได้เชื่อมกับ Chrome (ตัวติดตั้งยังไม่ได้รันจนจบ หรือย้ายโฟลเดอร์มา)'
+        : `ติดต่อโปรแกรมไม่ได้: ${err?.message ?? err}`,
+    }
+  }
+  if (!info?.ok) return { ok: false, error: info?.error ?? 'เปิดโปรแกรมไม่สำเร็จ' }
+
+  await chrome.storage.local.set({ port: info.port, token: info.token, enabled: true })
+  pollLoop()
+  return { ok: true, url: info.url, token: info.token }
+}
+
+/**
+ * ทำคลิปอัตโนมัติจบ (สำเร็จหรือหยุดกลางทาง) → แจ้งเตือนบนเครื่อง แม้ปิดแผงข้างไปแล้ว
+ * เช็กทุกนาทีพร้อม alarm ที่ปลุก service worker อยู่แล้ว
+ */
+async function checkAutopilot() {
+  const { base, token, enabled } = await settings()
+  if (!enabled || !token) return
+  const a = await fetch(`${base}/api/autopilot`, { headers: { 'x-bridge-token': token } })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+  const st = a?.status
+  // ตัวเลข % บนไอคอน extension
+  const running = a?.run?.status === 'running' || st?.status === 'running'
+  const badge = running ? `${a?.progress?.percent ?? 0}%` : st?.status === 'done' && Date.now() - st.updatedAt < 30 * 60_000 ? '✓' : ['failed', 'error'].includes(st?.status) ? '!' : ''
+  chrome.action.setBadgeText({ text: badge }).catch(() => {})
+  if (badge) chrome.action.setBadgeBackgroundColor({ color: running ? '#0a7488' : st?.status === 'done' ? '#2b7552' : '#b8432a' }).catch(() => {})
+  if (!st || !['done', 'failed'].includes(st.status)) return
+  const key = `${st.slug}:${st.updatedAt}`
+  const { notifiedAutopilot } = await chrome.storage.local.get('notifiedAutopilot')
+  if (notifiedAutopilot === key) return
+  await chrome.storage.local.set({ notifiedAutopilot: key })
+  if (Date.now() - st.updatedAt > 30 * 60_000) return // งานเก่าตั้งแต่ก่อนเปิด Chrome — ไม่ต้องเตือน
+  const done = st.status === 'done'
+  chrome.notifications.create(key, {
+    type: 'basic',
+    iconUrl: 'icons/icon-128.png',
+    title: done ? 'ทำคลิปเสร็จแล้ว 🎬' : 'ทำคลิปอัตโนมัติหยุดกลางทาง',
+    message: done ? st.title : `${st.title}\n${st.error ?? ''}\nกดทำคลิปอัตโนมัติอีกครั้งเพื่อทำต่อ`,
+    priority: 2,
+    requireInteraction: true,
+  })
+}
+
+chrome.notifications?.onClicked.addListener(async (id) => {
+  chrome.notifications.clear(id)
+  const win = await chrome.windows.getLastFocused().catch(() => null)
+  if (win) chrome.sidePanel.open({ windowId: win.id }).catch(() => {})
+})
+
+// กดไอคอน = เลื่อนแผงข้างออกมา
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.alarms.create('poll', { periodInMinutes: 1 })
+  pollLoop()
+})
+chrome.runtime.onStartup.addListener(pollLoop)
+chrome.alarms?.onAlarm.addListener(() => {
+  pollLoop()
+  checkAutopilot()
+  checkExtensionUpdate()
+})
+
+/**
+ * ไฟล์ของ extension เปลี่ยน (แก้โค้ดแล้ว) → reload ตัวเองเมื่อไม่มีงานค้าง ไม่ต้องเข้า chrome://extensions เอง
+ * ลายนิ้วมือตอนโหลดเก็บใน storage.session (ล้างเองทุกครั้งที่ extension reload)
+ */
+async function checkExtensionUpdate() {
+  const { base, token, enabled } = await settings()
+  if (!enabled || !token) return
+  const info = await fetch(`${base}/ext-version`, { headers: { 'x-bridge-token': token } })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+  if (!info?.version) return
+  const { extVersion } = await chrome.storage.session.get('extVersion')
+  if (!extVersion) return chrome.storage.session.set({ extVersion: info.version })
+  if (extVersion === info.version || info.busy || busy.size) return
+  chrome.runtime.reload()
+}
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === 'FLOW_TRUSTED_ENTER') {
+    const sender = _sender
+    if (!sender.tab?.id || !/^https:\/\/flow\.google\.com\//.test(sender.tab.url ?? '')) {
+      sendResponse({ ok: false, error: 'คำขอไม่ได้มาจากแท็บ Google Flow' })
+      return
+    }
+    ;(async () => {
+      const target = { tabId: sender.tab.id }
+      const command = (method, params) => new Promise((resolve, reject) => {
+        chrome.debugger.sendCommand(target, method, params, (result) =>
+          chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(result))
+      })
+      let attached = false
+      try {
+        await new Promise((resolve, reject) => {
+          chrome.debugger.attach(target, '1.3', () =>
+            chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve())
+        })
+        attached = true
+        const enter = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }
+        await command('Input.dispatchKeyEvent', { type: 'keyDown', ...enter, text: '\r', unmodifiedText: '\r' })
+        await command('Input.dispatchKeyEvent', { type: 'keyUp', ...enter })
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: err?.message ?? String(err) }
+      } finally {
+        if (attached) await new Promise((resolve) => chrome.debugger.detach(target, () => resolve()))
+      }
+    })().then(sendResponse)
+    return true
+  }
+  // วาง prompt ลงช่องพิมพ์ของ ChatGPT จากฝั่งหน้าเว็บเอง (world MAIN) — paste ที่ยิงจาก content script ไม่ลงช่องพิมพ์ (เจอจริง ต.ค. 2026)
+  if (msg.type === 'CHATGPT_PASTE') {
+    if (!_sender.tab?.id || !/^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(_sender.tab.url ?? '')) {
+      sendResponse({ ok: false, error: 'คำขอไม่ได้มาจากแท็บ ChatGPT' })
+      return
+    }
+    chrome.scripting
+      .executeScript({
+        target: { tabId: _sender.tab.id },
+        world: 'MAIN',
+        args: [msg.text, msg.selectors],
+        func: (text, selectors) => {
+          const el = selectors.map((s) => document.querySelector(s)).find(Boolean)
+          if (!el) return false
+          el.focus()
+          const data = new DataTransfer()
+          data.setData('text/plain', text)
+          el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+          return true
+        },
+      })
+      .then(([r]) => sendResponse({ ok: !!r?.result, error: r?.result ? undefined : 'ไม่เจอช่องพิมพ์' }))
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message ?? err) }))
+    return true
+  }
+  if (msg.type === 'ENSURE_APP') {
+    ensureApp().then(sendResponse)
+    return true
+  }
+  if (msg.type === 'WAKE') {
+    pollLoop()
+    sendResponse({ ok: true })
+  }
+  if (msg.type === 'PARTIAL' || msg.type === 'RESULT' || msg.type === 'ERROR') {
+    const path = { PARTIAL: '/partial', RESULT: '/result', ERROR: '/error' }[msg.type]
+    postReliable(path, msg.body).then(sendResponse)
+    return true
+  }
+  // PROGRESS ทุก 20 วิ = heartbeat ด้วย — ปลุก service worker และบอก bridge ว่างานยังไม่หลุด
+  if (msg.type === 'PROGRESS') {
+    if (!polling) pollLoop()
+    post('/progress', msg.body)
+      .then((res) => res.json())
+      .then((data) => sendResponse({ ok: true, cancelled: !!data?.cancelled }))
+      .catch(() => sendResponse({ ok: true }))
+    return true
+  }
+})

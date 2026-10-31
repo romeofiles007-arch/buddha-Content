@@ -1,0 +1,130 @@
+[
+  {
+    "asset": "extension/agents/temple-day.png",
+    "type": "background",
+    "dimensions": [
+      1024,
+      1536
+    ],
+    "grid": null,
+    "nativeAlpha": false,
+    "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18bf8-5c31-7ce3-92b4-7bd06c5854ed\\exec-66e585e6-98e6-45ff-8743-18f2f788f314.png",
+    "promptFile": "docs/design/temple-assets-temple-day.prompt.txt",
+    "generator": "Built-in ImageGen",
+    "generatedDate": "2026-10-30"
+  },
+  {
+    "asset": "extension/agents/temple-night.png",
+    "type": "background",
+    "dimensions": [
+      1024,
+      1536
+    ],
+    "grid": null,
+    "nativeAlpha": false,
+    "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18bf8-5c31-7ce3-92b4-7bd06c5854ed\\exec-a82acca1-2041-4d4d-964b-6769a7976391.png",
+    "promptFile": "docs/design/temple-assets-temple-night.prompt.txt",
+    "generator": "Built-in ImageGen",
+    "generatedDate": "2026-10-30"
+  },
+  {
+    "asset": "extension/agents/temple-chatgpt.png",
+    "type": "sprite-atlas",
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "grid": {
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 362,
+      "cellHeight": 362
+    },
+    "nativeAlpha": true,
+    "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18bf8-5c31-7ce3-92b4-7bd06c5854ed\\exec-293f5600-30bb-411e-8764-7e93741970f9.png",
+    "promptFile": "docs/design/temple-assets-temple-chatgpt.prompt.txt",
+    "generator": "Built-in ImageGen",
+    "generatedDate": "2026-10-30"
+  },
+  {
+    "asset": "extension/agents/temple-flow.png",
+    "type": "sprite-atlas",
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "grid": {
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 362,
+      "cellHeight": 362
+    },
+    "nativeAlpha": true,
+    "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18bf8-5c31-7ce3-92b4-7bd06c5854ed\\exec-9ffb3bca-68af-420b-ae84-c5e62cad2462.png",
+    "promptFile": "docs/design/temple-assets-temple-flow.prompt.txt",
+    "generator": "Built-in ImageGen",
+    "generatedDate": "2026-10-30"
+  },
+  {
+    "asset": "extension/agents/temple-meta.png",
+    "type": "sprite-atlas",
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "grid": {
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 362,
+      "cellHeight": 362
+    },
+    "nativeAlpha": true,
+    "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18bf8-5c31-7ce3-92b4-7bd06c5854ed\\exec-25f2a66f-30c1-4ebe-b125-490bd6e5edd0.png",
+    "promptFile": "docs/design/temple-assets-temple-meta.prompt.txt",
+    "generator": "Built-in ImageGen",
+    "generatedDate": "2026-10-30"
+  },
+  {
+    "asset": "extension/agents/temple-voice.png",
+    "type": "sprite-atlas",
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "grid": {
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 362,
+      "cellHeight": 362
+    },
+    "nativeAlpha": true,
+    "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18bf8-5c31-7ce3-92b4-7bd06c5854ed\\exec-bb01a079-4d5d-4ebe-b423-7ec1094d1936.png",
+    "promptFile": "docs/design/temple-assets-temple-voice.prompt.txt",
+    "generator": "Built-in ImageGen",
+    "generatedDate": "2026-10-30"
+  },
+  {
+    "asset": "extension/agents/temple-edit.png",
+    "type": "sprite-atlas",
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "grid": {
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 362,
+      "cellHeight": 362
+    },
+    "nativeAlpha": true,
+    "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18bf8-5c31-7ce3-92b4-7bd06c5854ed\\exec-16bedcb2-658d-4152-b2b5-7205181520d4.png",
+    "promptFile": "docs/design/temple-assets-temple-edit.prompt.txt",
+    "generator": "Built-in ImageGen",
+    "generatedDate": "2026-10-30"
+  }
+]

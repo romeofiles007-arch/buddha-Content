@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="พุทธประวัติและพุทธพจน์">
+  <rect width="64" height="64" rx="12" fill="#d8aa3c"/>
+  <g fill="none" stroke="#4b3406" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 12c-7 0-13 4-13 10m26 0c0-6-6-10-13-10M27 31c-5 3-8 8-8 13m18-13c5 3 8 8 8 13M19 44l-7 6h40l-7-6M21 41l11 5 11-5M17 54h30"/>
+    <circle cx="32" cy="24" r="6"/>
+    <path d="M30 17v-3h4v3M27 31l5 6 5-6"/>
+  </g>
+</svg>

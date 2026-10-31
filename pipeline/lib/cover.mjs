@@ -1,0 +1,85 @@
+/**
+ * ภาพปกคลิป (Thumbnail) — Blueprint OUTPUT 4 "Thumbnail concept"
+ *
+ *   ChatGPT: เขียน prompt ปกมาพร้อม Shot List รอบแรก (บรรทัด cover.png | COVER | ...)
+ *   Flow:    สร้างเป็นภาพสุดท้ายหลังครบทุกช็อต ตั้งชื่อ "cover.png COVER" แนวเดียวกับคลิป
+ *   ไฟล์:    05_images/cover.png (ขั้นตัดต่อไม่ใช้ — ไม่ใช่ชื่อ timecode) · 04_shotlist/cover.txt เก็บ prompt
+ *
+ * project เก่าที่ไม่มี prompt ปก → ให้ agent ออกแบบปกเองจากชื่อเรื่อง + Style/Character Bible
+ */
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { projectDir, loadConfig } from './config.mjs'
+import { stripSafeArea, clipLanguage } from './prompts.mjs'
+
+/**
+ * สูตรปก YouTube ที่คนกดดู — ใช้ทั้งตอนขอ prompt จาก ChatGPT และตอนสั่ง Flow วาด
+ * (ปกเก่าที่ prompt เขียนว่า "ไม่มีตัวอักษร" ก็ได้สูตรนี้ตอนสร้างปกใหม่)
+ */
+function thumbnailRules(language) {
+  const th = language !== 'en'
+  return [
+    `หัวข้อบนปกตัวใหญ่มาก 2–4 คำ${language === 'zh' ? ' ภาษาจีนอักษรตัวย่อ เขียนถูกต้องทุกตัว' : th ? ' ภาษาไทย สะกดถูกต้องทุกตัว' : ' ภาษาอังกฤษ ALL CAPS'} — เป็นคำ hook สั้นๆ ไม่ใช่ชื่อเรื่องเต็ม (เช่น ${th ? '"ปล่อยไม่ได้?", "ลูกศรดอกที่สอง"' : '"LET IT GO?", "THE SECOND ARROW"'}) ใส่ข้อความในเครื่องหมายคำพูด`,
+    'ตัวอักษรหนามาก ขอบเข้มหนา สีขาวหรือทองอ่อน เน้นคำสำคัญ 1 คำด้วยสีส้มจีวรหรือแดงชาด กินพื้นที่ไม่เกิน 30% ของภาพ ห้ามทับหน้าตัวละคร',
+    `ตำแหน่งหัวข้อ: วางกึ่งกลางภาพทั้งแนวนอนและแนวตั้ง (ไม่ใช่ชิดขอบบน) เว้นระยะจากขอบภาพทุกด้านอย่างน้อย 10% ตัวอักษรทุกตัว${th ? 'รวมสระบนและวรรณยุกต์' : ''}ต้องอยู่ในภาพครบ ห้ามล้นหรือถูกตัดขอบ · จัดตัวละครไว้ใต้หรือข้างข้อความแทน`,
+    'ตัวละครหลัก (คนธรรมดา ไม่ใช่พระพุทธเจ้าหรือพระสงฆ์) หน้าใหญ่ใกล้กล้อง (ราว 40% ของภาพ) อารมณ์ชัดเจน เช่น ครุ่นคิด เศร้า สงสัย โล่งใจ',
+    'สิ่งของหรือภาพที่เป็นหัวใจของเรื่อง 1 อย่าง (ดอกบัว ใบโพธิ์ ลูกศร หัวใจที่ร้อน ฯลฯ) ชี้ด้วยลูกศรหรือวงกลมสีส้ม/แดง — ห้ามชี้ไปที่พระพุทธเจ้า พระสงฆ์ หรือพระพุทธรูป',
+    'ถ้ามีพระพุทธเจ้า/พระพุทธรูปในปก ให้อยู่ด้านหลังหรือด้านข้าง สงบ สง่า มีรัศมีทองอ่อน ไม่ตัดผ่านพระพักตร์ ไม่ใช้แสดงอารมณ์เกินจริง',
+    'ฉากหลังบอกบรรยากาศของเรื่อง (ต้นโพธิ์ สระบัว วัด ป่า หรือฉากชีวิตจริง + ของประกอบ 2–3 ชิ้น) สีสด แต่เบลอหรือเรียบกว่าตัวละคร ไม่รก มีแสงเรืองรอบตัวละครได้ · องค์ประกอบน้อย อ่านรู้เรื่องแม้เห็นภาพเล็กบนมือถือ',
+    'สไตล์ลายเส้นและหน้าตาตัวละครเดียวกับ Style Bible และ Character Bible · ชวนสงสัยแต่ตรงกับเนื้อหาจริง',
+  ]
+}
+
+export const COVER_NAME = 'cover.png'
+export const coverPath = (slug) => join(projectDir(slug, 'images'), COVER_NAME)
+const promptFile = (slug) => join(projectDir(slug, 'shotlist'), 'cover.txt')
+
+/** กฎสำหรับ ChatGPT รอบแรก — ขอ prompt ปกต่อท้าย Shot List */
+export function coverRequest(portrait, language = 'th') {
+  return `- ท้ายคำตอบ เพิ่มบรรทัดว่าง แล้วบรรทัด "=== COVER ===" ตามด้วย prompt ภาพปกคลิป 1 บรรทัด ขึ้นต้นด้วย "cover.png | COVER |" (Thumbnail ตาม OUTPUT 4 — เลือกคอนเซปต์ที่ดีที่สุดแบบเดียว)
+- ภาพปก = YouTube thumbnail ${portrait ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'} ที่คนอยากกดดูทันที:
+${thumbnailRules(language).map((r) => `  · ${r}`).join('\n')}
+- รูปแบบ field ของปก: Chars: @TAG | Env: ... | Action: ... | Frame: ... (คำอธิบายเป็น${language === 'en' ? 'ภาษาอังกฤษ' : 'ภาษาไทย'} คงชื่อ field และ @TAG ตามเดิม)`
+}
+
+/** ดึง prompt ปกจากคำตอบของ ChatGPT */
+export function parseCover(text) {
+  const m = /^(?:[ \t>*•-]+)?\**cover\.png\**[ \t:|]*(.+)$/im.exec(text)
+  return m?.[1]?.trim() || null
+}
+
+export function saveCoverPrompt(slug, prompt) {
+  if (prompt) writeFileSync(promptFile(slug), prompt, 'utf8')
+}
+
+export function readCoverPrompt(slug) {
+  return existsSync(promptFile(slug)) ? readFileSync(promptFile(slug), 'utf8').trim() || null : null
+}
+
+export const hasCover = (slug) => existsSync(coverPath(slug))
+
+/** "ช็อต" ปกสำหรับส่งให้ Flow — ไม่มี prompt จาก ChatGPT ก็ให้ agent ออกแบบเอง */
+export function coverShot(slug, title) {
+  const saved = readCoverPrompt(slug)
+  const prompt =
+    (saved && stripSafeArea(saved).trim()) ||
+    `COVER | ภาพปกคลิป (YouTube thumbnail) ของเรื่อง "${title}" — ออกแบบเองจากเนื้อเรื่องและ Character Bible`
+  // prompt ปกรุ่นก่อนห้ามตัวอักษร — ตัดออก ให้ใช้สูตรปก YouTube ที่มีหัวข้อตัวใหญ่แทน
+  const cleaned = prompt
+    .replace(/[,;·]?\s*(?:ไม่มีตัวอักษรในภาพ|no (?:text|letters|words)(?: in (?:the )?image)?)/gi, '')
+    // prompt ปกรุ่นก่อนวางหัวข้อ "ด้านบน" — Flow มักวาดล้นขอบบน ย้ายมากึ่งกลางภาพ
+    .replace(/((?:ข้อความ|หัวข้อ|พาดหัว|ตัวอักษร|ตัวหนังสือ)[^|]{0,60}?)(?:อยู่|วาง)?(?:ที่|บริเวณ)?(?:ด้านบน|ส่วนบน)(?:สุด)?(?:ของภาพ)?/g, '$1อยู่กึ่งกลางภาพ')
+    .replace(/วาง(?:ไว้)?(?:ที่|บริเวณ)?(?:ด้านบน|ส่วนบน)(?:สุด)?(?:ของภาพ)?/g, 'วางกึ่งกลางภาพ')
+    .replace(/(?:ด้านบน|ส่วนบน)(?:ของภาพ)?\s*(ใส่|มี|เป็น)(ข้อความ|หัวข้อ|พาดหัว|ตัวอักษร|ตัวหนังสือ)/g, 'กึ่งกลางภาพ$1$2')
+    .replace(/\b((?:text|title|headline)[^|]{0,60}?)\b(?:at|on|across) the top(?: of the (?:image|frame))?/gi, '$1in the center of the image')
+    .trim()
+  return { filename: COVER_NAME, shot: 'COVER', prompt: cleaned, language: clipLanguage(loadConfig(), slug), title }
+}
+
+/** ส่วนท้ายของ brief ที่ส่งให้ Flow */
+export function coverBriefLines(shot, portrait) {
+  return [
+    `=== COVER (สร้างเป็นภาพสุดท้าย หลังครบทุกช็อต) ===`,
+    `${shot.filename} ${shot.prompt} | ภาพปกคลิป YouTube thumbnail ${portrait ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'} ของเรื่อง "${shot.title ?? ''}" · ${thumbnailRules(shot.language).join(' · ')} · ตั้งชื่อภาพ "cover.png COVER" (ชื่อไฟล์ไม่ต้องเขียนลงในภาพ)`,
+  ]
+}

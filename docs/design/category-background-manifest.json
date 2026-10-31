@@ -1,0 +1,80 @@
+{
+  "generator": "built-in image_gen.imagegen",
+  "mode": "day=generate; night=native reference lighting-weather edit of paired day image",
+  "transparentBackground": false,
+  "qa": "Visually inspected all six generated images: mature photoreal full-sized environments; three distinct architectural subjects; no living people, children, text, glyphs or logos; uncluttered open foregrounds. Paired architecture and layout preserved.",
+  "assets": [
+    {
+      "file": "extension/agents/category-buddha-day.png",
+      "promptFile": "docs/design/category-background-buddha-day.prompt.txt",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-91b3-7ab0-8009-2eef411aa80b\\exec-eb2753b4-409f-4168-af08-85934ef63b4f.png",
+      "dimensions": [
+        1024,
+        1536
+      ],
+      "promptEmbedded": true,
+      "reference": null,
+      "prompt": "Use case: photorealistic-natural\nAsset type: production background for an adult Buddhist study application. Portrait 1024 x 1536 pixels, 2:3 aspect ratio.\nStyle/medium: premium photoreal architectural environment, physically based three-dimensional materials, restrained cinematic realism. Serious mature contemplative spiritual identity, real-world scale and weathering, beautiful subtle texture, not an illustration.\nComposition/framing: fixed eye-level 35 mm view, quiet architecture and recognizable category subject toward upper outer sides. Broad open uncluttered central and lower courtyard occupying at least central 55% width so application cards can overlay it. Depth, spaciousness, breathing room; visually polished but understated.\nConstraints: NO living people, no monks or children, no human characters. A classical religious statue is permitted only where specified. NO text, letters, inscriptions, glyphs, logos, watermarks or readable book covers. NO toy, miniature, chibi, cartoon, children's book, fantasy castle, Disney look, shiny plastic, cute facial proportions, caricature or garish colors. No ornamental visual clutter in center. Opaque background.\nPrimary request: ancient Indian Buddhist sacred garden at peaceful warm morning. A mature classical seated Buddha statue of dignified anatomical proportions in softly weathered warm stone with a subtly gilded robe stands on a low sandstone platform in the upper right third, framed by a simple ancient Indian sandstone cloister and carved stone screen. A very old great Bodhi tree, strong natural trunk and heart-shaped leaves, anchors the left edge. The Buddha's balanced face is contemplative, not smiling cutely. Large pale sandstone courtyard slabs create a calm nearly empty center and lower foreground; small flowers only along the side edges. Historic Indian Buddhist sacred space, NOT a Thai wat, no Thai palace roof. The sun passes through Bodhi leaves from upper left, warm ivory/sandstone, aged gold and muted olive palette, peaceful natural shadows. Strong visible differences from a wooden forest monastery or a modern stone meditation courtyard. Render exactly 1024 x 1536 portrait."
+    },
+    {
+      "file": "extension/agents/category-monk-day.png",
+      "promptFile": "docs/design/category-background-monk-day.prompt.txt",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-91b3-7ab0-8009-2eef411aa80b\\exec-516aca2f-bd1b-40dd-be2f-97352781fa47.png",
+      "dimensions": [
+        1024,
+        1536
+      ],
+      "promptEmbedded": true,
+      "reference": null,
+      "prompt": "Use case: photorealistic-natural\nAsset type: production background for an adult Buddhist study application. Portrait 1024 x 1536 pixels, 2:3 aspect ratio.\nStyle/medium: premium photoreal architectural environment, physically based three-dimensional materials, restrained cinematic realism. Serious mature contemplative spiritual identity, real-world scale and weathering, beautiful subtle texture, not an illustration.\nComposition/framing: fixed eye-level 35 mm view, quiet architecture and recognizable category subject toward upper outer sides. Broad open uncluttered central and lower courtyard occupying at least central 55% width so application cards can overlay it. Depth, spaciousness, breathing room; visually polished but understated.\nConstraints: NO living people, no monks or children, no human characters. A classical religious statue is permitted only where specified. NO text, letters, inscriptions, glyphs, logos, watermarks or readable book covers. NO toy, miniature, chibi, cartoon, children's book, fantasy castle, Disney look, shiny plastic, cute facial proportions, caricature or garish colors. No ornamental visual clutter in center. Opaque background.\nPrimary request: peaceful Thai forest monastery, no person present. Architectural photograph from the open front court toward a substantial traditional teak wooden kuti and deep shaded veranda at upper right, mature dark teak pillars and real joinery, modest steep plain wooden roof. Upper left is a layered forest of tall tropical trunks and deep green foliage. A small old manuscript stand with closed unmarked cloth-bound scripture volumes sits at the right edge of the veranda; covers are blank and there is no writing. Wide quiet worn earth and large natural stone slabs in central lower foreground, open and uncluttered for application content. Beautiful tropical daylight filtered through forest canopy, warm dark honey teak, deep forest green, earthy taupe, subdued saffron cloth accent on stand. Authentic inhabited adult monastic setting, calm realism, full-sized architecture, never a miniature or toy. No Buddha statue, no stone dharma wheel, no ornate palace. Render exactly 1024 x 1536 portrait."
+    },
+    {
+      "file": "extension/agents/category-buddha-night.png",
+      "promptFile": "docs/design/category-background-buddha-night.prompt.txt",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-91b3-7ab0-8009-2eef411aa80b\\exec-4ca648fa-dda4-4c2c-8b99-55eceeafaa67.png",
+      "dimensions": [
+        1024,
+        1536
+      ],
+      "promptEmbedded": true,
+      "reference": "extension/agents/category-buddha-day.png",
+      "prompt": "Use case: lighting-weather\nAsset type: production portrait night background for an adult Buddhist study application, exactly 1024 x 1536 pixels.\nInput images: Image 1 is the edit target. Preserve the entire composition, fixed camera, geometry, architectural details, object placement, stone paving, trees and plants. Do not redesign or add buildings.\nPrimary request: transform ONLY the lighting and time of day of this environment from daylight into a serene realistic night. Ancient Indian Buddhist sacred garden: preserve the mature stone seated Buddha statue and golden robe at the upper right, the giant Bodhi tree at left, sandstone cloister. Deep indigo dusk-night sky through foliage, warm amber oil lamps at the platform edge and side boundaries lighting aged sandstone and a soft warm highlight on the statue. The central and lower open floor stays uncluttered, calm, relatively dark and smoothly readable beneath overlay application cards.\nStyle: mature premium photoreal architectural photography and physically based materials, true full-size environment, beautiful quiet believable night exposure. Warm low amber practical lighting against deep forest/indigo shadows; avoid crushed all-black areas and bright neon.\nConstraints: NO living people, no monks or children, no human characters, no text, inscriptions, glyphs, logos or watermarks. No toy, chibi, cute, cartoon, children's book, fantasy or Disney aesthetics, no shiny plastic. No new central objects or ornamental clutter. Opaque background."
+    },
+    {
+      "file": "extension/agents/category-monk-night.png",
+      "promptFile": "docs/design/category-background-monk-night.prompt.txt",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-91b3-7ab0-8009-2eef411aa80b\\exec-5d27632f-b7c2-41d8-b578-ee716c1873b2.png",
+      "dimensions": [
+        1024,
+        1536
+      ],
+      "promptEmbedded": true,
+      "reference": "extension/agents/category-monk-day.png",
+      "prompt": "Use case: lighting-weather\nAsset type: production portrait night background for an adult Buddhist study application, exactly 1024 x 1536 pixels.\nInput images: Image 1 is the edit target. Preserve the entire composition, fixed camera, geometry, architectural details, object placement, stone paving, trees and plants. Do not redesign or add buildings.\nPrimary request: transform ONLY the lighting and time of day of this environment from daylight into a serene realistic night. Thai forest monastery: preserve the substantial dark teak kuti veranda on upper right, pillars, blank closed old scripture volumes on the stand at right, tall tropical forest trunks on left. Deep midnight moonlight filters softly through the canopy, and sparse warm monastery oil lamps along veranda edges illuminate teak pillars and the scripture stand. The central and lower open floor stays uncluttered, calm, relatively dark and smoothly readable beneath overlay application cards.\nStyle: mature premium photoreal architectural photography and physically based materials, true full-size environment, beautiful quiet believable night exposure. Warm low amber practical lighting against deep forest/indigo shadows; avoid crushed all-black areas and bright neon.\nConstraints: NO living people, no monks or children, no human characters, no text, inscriptions, glyphs, logos or watermarks. No toy, chibi, cute, cartoon, children's book, fantasy or Disney aesthetics, no shiny plastic. No new central objects or ornamental clutter. Opaque background."
+    },
+    {
+      "file": "extension/agents/category-dhamma-day.png",
+      "promptFile": "docs/design/category-background-dhamma-day.prompt.txt",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-91b3-7ab0-8009-2eef411aa80b\\exec-59768820-24fe-4392-9c78-41863b13b030.png",
+      "dimensions": [
+        1024,
+        1536
+      ],
+      "promptEmbedded": true,
+      "reference": null,
+      "prompt": "Use case: photorealistic-natural\nAsset type: production background for an adult Buddhist study application. Portrait 1024 x 1536 pixels, 2:3 aspect ratio.\nStyle/medium: premium photoreal architectural environment, physically based three-dimensional materials, restrained cinematic realism. Serious mature contemplative spiritual identity, real-world scale and weathering, beautiful subtle texture, not an illustration.\nComposition/framing: fixed eye-level 35 mm view, quiet architecture and recognizable category subject toward upper outer sides. Broad open uncluttered central and lower courtyard occupying at least central 55% width so application cards can overlay it. Depth, spaciousness, breathing room; visually polished but understated.\nConstraints: NO living people, no monks or children, no human characters. A classical religious statue is permitted only where specified. NO text, letters, inscriptions, glyphs, logos, watermarks or readable book covers. NO toy, miniature, chibi, cartoon, children's book, fantasy castle, Disney look, shiny plastic, cute facial proportions, caricature or garish colors. No ornamental visual clutter in center. Opaque background.\nPrimary request: serene contemporary Buddhist meditation courtyard, understated modern Thai Buddhist garden. A large weathered stone dharma wheel with eight clearly sculptural spokes is installed vertically on a low simple rectangular plinth at the upper right outer third. It is a physical stone wheel, not a graphic symbol, and has no inscriptions. A still rectangular lotus pond along the left margin, sparse white lotus blossoms and a small few broad leaves. Quiet cream limestone walls and a low simple modern meditation pavilion in the rear, no elaborate roof or ornament. Muted olive tropical planting and a single graceful frangipani tree along the rear boundary. A long empty walking meditation path of large pale cream stone slabs leads through center and broad lower foreground; visually calm and uncluttered center for application cards. Diffused natural daylight with gentle directional shadows, subtle cream stone, pale taupe, olive foliage and blue green water. This must look noticeably different from an ancient sandstone Buddha cloister and a dark teak forest monastery: modern clear geometry, restrained adult architecture, peaceful water and open sky. No Buddha statue, no book stand, no ornate temple roof. Render exactly 1024 x 1536 portrait."
+    },
+    {
+      "file": "extension/agents/category-dhamma-night.png",
+      "promptFile": "docs/design/category-background-dhamma-night.prompt.txt",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-91b3-7ab0-8009-2eef411aa80b\\exec-21bc28f6-9ead-4db8-8361-8e921877f5b6.png",
+      "dimensions": [
+        1024,
+        1536
+      ],
+      "promptEmbedded": true,
+      "reference": "extension/agents/category-dhamma-day.png",
+      "prompt": "Use case: lighting-weather\nAsset type: production portrait night background for an adult Buddhist study application, exactly 1024 x 1536 pixels.\nInput images: Image 1 is the edit target. Preserve the whole composition, fixed camera, all architectural geometry, wheel position and spoke geometry, lotus pond layout, cream paving, low modern meditation pavilion, frangipani tree and planting. Do not redesign or add architecture.\nPrimary request: change ONLY lighting and time of day to a serene realistic night. The physical eight-spoked stone dharma wheel stays at upper right, still lotus pond remains along left margin, and broad empty pale stone walking meditation path leads through center and lower foreground. Deep dusk-indigo sky, quiet moonlight through foliage. Sparse warm low garden lamps near the side planting and soft concealed amber lighting within the rear pavilion illuminate the stone wheel, small parts of the pond and perimeter. Reflections of warm lights in the dark water. The center and lower open floor remain uncluttered and relatively dim for overlay application cards. Preserve visible detail in shadows.\nStyle: mature premium photoreal architectural photography and physically based limestone, leaves and water. Understated adult spiritual space, real scale. Warm low amber practical lighting against deep blue/olive shadows, no neon, no oversaturated fantasy color.\nConstraints: NO living people, no monks or children, no human characters, no text, inscriptions, glyphs, logos or watermarks. No toy, chibi, cute, cartoon, children's book, fantasy or Disney aesthetics, no shiny plastic. No new central objects or ornamental clutter. Opaque background."
+    }
+  ]
+}

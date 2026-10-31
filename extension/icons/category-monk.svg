@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="พระเกจิอาจารย์">
+  <rect width="64" height="64" rx="12" fill="#2d4935"/>
+  <g fill="none" stroke="#e7dfbc" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 36h34c0 11-6 18-17 18S15 47 15 36ZM13 32h38M20 27l6-8m18 8-6-8M23 14l9-5 9 5M27 27V16m10 11V16"/>
+  </g>
+</svg>

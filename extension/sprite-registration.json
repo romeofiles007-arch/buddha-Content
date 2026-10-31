@@ -1,0 +1,591 @@
+{
+  "version": 1,
+  "description": "Per-frame rigid prop registration; native PNGs unchanged. CSS pose plane moves inside a fixed viewport.",
+  "characters": {
+    "chatgpt": {
+      "image": "agents/adult-chatgpt.png",
+      "sha256": "fac8f6047f1e667eb2837a49f90019521a4923b6de8c7c5107f67981b38261a3",
+      "width": 1447,
+      "height": 1087,
+      "referenceFloor": 94.52622,
+      "frames": [
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 94.52622,
+          "registeredFloor": 94.52622,
+          "error": 0,
+          "unregisteredError": 0
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 94.52622,
+          "registeredFloor": 94.52622,
+          "error": 0.015908,
+          "unregisteredError": 0.015908
+        },
+        {
+          "scale": 0.998,
+          "x": -0.05625,
+          "y": 0.18905,
+          "sourceFloor": 94.52622,
+          "registeredFloor": 94.52622,
+          "error": 0.016454,
+          "unregisteredError": 0.017527
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 94.52622,
+          "registeredFloor": 94.52622,
+          "error": 0.017996,
+          "unregisteredError": 0.017996
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": -0.27599,
+          "sourceFloor": 94.80221,
+          "registeredFloor": 94.52622,
+          "error": 0.020576,
+          "unregisteredError": 0.020576
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": -0.27599,
+          "sourceFloor": 94.80221,
+          "registeredFloor": 94.52622,
+          "error": 0.023705,
+          "unregisteredError": 0.023705
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": -0.27599,
+          "sourceFloor": 94.80221,
+          "registeredFloor": 94.52622,
+          "error": 0.025626,
+          "unregisteredError": 0.025626
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": -0.27599,
+          "sourceFloor": 94.80221,
+          "registeredFloor": 94.52622,
+          "error": 0.025924,
+          "unregisteredError": 0.025924
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": -0.27599,
+          "sourceFloor": 94.80221,
+          "registeredFloor": 94.52622,
+          "error": 0.024987,
+          "unregisteredError": 0.024987
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": -0.55198,
+          "sourceFloor": 95.0782,
+          "registeredFloor": 94.52622,
+          "error": 0.022926,
+          "unregisteredError": 0.022926
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": -0.27599,
+          "sourceFloor": 94.80221,
+          "registeredFloor": 94.52622,
+          "error": 0.028151,
+          "unregisteredError": 0.028151
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": -0.55198,
+          "sourceFloor": 95.0782,
+          "registeredFloor": 94.52622,
+          "error": 0.025246,
+          "unregisteredError": 0.025246
+        }
+      ]
+    },
+    "flow": {
+      "image": "agents/adult-flow.png",
+      "sha256": "ffb71cd0fad1b2a2b0719b150cd2c00e962df7336a3cbb719ad3b14e7208e08a",
+      "width": 1448,
+      "height": 1086,
+      "referenceFloor": 96.27072,
+      "frames": [
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 96.27072,
+          "registeredFloor": 96.27072,
+          "error": 0,
+          "unregisteredError": 0
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 96.27072,
+          "registeredFloor": 96.27072,
+          "error": 0.024859,
+          "unregisteredError": 0.024859
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 96.27072,
+          "registeredFloor": 96.27072,
+          "error": 0.021932,
+          "unregisteredError": 0.021932
+        },
+        {
+          "scale": 0.996,
+          "x": 0.5125,
+          "y": 0.38508,
+          "sourceFloor": 96.27072,
+          "registeredFloor": 96.27072,
+          "error": 0.035502,
+          "unregisteredError": 0.040616
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 96.27072,
+          "registeredFloor": 96.27072,
+          "error": 0.026684,
+          "unregisteredError": 0.026684
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 96.27072,
+          "registeredFloor": 96.27072,
+          "error": 0.025745,
+          "unregisteredError": 0.025745
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 96.27072,
+          "registeredFloor": 96.27072,
+          "error": 0.025242,
+          "unregisteredError": 0.025242
+        },
+        {
+          "scale": 0.996,
+          "x": 0.35625,
+          "y": 0.10994,
+          "sourceFloor": 96.54696,
+          "registeredFloor": 96.27071,
+          "error": 0.033955,
+          "unregisteredError": 0.037757
+        },
+        {
+          "scale": 0.996,
+          "x": 0.35625,
+          "y": 0.10994,
+          "sourceFloor": 96.54696,
+          "registeredFloor": 96.27071,
+          "error": 0.030793,
+          "unregisteredError": 0.033253
+        },
+        {
+          "scale": 0.996,
+          "x": 0.35625,
+          "y": 0.10994,
+          "sourceFloor": 96.54696,
+          "registeredFloor": 96.27071,
+          "error": 0.031607,
+          "unregisteredError": 0.034567
+        },
+        {
+          "scale": 0.996,
+          "x": 0.35625,
+          "y": 0.10994,
+          "sourceFloor": 96.54696,
+          "registeredFloor": 96.27071,
+          "error": 0.029551,
+          "unregisteredError": 0.030414
+        },
+        {
+          "scale": 0.996,
+          "x": 0.35625,
+          "y": 0.10994,
+          "sourceFloor": 96.54696,
+          "registeredFloor": 96.27071,
+          "error": 0.030308,
+          "unregisteredError": 0.032817
+        }
+      ]
+    },
+    "meta": {
+      "image": "agents/adult-meta.png",
+      "sha256": "e445e1cf7846f7e76ff633c934b76ccb502c76fc1da1ddeb2524cd9c51b399f2",
+      "width": 1447,
+      "height": 1087,
+      "referenceFloor": 96.73413,
+      "frames": [
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 96.73413,
+          "registeredFloor": 96.73413,
+          "error": 0,
+          "unregisteredError": 0
+        },
+        {
+          "scale": 1.016,
+          "x": -0.64375,
+          "y": -1.54775,
+          "sourceFloor": 96.73413,
+          "registeredFloor": 96.73413,
+          "error": 0.034845,
+          "unregisteredError": 0.039578
+        },
+        {
+          "scale": 1.038,
+          "x": 4.50625,
+          "y": -3.6759,
+          "sourceFloor": 96.73413,
+          "registeredFloor": 96.73413,
+          "error": 0.038607,
+          "unregisteredError": 0.235212
+        },
+        {
+          "scale": 1.036,
+          "x": 4.91875,
+          "y": -3.48243,
+          "sourceFloor": 96.73413,
+          "registeredFloor": 96.73413,
+          "error": 0.036846,
+          "unregisteredError": 0.230043
+        },
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0.55198,
+          "sourceFloor": 96.18215,
+          "registeredFloor": 96.73413,
+          "error": 0.029118,
+          "unregisteredError": 0.029118
+        },
+        {
+          "scale": 1.004,
+          "x": -0.2,
+          "y": 0.16725,
+          "sourceFloor": 96.18215,
+          "registeredFloor": 96.73413,
+          "error": 0.035826,
+          "unregisteredError": 0.036837
+        },
+        {
+          "scale": 1,
+          "x": 0.78125,
+          "y": 0.55198,
+          "sourceFloor": 96.18215,
+          "registeredFloor": 96.73413,
+          "error": 0.035021,
+          "unregisteredError": 0.076363
+        },
+        {
+          "scale": 1.012,
+          "x": 5.18125,
+          "y": -0.60221,
+          "sourceFloor": 96.18215,
+          "registeredFloor": 96.73413,
+          "error": 0.032974,
+          "unregisteredError": 0.237118
+        },
+        {
+          "scale": 1.004,
+          "x": -0.35625,
+          "y": 6.81748,
+          "sourceFloor": 89.55842,
+          "registeredFloor": 96.73413,
+          "error": 0.030388,
+          "unregisteredError": 0.033475
+        },
+        {
+          "scale": 1.006,
+          "x": -0.45625,
+          "y": 6.08307,
+          "sourceFloor": 90.1104,
+          "registeredFloor": 96.73413,
+          "error": 0.033833,
+          "unregisteredError": 0.036173
+        },
+        {
+          "scale": 0.98,
+          "x": 4.28125,
+          "y": 8.42594,
+          "sourceFloor": 90.1104,
+          "registeredFloor": 96.73413,
+          "error": 0.043627,
+          "unregisteredError": 0.195021
+        },
+        {
+          "scale": 0.99,
+          "x": 6.28125,
+          "y": 7.52484,
+          "sourceFloor": 90.1104,
+          "registeredFloor": 96.73413,
+          "error": 0.035148,
+          "unregisteredError": 0.23577
+        }
+      ]
+    },
+    "voice": {
+      "image": "agents/adult-voice.png",
+      "sha256": "45c2245369bbc56452259a2b2dfb21d90f0022f35fc98f7325917fc2d802d48e",
+      "width": 1448,
+      "height": 1086,
+      "referenceFloor": 96.54696,
+      "frames": [
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 96.54696,
+          "registeredFloor": 96.54696,
+          "error": 0,
+          "unregisteredError": 0
+        },
+        {
+          "scale": 1,
+          "x": 5.3125,
+          "y": 0,
+          "sourceFloor": 96.54696,
+          "registeredFloor": 96.54696,
+          "error": 0.039418,
+          "unregisteredError": 0.215011
+        },
+        {
+          "scale": 1,
+          "x": 7.8125,
+          "y": 0,
+          "sourceFloor": 96.54696,
+          "registeredFloor": 96.54696,
+          "error": 0.033133,
+          "unregisteredError": 0.239831
+        },
+        {
+          "scale": 0.992,
+          "x": 9.61875,
+          "y": 0.49834,
+          "sourceFloor": 96.8232,
+          "registeredFloor": 96.54696,
+          "error": 0.041757,
+          "unregisteredError": 0.235284
+        },
+        {
+          "scale": 0.988,
+          "x": 1.225,
+          "y": 1.97735,
+          "sourceFloor": 95.71823,
+          "registeredFloor": 96.54696,
+          "error": 0.04635,
+          "unregisteredError": 0.072331
+        },
+        {
+          "scale": 0.984,
+          "x": 5.4875,
+          "y": 2.36022,
+          "sourceFloor": 95.71823,
+          "registeredFloor": 96.54696,
+          "error": 0.040147,
+          "unregisteredError": 0.218207
+        },
+        {
+          "scale": 0.976,
+          "x": 5.575,
+          "y": 2.85635,
+          "sourceFloor": 95.99448,
+          "registeredFloor": 96.54696,
+          "error": 0.053996,
+          "unregisteredError": 0.206733
+        },
+        {
+          "scale": 0.976,
+          "x": 7.29375,
+          "y": 2.85635,
+          "sourceFloor": 95.99448,
+          "registeredFloor": 96.54696,
+          "error": 0.042801,
+          "unregisteredError": 0.216798
+        },
+        {
+          "scale": 0.962,
+          "x": 1.74375,
+          "y": 4.73177,
+          "sourceFloor": 95.44199,
+          "registeredFloor": 96.54696,
+          "error": 0.046376,
+          "unregisteredError": 0.081869
+        },
+        {
+          "scale": 0.966,
+          "x": 3.73125,
+          "y": 4.35,
+          "sourceFloor": 95.44199,
+          "registeredFloor": 96.54696,
+          "error": 0.049172,
+          "unregisteredError": 0.154966
+        },
+        {
+          "scale": 0.974,
+          "x": 5.83125,
+          "y": 3.85552,
+          "sourceFloor": 95.16575,
+          "registeredFloor": 96.54696,
+          "error": 0.038374,
+          "unregisteredError": 0.214457
+        },
+        {
+          "scale": 0.992,
+          "x": 4.93125,
+          "y": 1.86851,
+          "sourceFloor": 95.44199,
+          "registeredFloor": 96.54696,
+          "error": 0.057903,
+          "unregisteredError": 0.206229
+        }
+      ]
+    },
+    "edit": {
+      "image": "agents/adult-edit.png",
+      "sha256": "48e18b95d71604877b3b80433dddea1d095406ed8cd884f1091d0c72f209ec50",
+      "width": 1447,
+      "height": 1087,
+      "referenceFloor": 97.28611,
+      "frames": [
+        {
+          "scale": 1,
+          "x": 0,
+          "y": 0,
+          "sourceFloor": 97.28611,
+          "registeredFloor": 97.28611,
+          "error": 0,
+          "unregisteredError": 0
+        },
+        {
+          "scale": 1,
+          "x": -0.625,
+          "y": 0,
+          "sourceFloor": 97.28611,
+          "registeredFloor": 97.28611,
+          "error": 0.032769,
+          "unregisteredError": 0.058164
+        },
+        {
+          "scale": 1,
+          "x": 0.78125,
+          "y": 0,
+          "sourceFloor": 97.28611,
+          "registeredFloor": 97.28611,
+          "error": 0.020978,
+          "unregisteredError": 0.082705
+        },
+        {
+          "scale": 1,
+          "x": -0.78125,
+          "y": 0,
+          "sourceFloor": 97.28611,
+          "registeredFloor": 97.28611,
+          "error": 0.017338,
+          "unregisteredError": 0.08002
+        },
+        {
+          "scale": 0.988,
+          "x": 1.06875,
+          "y": 0.62208,
+          "sourceFloor": 97.83809,
+          "registeredFloor": 97.28611,
+          "error": 0.041927,
+          "unregisteredError": 0.061987
+        },
+        {
+          "scale": 1.008,
+          "x": -1.65,
+          "y": -1.05649,
+          "sourceFloor": 97.5621,
+          "registeredFloor": 97.2861,
+          "error": 0.04405,
+          "unregisteredError": 0.121671
+        },
+        {
+          "scale": 1,
+          "x": -2.34375,
+          "y": -0.55198,
+          "sourceFloor": 97.83809,
+          "registeredFloor": 97.28611,
+          "error": 0.036317,
+          "unregisteredError": 0.192404
+        },
+        {
+          "scale": 1.012,
+          "x": -3.4125,
+          "y": -1.72603,
+          "sourceFloor": 97.83809,
+          "registeredFloor": 97.28611,
+          "error": 0.03671,
+          "unregisteredError": 0.216456
+        },
+        {
+          "scale": 1.004,
+          "x": -1.60625,
+          "y": 0.16504,
+          "sourceFloor": 96.73413,
+          "registeredFloor": 97.28611,
+          "error": 0.045367,
+          "unregisteredError": 0.139479
+        },
+        {
+          "scale": 1.002,
+          "x": -3.225,
+          "y": 0.35851,
+          "sourceFloor": 96.73413,
+          "registeredFloor": 97.28611,
+          "error": 0.037049,
+          "unregisteredError": 0.22831
+        },
+        {
+          "scale": 1.012,
+          "x": -3.56875,
+          "y": -0.88813,
+          "sourceFloor": 97.01012,
+          "registeredFloor": 97.28611,
+          "error": 0.036464,
+          "unregisteredError": 0.219118
+        },
+        {
+          "scale": 1.022,
+          "x": -5.94375,
+          "y": -1.01205,
+          "sourceFloor": 96.18215,
+          "registeredFloor": 97.28611,
+          "error": 0.044263,
+          "unregisteredError": 0.263198
+        }
+      ]
+    }
+  }
+}

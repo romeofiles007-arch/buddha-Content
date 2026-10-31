@@ -1,0 +1,571 @@
+{
+  "generatedWith": "built-in image_gen__imagegen",
+  "transparentBackgroundRequested": true,
+  "nativeGeneratedRGBA": true,
+  "imageProcessing": "No pixel editing, resizing, slicing, alpha extraction or procedural substitutions; copied original tool output and embedded exact prompt metadata only.",
+  "grid": "4 columns x 3 rows. Use normalized cell positions, since tool output may differ by one pixel from requested size.",
+  "assets": [
+    {
+      "name": "chatgpt",
+      "file": "E:\\พุทธ\\extension\\agents\\adult-chatgpt.png",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-45aa-72f2-9e3c-b06198d0233e\\exec-1c88802f-081a-4e8f-a7be-19f277d64aa0.png",
+      "width": 1447,
+      "height": 1087,
+      "bitDepth": 8,
+      "pngColorType": 6,
+      "mode": "RGBA",
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 361.75,
+      "cellHeight": 362.3333333333333,
+      "promptFile": "E:\\พุทธ\\docs\\design\\adult-atlas-chatgpt-prompt.txt",
+      "promptEmbedded": true,
+      "sha256": "fac8f6047f1e667eb2837a49f90019521a4923b6de8c7c5107f67981b38261a3",
+      "inspection": "All twelve distinct poses visually inspected. Mature realistic adult human anatomy and faces, without child, novice, chibi or toy styling. Meaningful alpha bounds are inside every normalized cell. Flow easel margins are tight but not clipped.",
+      "alphaAndFrameVerification": {
+        "transparentPixels": 748125,
+        "partialAlphaPixels": 821278,
+        "opaquePixels": 3486,
+        "cellPixelSha256": [
+          "b4d7d1312548597a21177be0b00c359dcf2b38225bab8a691233e120b9d582c7",
+          "5db9e2c634f6b025d3e80ffc76e9e24d7fe294a64d5fbd97cc0046d642c4add0",
+          "3ca6bce56b201b64e63dd52d2767e4fd8f40677102a6dc586c3732bcc0fc8aa4",
+          "80bd285a8dd25e0b2de39321f2f7bc38e096f7d4514aeb6c34a33e3d4a2c762f",
+          "c72f77f88119755000f1e22d9491f77db1e306ef94eaa0bc2b1446496e62c98c",
+          "27afac1f9207c161aa851c6d0d72301080ab61df50dac477b76d2f1cbed034c8",
+          "88872f0d4199c1207afea98e8d77b4e1e1e901990370300a123146c1d81db74d",
+          "51d4b7f036509a70419d68a9bc926ff01a85d39ac2e1106fbb0edd060df08e5c",
+          "bb6daa0ed5ad6506a2e85ecac6b5a2022727f9a7394f252ce3dbfef1236d6734",
+          "88d15bb33e9e6b6103f0589e7fffcab2f9f1b30f4f82e43a78196f046f3c35f3",
+          "13ac9355f20d4e93360f0ee9c0ec4ab30952381c0bdc8604970b72da7d86a8c9",
+          "326f596983f9f41e1f22cacc97ec6317f70fc3fccdb08d1ec725db9a03d3ce76"
+        ],
+        "cellVisibleBoundsAlphaAbove128": [
+          [
+            16,
+            10,
+            337,
+            342
+          ],
+          [
+            15,
+            12,
+            337,
+            342
+          ],
+          [
+            16,
+            16,
+            337,
+            342
+          ],
+          [
+            16,
+            17,
+            337,
+            342
+          ],
+          [
+            16,
+            19,
+            337,
+            343
+          ],
+          [
+            15,
+            11,
+            337,
+            343
+          ],
+          [
+            16,
+            7,
+            337,
+            343
+          ],
+          [
+            16,
+            18,
+            337,
+            343
+          ],
+          [
+            16,
+            17,
+            337,
+            343
+          ],
+          [
+            15,
+            19,
+            336,
+            344
+          ],
+          [
+            16,
+            19,
+            336,
+            343
+          ],
+          [
+            16,
+            6,
+            337,
+            344
+          ]
+        ]
+      }
+    },
+    {
+      "name": "flow",
+      "file": "E:\\พุทธ\\extension\\agents\\adult-flow.png",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-45aa-72f2-9e3c-b06198d0233e\\exec-bf5c854c-69ac-4479-b216-c6dcc83ca8b8.png",
+      "width": 1448,
+      "height": 1086,
+      "bitDepth": 8,
+      "pngColorType": 6,
+      "mode": "RGBA",
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 362.0,
+      "cellHeight": 362.0,
+      "promptFile": "E:\\พุทธ\\docs\\design\\adult-atlas-flow-prompt.txt",
+      "promptEmbedded": true,
+      "sha256": "ffb71cd0fad1b2a2b0719b150cd2c00e962df7336a3cbb719ad3b14e7208e08a",
+      "inspection": "All twelve distinct poses visually inspected. Mature realistic adult human anatomy and faces, without child, novice, chibi or toy styling. Meaningful alpha bounds are inside every normalized cell. Flow easel margins are tight but not clipped.",
+      "alphaAndFrameVerification": {
+        "transparentPixels": 726159,
+        "partialAlphaPixels": 840486,
+        "opaquePixels": 5883,
+        "cellPixelSha256": [
+          "15e5c247706349a0d0c76e1a5e35d8d477854d62d3b24a30f27618d1509ffd87",
+          "649331868ebdd95216d0710c7055d47481810ce9224bf0ba6f4dc5b8bd78c09a",
+          "5db73c38b165200153cd973dd382cafd78af2b3caac71da81c3a99c731402469",
+          "5e21885c4b45b19777934c7d8d55c83f386af3243274e49e3377c17b9fc9985a",
+          "5a5293c06f5d780661d390000c50580d2dfbf0560967bb7832d41d9829e47863",
+          "087ab81d8a56f1be7c1f100861ef55d37f44edb7e376cb74bca8327c676d8c7e",
+          "2e64848682614356f4e98a8f967fa9f8d684d0f4f3515bba73c0488d28ff1383",
+          "2f1c2f7dbbce1d6852529cef8a629ef43884f8327f6faa48406f74d5d20cc247",
+          "48d4ef9d2a0365f4b2a2bd9c86e596c22dfdc66f6c58750460fbddbc75fc54e2",
+          "916a692d1a39c01a281148d9706166704536886e89e3ad41104859bd5f0c3f8a",
+          "c2a20a483d31a5403d247abe3c54fa46e4638cc68bfa22bea677bfbfe1ee9b37",
+          "10b386c64564398f55f2da137f872e1dfad2c3b64306bf004700111aa8bbccfa"
+        ],
+        "cellVisibleBoundsAlphaAbove128": [
+          [
+            92,
+            12,
+            359,
+            348
+          ],
+          [
+            91,
+            17,
+            359,
+            348
+          ],
+          [
+            92,
+            16,
+            359,
+            348
+          ],
+          [
+            91,
+            19,
+            359,
+            348
+          ],
+          [
+            92,
+            17,
+            359,
+            348
+          ],
+          [
+            92,
+            19,
+            359,
+            348
+          ],
+          [
+            92,
+            8,
+            359,
+            348
+          ],
+          [
+            92,
+            9,
+            359,
+            349
+          ],
+          [
+            92,
+            19,
+            359,
+            349
+          ],
+          [
+            92,
+            18,
+            359,
+            349
+          ],
+          [
+            92,
+            10,
+            359,
+            349
+          ],
+          [
+            91,
+            11,
+            359,
+            349
+          ]
+        ]
+      }
+    },
+    {
+      "name": "meta",
+      "file": "E:\\พุทธ\\extension\\agents\\adult-meta.png",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-45aa-72f2-9e3c-b06198d0233e\\exec-800aa6cd-18d6-4f67-8ac2-73481187195a.png",
+      "width": 1447,
+      "height": 1087,
+      "bitDepth": 8,
+      "pngColorType": 6,
+      "mode": "RGBA",
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 361.75,
+      "cellHeight": 362.3333333333333,
+      "promptFile": "E:\\พุทธ\\docs\\design\\adult-atlas-meta-prompt.txt",
+      "promptEmbedded": true,
+      "sha256": "e445e1cf7846f7e76ff633c934b76ccb502c76fc1da1ddeb2524cd9c51b399f2",
+      "inspection": "Targeted native ImageGen edit reduced each figure/desk by10percent and recentered within cells. Visual review confirms all12poses and mature realistic adult appearance preserved, with clear top/bottom gutters and no head bleed.",
+      "editPromptFile": "E:\\พุทธ\\docs\\design\\adult-atlas-meta-margin-edit-prompt.txt",
+      "backup": "E:\\พุทธ\\.impeccable\\backups\\mature-category-themes-20261030\\adult-meta-before-margin.png",
+      "alphaAndFrameVerification": {
+        "transparentPixels": 967966,
+        "partialAlphaPixels": 602085,
+        "opaquePixels": 2838,
+        "cellPixelSha256": [
+          "1d8330685440f70f0c7e6afe9376f78ca73e59069316fa4b61f9532bf6d2bc9c",
+          "cf8f4900a759502c6146ea490d6d09fc0336f4cb546ec3e9a0d5b94fef278cf2",
+          "53bcaa3b3ffe84b49e194e20d20c7cc2ad4f72fadd9d1f5ec286a60f680521fa",
+          "41cfc26e9661292f48d3825cc9c9610975d71239044e2f167e98a1a7812efde6",
+          "6286cdf457d52884899b67f871df61eda62d539b4b5ad006ed5aea318ff0848f",
+          "bca202daedb414db6fb0b6eb5484b3acca2e52d4b6872095671bbbd07c2e06a6",
+          "21ec56ecef94947302a1e9da3dc80e1f840c9c9c14c944f4ecf2e9a5cddda4df",
+          "1689b77c757f1dab572869eb0cb033a9986486dbc2cc51f30ec18f4504cce367",
+          "4186e9226a7127c7242fbb2d9f2f93b95b0d89561ad5531f295d7b8ab31c1d5b",
+          "6ae6ecaf45a25373cbdb3b6ea50ac3b35ea69f7a82ba71e71870c7b30ba80f40",
+          "aa4e1f43582684eba4d6edf779209ba6e857cd8dd9ea29a7867b2c8e84afb9cb",
+          "407ae8cc76be9b9ff554663ee5e92b77699cdea44e23f54437100dc19788640e"
+        ],
+        "cellVisibleBoundsAlphaAbove128": [
+          [
+            101,
+            48,
+            327,
+            350
+          ],
+          [
+            102,
+            52,
+            324,
+            350
+          ],
+          [
+            83,
+            57,
+            299,
+            350
+          ],
+          [
+            82,
+            57,
+            299,
+            350
+          ],
+          [
+            100,
+            61,
+            328,
+            348
+          ],
+          [
+            102,
+            60,
+            325,
+            348
+          ],
+          [
+            98,
+            53,
+            321,
+            348
+          ],
+          [
+            82,
+            60,
+            306,
+            348
+          ],
+          [
+            101,
+            37,
+            328,
+            324
+          ],
+          [
+            102,
+            38,
+            328,
+            326
+          ],
+          [
+            87,
+            39,
+            321,
+            326
+          ],
+          [
+            82,
+            35,
+            309,
+            326
+          ]
+        ]
+      }
+    },
+    {
+      "name": "voice",
+      "file": "E:\\พุทธ\\extension\\agents\\adult-voice.png",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-45aa-72f2-9e3c-b06198d0233e\\exec-160cf1be-4164-4dc8-8046-69ebc879d1b6.png",
+      "width": 1448,
+      "height": 1086,
+      "bitDepth": 8,
+      "pngColorType": 6,
+      "mode": "RGBA",
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 362.0,
+      "cellHeight": 362.0,
+      "promptFile": "E:\\พุทธ\\docs\\design\\adult-atlas-voice-prompt.txt",
+      "promptEmbedded": true,
+      "sha256": "45c2245369bbc56452259a2b2dfb21d90f0022f35fc98f7325917fc2d802d48e",
+      "inspection": "All twelve distinct poses visually inspected. Mature realistic adult human anatomy and faces, without child, novice, chibi or toy styling. Meaningful alpha bounds are inside every normalized cell. Flow easel margins are tight but not clipped.",
+      "alphaAndFrameVerification": {
+        "transparentPixels": 886945,
+        "partialAlphaPixels": 679814,
+        "opaquePixels": 5769,
+        "cellPixelSha256": [
+          "2a1b83bf7a14eefd73c74f6b954d85cf5cfbee2aa3d67d62824453dd18ee8fc9",
+          "c63c12b42f45646cf09497a3bd0ce788b2c4bd315a95e452901fb90d62a572d2",
+          "2a83d57a4308e56388b3659ea989d5f48cb84dd28ee1b6fc9d9f412b22ba60e7",
+          "7df4d0a1d185c12822a18d7fbcf8afc51c91c1a6de6f77a2641bd9f4386013bd",
+          "fe7c7451d05e980437b71432566ec3d6d3703fad41f9a0698e799b41fe1e8834",
+          "7994780162a7fbceda05792fa4c431354e2f88fe1f2f4cd14414f5883cadf759",
+          "32afa61d40580a913a8526fa54a96fc723a87b6f649790d9146fa3751a3eefe1",
+          "79795322a8e7f0e8ca48804184038e680909eab1f9aa4c0984bf600a552d24a2",
+          "5361a014f9a40df382d3d236a371b7cb392b36322bb18426ed8f5f04e18c5448",
+          "33cd0fedee441ced4620b62be3b2bcfba055d7e4d970ef654e97d34d8637fa53",
+          "3a60bbe8dd3826ccedd7363a81352af564e0cc54dd4a7556c5fd8c64897ee16a",
+          "c110e13289c0248f40183d3d56d69dc3414f0924c3fae7a95e9af09fcf04b236"
+        ],
+        "cellVisibleBoundsAlphaAbove128": [
+          [
+            102,
+            12,
+            332,
+            349
+          ],
+          [
+            83,
+            16,
+            313,
+            349
+          ],
+          [
+            74,
+            13,
+            306,
+            349
+          ],
+          [
+            69,
+            15,
+            300,
+            350
+          ],
+          [
+            98,
+            11,
+            331,
+            346
+          ],
+          [
+            83,
+            13,
+            318,
+            346
+          ],
+          [
+            85,
+            5,
+            320,
+            347
+          ],
+          [
+            77,
+            10,
+            313,
+            347
+          ],
+          [
+            100,
+            5,
+            337,
+            345
+          ],
+          [
+            92,
+            6,
+            326,
+            345
+          ],
+          [
+            82,
+            3,
+            319,
+            344
+          ],
+          [
+            85,
+            5,
+            314,
+            345
+          ]
+        ]
+      }
+    },
+    {
+      "name": "edit",
+      "file": "E:\\พุทธ\\extension\\agents\\adult-edit.png",
+      "source": "C:\\Users\\romeo\\.codex\\generated_images\\01a18c16-45aa-72f2-9e3c-b06198d0233e\\exec-c46950bf-e4c0-455e-bde0-839701c9d583.png",
+      "width": 1447,
+      "height": 1087,
+      "bitDepth": 8,
+      "pngColorType": 6,
+      "mode": "RGBA",
+      "columns": 4,
+      "rows": 3,
+      "frames": 12,
+      "cellWidth": 361.75,
+      "cellHeight": 362.3333333333333,
+      "promptFile": "E:\\พุทธ\\docs\\design\\adult-atlas-edit-prompt.txt",
+      "promptEmbedded": true,
+      "sha256": "48e18b95d71604877b3b80433dddea1d095406ed8cd884f1091d0c72f209ec50",
+      "inspection": "All twelve distinct poses visually inspected. Mature realistic adult human anatomy and faces, without child, novice, chibi or toy styling. Meaningful alpha bounds are inside every normalized cell. Flow easel margins are tight but not clipped.",
+      "alphaAndFrameVerification": {
+        "transparentPixels": 830524,
+        "partialAlphaPixels": 736655,
+        "opaquePixels": 5710,
+        "cellPixelSha256": [
+          "5d52aa22e3d5ecfadbdf464975c688ae641f282884cac5891d7ad0c51697ad4e",
+          "c39e230eede7af9aa30557fb230d4b0f98ab6e5a53aa111245a12f376151d890",
+          "5069487437c45d407c5865170e92c2a1434f80f14bb46e3f70e8e1d4267c1d9e",
+          "75ea90ef7c0aba8f6bb7c7c32a04ded38edb2f6b0f0a32ad11080586805d9283",
+          "b8c7b29a0758f421a9b22d4bacf20ef9b3977715eb7327033e80a7dc28b75bb9",
+          "f894c86b6794d5f59c7a3a88652e25c7ba89d636f355d612a7e067cf3768efc9",
+          "1cbd16021c741e0ab5c72dca37cdfadb0a01f9d7db0a5c9a47197d2891ed435d",
+          "396a675a2de138434cc6161ce90997f04ef7866c9ebc8e1dd31c1b5115c45a4f",
+          "b4f06cb94cd62ee581dafd088c762b01a902e3faf61a99abbed4e2e203393845",
+          "b4f982ab98b0058abdc3615ff79db93886f29ddf7a49d3007bf20171fabf6735",
+          "d46b5b8a78100d54ac071b27b9698bf08dd61b7b38f8e36079c7abe4de408f89",
+          "2e2d096ba51f2cbf33e63d1d56359ebb0c4e18f744ec4a5a97f1703c5f34b7db"
+        ],
+        "cellVisibleBoundsAlphaAbove128": [
+          [
+            77,
+            14,
+            328,
+            352
+          ],
+          [
+            78,
+            19,
+            330,
+            352
+          ],
+          [
+            73,
+            20,
+            325,
+            352
+          ],
+          [
+            80,
+            20,
+            331,
+            352
+          ],
+          [
+            74,
+            20,
+            327,
+            354
+          ],
+          [
+            81,
+            14,
+            332,
+            353
+          ],
+          [
+            85,
+            15,
+            333,
+            354
+          ],
+          [
+            89,
+            21,
+            337,
+            354
+          ],
+          [
+            81,
+            17,
+            332,
+            350
+          ],
+          [
+            88,
+            18,
+            337,
+            350
+          ],
+          [
+            88,
+            17,
+            337,
+            351
+          ],
+          [
+            98,
+            13,
+            344,
+            348
+          ]
+        ]
+      }
+    }
+  ]
+}
