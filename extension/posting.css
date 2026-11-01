@@ -119,6 +119,12 @@
 /* ออโต้ทั้งหมด — สวิตช์หลัก เด่นกว่าสวิตช์ย่อย */
 .pSwitch.pMain { padding: 10px; border: 1px solid var(--gull); border-radius: 10px; background: color-mix(in srgb, var(--gull) 10%, transparent); font-weight: 700; font-size: 15px; }
 .pSwitch.pMain small { font-weight: 400; }
+/* ตรวจก่อนโพสต์: AI ตรวจ / ไม่ตรวจ (ใต้ออโต้ทั้งหมด) */
+.pCheckMode { display: grid; gap: 6px; margin: -2px 0 0 28px; }
+.pCheckHead { font-size: 13px; font-weight: 600; color: var(--ink); }
+.pCheckMode .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.pCheckMode .seg button { flex: 1 1 130px; min-height: 38px; }
+.pCheckMode small { color: var(--muted); font-size: 12px; }
 
 /* แผงหลัก: โพสต์ล่าสุด ไปไหนบ้าง (กดแล้วเปิดแท็บ "โพสต์แล้ว") */
 .lastPost { display: grid; gap: 2px; width: 100%; margin-top: 8px; padding: 8px 10px; text-align: left; font: inherit; font-size: 13px; color: var(--ink); background: color-mix(in srgb, var(--ok) 10%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); border-radius: 10px; cursor: pointer; }

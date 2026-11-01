@@ -163,7 +163,9 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
    * 'now' = ไม่ต้องตรวจ · อย่างอื่น = ต้องรอ AI ให้ผ่านก่อน
    */
   const selfScheduling = (item, settings) => item.status === 'review' && !!(item.auto || settings.autoApprove)
-  const cleared = (item) => item.auto === 'now' || (item.ai?.status === 'done' && item.ai.verdict === 'pass')
+  /** ไม่ตรวจ — โพสต์เลย: ใช้กับคลิปทั่วไป (ไม่ใช่ผลิตต่อเนื่อง) ที่ AI ไม่เคยบอกให้แก้ */
+  const skipsCheck = (item, settings) => !!(settings.skipCheck && settings.autoApprove) && !item.auto && !(item.ai?.status === 'done' && item.ai.verdict !== 'pass')
+  const cleared = (item, settings) => item.auto === 'now' || (item.ai?.status === 'done' && item.ai.verdict === 'pass') || skipsCheck(item, settings)
 
   /**
    * คลิปพร้อมตั้งเวลาแต่ไม่มีข้อความโพสต์ (ตอนทำคลิปขอ ChatGPT ไม่สำเร็จ) → ให้ ChatGPT เขียนให้เอง ไม่ค้างรอคน
@@ -194,7 +196,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     }
     const chatgptBusy = [...jobs.values()].some((j) => j.agent === 'chatgpt' && (j.status === 'queued' || j.status === 'running'))
     if (!chatgptBusy && !pipelineBusy()) {
-      const next = queue.find((q) => selfScheduling(q, settings) && cleared(q) && !q.post?.title && !q.postJob && !postFromFile(readPost(q.slug))?.title)
+      const next = queue.find((q) => selfScheduling(q, settings) && cleared(q, settings) && !q.post?.title && !q.postJob && !postFromFile(readPost(q.slug))?.title)
       if (next) {
         const job = enqueue('chatgpt', 'prompt', { prompt: postPrompt(clipSource(next.slug)), newChat: true, label: 'คิดชื่อคลิป + คำบรรยาย' })
         next.postJob = { status: 'running', jobId: job.id, startedAt: Date.now() }
@@ -212,7 +214,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     const accounts = loadAccounts()
     let changed = false
     for (const item of queue) {
-      if (!selfScheduling(item, accounts.settings) || !cleared(item)) continue
+      if (!selfScheduling(item, accounts.settings) || !cleared(item, accounts.settings)) continue
       if (!item.post?.title) {
         const post = postFromFile(readPost(item.slug))
         if (post?.title) {
@@ -226,7 +228,10 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       if (!at) continue
       item.status = 'scheduled'
       item.scheduleAt = at
-      note(item, item.auto === 'now' ? 'ตั้งเวลาเองทันที (ผลิตต่อเนื่อง)' : item.auto ? 'AI ให้ผ่าน → ตั้งเวลาเอง (ผลิตต่อเนื่อง)' : 'AI ให้ผ่าน → อนุมัติเองและลงช่องเวลาถัดไป')
+      note(item, item.auto === 'now' ? 'ตั้งเวลาเองทันที (ผลิตต่อเนื่อง)'
+        : item.auto ? 'AI ให้ผ่าน → ตั้งเวลาเอง (ผลิตต่อเนื่อง)'
+          : item.ai?.verdict === 'pass' ? 'AI ให้ผ่าน → อนุมัติเองและลงช่องเวลาถัดไป'
+            : 'ออโต้แบบไม่ตรวจ → อนุมัติเองและลงช่องเวลาถัดไป')
       log(`โพสต์อัตโนมัติ: "${item.title}" ตั้งเวลาโพสต์ ${new Date(at).toLocaleString('th-TH')}`)
       changed = true
     }
@@ -313,7 +318,8 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     const { settings } = loadAccounts()
     const queue = loadQueue()
     // คลิปจากผลิตต่อเนื่องแบบ "AI ตรวจก่อน" ตรวจเสมอ แม้ปิดตรวจอัตโนมัติของทั้งระบบ
-    const wants = (q) => q.status === 'review' && !q.ai && (settings.autoCheck || q.auto === 'ai')
+    // ออโต้แบบไม่ตรวจ → คลิปทั่วไปไม่ต้องส่ง AI (ไม่เปลืองคิว ChatGPT) · ผลิตต่อเนื่องแบบ "AI ตรวจ" ยังตรวจ
+    const wants = (q) => q.status === 'review' && !q.ai && ((settings.autoCheck && !skipsCheck(q, settings)) || q.auto === 'ai')
     if (!queue.some(wants) || pipelineBusy()) return
     const chatgptBusy = [...jobs.values()].some((j) => j.agent === 'chatgpt' && (j.status === 'queued' || j.status === 'running'))
     if (chatgptBusy) return
@@ -530,6 +536,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
           if (typeof body.autoCheck === 'boolean') settings.autoCheck = body.autoCheck
           if (typeof body.autoApprove === 'boolean') settings.autoApprove = body.autoApprove
           if (typeof body.autoPull === 'boolean') settings.autoPull = body.autoPull
+          if (typeof body.skipCheck === 'boolean') settings.skipCheck = body.skipCheck
           if (body.slots !== undefined) settings.slots = cleanSlots(body.slots)
         })
         // เพิ่งเปิดดึงเอง / เพิ่มช่องเวลา → เติมคิวเลย ผู้ใช้เห็นทันที ไม่ต้องรอรอบถัดไป
