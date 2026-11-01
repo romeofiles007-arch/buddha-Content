@@ -459,7 +459,8 @@ export function initPosting({ api, localApp }) {
             r?.ok ? el('a', { href: r.url, target: '_blank', rel: 'noopener' }, 'เปิดโพสต์ ↗') : el('span', { className: 'err' }, r?.error ?? 'ยังไม่ได้โพสต์'),
             r?.ok && r.privacy && r.privacy !== 'public' ? el('span', { className: 'pBadge fix' }, r.privacy === 'private' ? 'ส่วนตัว' : 'ไม่เป็นสาธารณะ') : null)
         })),
-        fail && q.error && !Object.keys(q.results ?? {}).length ? el('p', { className: 'status err' }, q.error) : null,
+        // บอกเหตุผลเมื่อไม่มีปลายทางไหนแสดงผล (เช่น ไม่มีเพจ/ช่องเลย หรือผลเก่าเป็นของเพจที่ลบไปแล้ว)
+        fail && q.error && !(q.targets ?? []).some((k) => q.results?.[k]) ? el('p', { className: 'status err' }, q.error) : null,
         el('div', { className: 'pActions' },
           fail ? el('button', { type: 'button', className: 'primary', on: { click: () => call('/api/posting/retry', { id: q.id }, 'กำลังลองโพสต์ใหม่ (เฉพาะที่พลาด)…').catch(() => {}) } }, '↻ ลองโพสต์ใหม่เฉพาะที่พลาด') : null,
           el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/remove', { id: q.id }, 'เอาออกจากรายการแล้ว').catch(() => {}) } }, 'เอาออกจากรายการ'),

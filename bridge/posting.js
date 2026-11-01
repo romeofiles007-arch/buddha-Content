@@ -48,6 +48,13 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         q.error = 'โปรแกรมถูกปิดระหว่างโพสต์ — ดูในเพจ/ช่องก่อนว่าขึ้นไปแล้วหรือยัง แล้วค่อยกดลองใหม่'
         changed = true
       }
+      // รุ่นก่อน 1.0.11: คลิปที่ไม่มีปลายทางถูกนับว่า "โพสต์แล้ว" ทั้งที่ไม่ได้ขึ้นที่ไหน → คืนเป็นพลาด ให้กดลองใหม่ได้
+      if (q.status === 'posted' && !Object.values(q.results ?? {}).some((r) => r?.ok)) {
+        q.status = 'failed'
+        q.postedAt = null
+        q.error = 'คลิปนี้ไม่ได้ขึ้นเพจหรือช่องไหนเลย (ตอนนั้นไม่มีปลายทาง) — ตรวจว่าเพิ่มเพจแล้ว แล้วกดลองใหม่'
+        changed = true
+      }
     }
     if (changed) saveQueue(queue)
   }
@@ -332,10 +339,22 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   async function postItem(id) {
     const accounts = loadAccounts()
     let item = mutateItem(id, (it) => {
+      // ปลายทางถูกล้าง (ลบเพจแล้วเพิ่มใหม่) และผู้ใช้ไม่ได้ติ๊กเอง → เลือกเพจ/ช่องที่มีตอนนี้ตามหมวดให้ใหม่
+      if (!it.targets?.length && !it.targetsEdited) it.targets = targetsFor(accounts, it.category ?? null)
       it.status = 'posting'
       it.error = null
       note(it, 'เริ่มโพสต์')
     })
+    // ไม่มีที่ให้โพสต์ = พลาด — เคยนับเป็น "โพสต์แล้ว" เพราะไม่มีปลายทางไหนพลาด ทั้งที่ไม่ได้ขึ้นที่ไหนเลย
+    if (!item.targets?.length) {
+      return mutateItem(id, (it) => {
+        it.status = 'failed'
+        it.finishedAt = Date.now()
+        it.error = 'ไม่มีเพจหรือช่องที่จะโพสต์ — เพิ่มเพจในแท็บตั้งค่า (หรือตั้งให้เพจรับหมวดของคลิปนี้) แล้วกดลองใหม่'
+        note(it, 'โพสต์ไม่ได้: ไม่มีเพจหรือช่องปลายทาง')
+        log(`โพสต์อัตโนมัติ: "${it.title}" ไม่มีเพจหรือช่องปลายทาง — ไม่ได้โพสต์`)
+      })
+    }
     const file = videoPath(item)
     const text = caption(item.post)
     const results = { ...item.results }
