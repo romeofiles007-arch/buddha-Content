@@ -3096,13 +3096,31 @@ function render() {
 
 // ── อัปเดตจาก GitHub — โปรแกรมในเครื่องตรวจเองทุก 30 นาที แผงนี้แค่อ่านผลมาแสดง ──
 
+/**
+ * รุ่นในเครื่อง (จากโปรแกรมในเครื่อง) เทียบกับ extension ที่ Chrome รันอยู่
+ * stale = ไฟล์ extension ใหม่มาถึงเครื่องแล้ว แต่ Chrome ยังรันตัวเดิม (ยังไม่ reload) — ของใหม่ยังไม่มีผล
+ */
+function versionInfo() {
+  const running = chrome.runtime.getManifest().version
+  const installed = gitUpdate?.installed ?? {}
+  const stale = !!installed.extension && installed.extension !== running
+  const label = [installed.commit ? `รุ่น ${installed.commit}` : '', `extension ${installed.extension ?? running}`].filter(Boolean).join(' · ')
+  return { running, installed, stale, label }
+}
+
+const STALE_NOTE = (v) => `ไฟล์ตัวใหม่ (extension ${v.installed.extension}) อยู่ในเครื่องแล้ว แต่ Chrome ยังใช้ตัวเดิม (${v.running}) — กด "โหลดตัวใหม่" หรือรอสักครู่ ระบบโหลดเองเมื่อไม่มีงานค้าง`
+
 function renderUpdate() {
   const banner = $('updateBanner')
+  const v = versionInfo()
+  $('reloadExt').hidden = !v.stale
+  $('reloadExt').disabled = busy || localBusy() // reload กลางงานทำให้งานใน Chrome หลุด
   if (updateApplied) {
     banner.hidden = false
     banner.classList.add('done')
-    $('updateTitle').textContent = `✅ อัปเดตแล้ว ${updateApplied.count} รายการ`
-    $('updateNote').textContent = 'โปรแกรมในเครื่องจะรีสตาร์ทเอง และแผงนี้จะโหลดตัวใหม่เองภายในไม่กี่นาที — ไม่ต้องทำอะไร'
+    // ติดตั้งจาก ZIP ครั้งแรกไม่รู้ว่าห่างกี่รายการ — บอกรุ่นที่ได้แทนจำนวน
+    $('updateTitle').textContent = v.installed.commit ? `✅ อัปเดตแล้ว — ตอนนี้เป็นรุ่นล่าสุด (${v.label})` : `✅ อัปเดตแล้ว ${updateApplied.count} รายการ`
+    $('updateNote').textContent = (v.stale ? STALE_NOTE(v) : 'โปรแกรมในเครื่องจะรีสตาร์ทเอง และแผงนี้จะโหลดตัวใหม่เองภายในไม่กี่นาที — ไม่ต้องทำอะไร')
       + (updateApplied.stashKept ? ' · ⚠️ ไฟล์ที่แก้ไว้ในเครื่องบางไฟล์ชนกับอัปเดต ระบบใช้ของใหม่ไปก่อน ส่วนของเดิมเก็บไว้ใน git stash (ไม่หาย) — ให้คนดูแลโค้ดรวมให้' : '')
       + (updateApplied.notes?.length ? ` · ⚠️ ${updateApplied.notes.join(' · ')}` : '')
     $('applyUpdate').hidden = true
@@ -3110,6 +3128,15 @@ function renderUpdate() {
     return
   }
   banner.classList.remove('done')
+  // ไม่มีอัปเดตบน GitHub แต่ extension ในเครื่องใหม่กว่าตัวที่รันอยู่ (อัปเดตไปแล้วแต่ยังไม่ reload)
+  if (!gitUpdate?.available && v.stale) {
+    banner.hidden = false
+    $('updateTitle').textContent = '🔄 มี extension ตัวใหม่ในเครื่องแล้ว'
+    $('updateNote').textContent = STALE_NOTE(v)
+    $('applyUpdate').hidden = true
+    $('updateDetails').hidden = true
+    return
+  }
   banner.hidden = !gitUpdate?.available
   if (banner.hidden) return
   $('updateTitle').textContent = `🔔 มีอัปเดตใหม่ ${gitUpdate.behind} รายการบน GitHub`
@@ -3150,12 +3177,25 @@ $('checkUpdate').addEventListener('click', async () => {
     const u = await loadUpdate('check')
     if (u.error) setStatus('projectsStatus', u.error, 'error')
     else if (u.available) setStatus('projectsStatus', '')
-    else setStatus('projectsStatus', u.ahead ? `เป็นรุ่นล่าสุดแล้ว (เครื่องนี้นำหน้า GitHub ${u.ahead} commit ที่ยังไม่ได้ push)` : 'เป็นรุ่นล่าสุดแล้ว ✓', 'ok')
+    else {
+      // บอกรุ่นที่อยู่ในเครื่องด้วย — กดตรวจแล้วเห็นว่าเป็นรุ่นไหน ไม่ใช่แค่ "ไม่เจออัปเดต"
+      const v = versionInfo()
+      const where = v.stale ? ` · ${STALE_NOTE(v)}` : ` (${v.label})`
+      setStatus('projectsStatus', u.ahead ? `เป็นรุ่นล่าสุดแล้ว${where} — เครื่องนี้นำหน้า GitHub ${u.ahead} commit ที่ยังไม่ได้ push` : `เป็นรุ่นล่าสุดแล้ว ✓${where}`, 'ok')
+    }
   } catch (err) {
     setStatus('projectsStatus', err.message, 'error')
   } finally {
     $('checkUpdate').disabled = false
   }
+})
+
+// โหลด extension ตัวใหม่เอง (ไม่ต้องเข้า chrome://extensions) — แผงนี้ปิดไปพร้อม reload แล้วเปิดใหม่ได้ทันที
+$('reloadExt').addEventListener('click', () => {
+  if (busy || localBusy()) return
+  $('reloadExt').disabled = true
+  $('updateNote').textContent = 'กำลังโหลด extension ตัวใหม่… แผงนี้จะปิดไปครู่หนึ่ง กดไอคอน extension เปิดใหม่ได้เลย'
+  setTimeout(() => chrome.runtime.reload(), 300)
 })
 
 $('applyUpdate').addEventListener('click', async () => {

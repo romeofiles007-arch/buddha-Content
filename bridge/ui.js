@@ -74,6 +74,31 @@ function mergeAutopilotLog(run, bridgeEvents) {
   return [...run.entries.map((e) => ({ ...e, src: 'run' })), ...events].sort((a, b) => (a.at ?? 0) - (b.at ?? 0)).slice(-300)
 }
 
+/**
+ * รุ่นที่อยู่ในเครื่องตอนนี้ (อ่านจากไฟล์ทุกครั้ง)
+ *   commit    — git: HEAD · ติดตั้งจาก zip: VERSION.json (unknown = ยังไม่เคยอัปเดตในโปรแกรม)
+ *   extension — version ใน extension/manifest.json บนดิสก์ แผงข้างเทียบกับตัวที่ Chrome รันอยู่
+ *               ไม่ตรง = ไฟล์ใหม่มาแล้วแต่ extension ยังไม่โหลดตัวใหม่ → แผงเสนอปุ่มโหลดใหม่
+ */
+export function installedVersion(root = ROOT) {
+  let extension = null
+  let commit = null
+  try {
+    extension = JSON.parse(readFileSync(join(root, 'extension', 'manifest.json'), 'utf8')).version ?? null
+  } catch {}
+  if (existsSync(join(root, '.git'))) {
+    try {
+      commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 10_000 }).trim() || null
+    } catch {}
+  } else {
+    try {
+      const v = JSON.parse(readFileSync(join(root, 'VERSION.json'), 'utf8'))
+      commit = v.sha ? v.sha.slice(0, 7) : /^[0-9a-f]{7,40}$/.test(String(v.commit ?? '')) ? String(v.commit).slice(0, 7) : null
+    } catch {}
+  }
+  return { commit, extension }
+}
+
 export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody, log, recentLog = () => [], updater = null, scheduler = true }) {
   const runner = createRunner({ log })
   // 🏭 ผลิตต่อเนื่อง — สั่ง autopilot ทีละคลิปตามเวลา (วนเฉพาะ bridge ตัวจริง)
@@ -689,13 +714,14 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
 
       // ── อัปเดตจาก GitHub ──
       if (path.startsWith('/api/update') && !updater) return json(res, 404, { error: 'ไม่มีระบบอัปเดต' }), true
-      if (req.method === 'GET' && path === '/api/update') return json(res, 200, updater.snapshot()), true
-      if (req.method === 'POST' && path === '/api/update/check') return json(res, 200, await updater.check()), true
+      // ทุกคำตอบบอกรุ่นที่อยู่ในเครื่องด้วย — แผงข้างแสดงให้ผู้ใช้เห็น และเทียบกับ extension ที่ Chrome รันอยู่
+      if (req.method === 'GET' && path === '/api/update') return json(res, 200, { ...updater.snapshot(), installed: installedVersion() }), true
+      if (req.method === 'POST' && path === '/api/update/check') return json(res, 200, { ...(await updater.check()), installed: installedVersion() }), true
       if (req.method === 'POST' && path === '/api/update/apply') {
         try {
-          return json(res, 200, await updater.apply()), true
+          return json(res, 200, { ...(await updater.apply()), installed: installedVersion() }), true
         } catch (err) {
-          return json(res, 409, { error: err.message, ...updater.snapshot() }), true
+          return json(res, 409, { error: err.message, ...updater.snapshot(), installed: installedVersion() }), true
         }
       }
 
