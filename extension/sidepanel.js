@@ -3210,6 +3210,8 @@ function renderUpdate() {
   const v = versionInfo()
   $('reloadExt').hidden = !v.stale
   $('reloadExt').disabled = busy || localBusy() // reload กลางงานทำให้งานใน Chrome หลุด
+  // แผงเปิดค้างหลังอัปเดต แล้ว GitHub มีรุ่นใหม่อีก → เลิกบอก "รุ่นล่าสุด" (เคยค้างข้อความนี้จนกดตรวจกี่ครั้งก็ไม่เจออัปเดต)
+  if (updateApplied && gitUpdate?.available) updateApplied = null
   if (updateApplied) {
     banner.hidden = false
     banner.classList.add('done')

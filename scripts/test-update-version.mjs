@@ -67,4 +67,12 @@ test('แผงข้าง: มีปุ่มโหลดตัวใหม่
   assert.match(js, /เป็นรุ่นล่าสุดแล้ว ✓\$\{where\}/)
 })
 
+test('อัปเดตแล้วแผงยังเปิดค้าง แล้ว GitHub มีรุ่นใหม่อีก: ต้องเลิกบอก "รุ่นล่าสุด" และขึ้นปุ่มอัปเดต', () => {
+  const js = readFileSync(join(ROOT, 'extension', 'sidepanel.js'), 'utf8')
+  const render = js.slice(js.indexOf('function renderUpdate()'), js.indexOf('async function loadUpdate('))
+  const guard = render.indexOf('if (updateApplied && gitUpdate?.available) updateApplied = null')
+  assert.ok(guard > 0, 'ต้องล้างข้อความ "อัปเดตแล้ว" เมื่อมีรุ่นใหม่กว่า')
+  assert.ok(guard < render.indexOf('if (updateApplied) {'), 'ต้องล้างก่อนเช็คว่าจะแสดงข้อความ "อัปเดตแล้ว"')
+})
+
 console.log(`\nผ่าน ${passed} ข้อ`)
