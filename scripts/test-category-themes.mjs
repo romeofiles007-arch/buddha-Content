@@ -8,8 +8,10 @@ for(const c of CATEGORIES) {
   assert.equal(categoryGenre(c.id),c.name)
   assert.equal(categoryGenre(c.name),c.name)
   assert.equal(themeForGenre(c.name),CATEGORY_THEMES[c.id])
-  assert.equal(themeForGenre(c.id).day,`agents/category-${c.id}-day.png`)
-  assert.equal(themeForGenre(c.id).night,`agents/category-${c.id}-night.png`)
+  // โหมดเฉพาะ (พระสอนธรรม) ใช้ฉากของหมวดพระเกจิ — ไม่มีภาพฉากของตัวเอง
+  const scene=c.exclusive ? 'monk' : c.id
+  assert.equal(themeForGenre(c.id).day,`agents/category-${scene}-day.png`)
+  assert.equal(themeForGenre(c.id).night,`agents/category-${scene}-night.png`)
 }
 for(const value of ['mix','',undefined,null,'unknown-category']) assert.equal(themeKey(value),'mix')
 assert.equal(new Set(Object.values(CATEGORY_THEMES).map(t=>t.day)).size,3)

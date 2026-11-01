@@ -26,7 +26,8 @@ import { shotlistFiles, readRounds, resetRounds, mergeRounds, saveRound, nextRou
 import { collectImages } from './lib/shotfile.mjs'
 import { characterAttachments, activeCharacter } from './lib/character.mjs'
 import { ensureProfile } from './lib/clip_profile.mjs'
-import { reviseLengthPrompt, paceOf } from '../extension/prompts.js'
+import { reviseLengthPrompt, paceOf, categoryOf } from '../extension/prompts.js'
+import { selfMonkReady, SELF_NOT_READY } from './lib/self_monk.mjs'
 import { hasCover } from './lib/cover.mjs'
 import { clipSettings, clipTarget, clipsDir, collectClips, scenes } from './lib/clips.mjs'
 import { kieKey, kieTier, kieBalance } from './lib/kie.mjs'
@@ -55,6 +56,12 @@ if (autoTopic) {
 let title = words.filter((w) => w !== '--auto-topic').join(' ').trim()
 if (!title && !autoTopic) {
   console.error('ใช้: node pipeline/autopilot.mjs "<หัวข้อ>" | --auto-topic [--genre mix|<แนว>] [--lang th|en] [--minutes 5]')
+  process.exit(1)
+}
+
+// โหมดพระสอนธรรมต้องมีรูปหน้าพระก่อน — เช็คก่อนเสียเวลาคิดหัวข้อ/เขียนบท
+if (categoryOf(config.script.genre)?.id === 'self' && !selfMonkReady()) {
+  console.error(`❌ ${SELF_NOT_READY}`)
   process.exit(1)
 }
 

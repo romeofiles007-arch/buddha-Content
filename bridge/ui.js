@@ -14,7 +14,7 @@ import { pipeline as pipeStreams } from 'node:stream/promises'
 import { join, resolve, sep, extname } from 'node:path'
 import { ROOT, loadConfig, updateConfig, slugify } from '../pipeline/lib/config.mjs'
 import { topicsPrompt, scriptPrompt, parseTopics, cleanScript, GENRES } from '../pipeline/lib/prompts.mjs'
-import { ART_STYLES, BUDDHA_NARRATIONS } from '../extension/prompts.js'
+import { ART_STYLES, BUDDHA_NARRATIONS, categoryOf } from '../extension/prompts.js'
 import { createProduction } from './production.js'
 import { saveScript, loadScript } from '../pipeline/lib/stage2.mjs'
 import { createRunner } from './runner.js'
@@ -32,6 +32,7 @@ import { checklist } from './checklist.js'
 import { autopilotProgress } from '../pipeline/lib/progress.mjs'
 import { ensureProfile } from '../pipeline/lib/clip_profile.mjs'
 import { readCharacter, updateCharacter, addCharacterImage, removeCharacterImage, clearCharacter, characterAttachments, activeCharacter, CHARACTER_DIR } from '../pipeline/lib/character.mjs'
+import { readSelfMonk, updateSelfMonk, addSelfMonkImage, removeSelfMonkImage, selfMime, selfMonkReady, SELF_NOT_READY, SELF_DIR, MAX_SELF_IMAGES } from '../pipeline/lib/self_monk.mjs'
 import { PAUSE_PRESETS, MOTION_PRESETS } from '../pipeline/lib/ffmpeg.mjs'
 import { SUBTITLE_STYLES } from '../pipeline/lib/subtitles.mjs'
 import { clipSettings, CLIP_COVERAGES } from '../pipeline/lib/clips.mjs'
@@ -654,7 +655,9 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           timecodeText: readFileSync(join(ROOT, 'projects', slug, '03_timecode', 'timecode.txt'), 'utf8'),
         })
         // หมวด + ภาพอ้างอิงพระเกจิ ต้องมีก่อนขอ prompt ภาพรอบแรก (ทำครั้งเดียว เก็บใน 00_ref/)
-        await ensureProfile(slug, { title: context().title }).catch(() => null)
+        // โหมดพระสอนธรรมเลือกไว้ → คลิปที่ทำทีละขั้นเป็นโหมดนั้น (ไม่เดาจากชื่อเรื่อง ซึ่งไม่มีวันได้โหมดนี้)
+        const chosen = loadConfig().script.genre
+        await ensureProfile(slug, { title: context().title, genre: categoryOf(chosen)?.exclusive ? chosen : undefined }).catch(() => null)
         const withNext = (merged) => {
           const next = nextRoundPrompt(loadConfig(), slug, context())
           // รอบแรกที่ใช้ตัวละครของฉัน → แผงข้างแนบรูปไปกับ prompt ด้วย
@@ -777,6 +780,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         const titleLanguage = ['th', 'en', 'zh'].includes(body.titleLanguage) ? body.titleLanguage : (config.script.titleLanguage ?? language)
         const minutes = Number(body.minutes) > 0 ? Number(body.minutes) : config.script.targetMinutes
         const genre = GENRES.includes(body.genre) ? body.genre : 'mix'
+        if (categoryOf(genre)?.id === 'self' && !selfMonkReady()) return json(res, 400, { error: SELF_NOT_READY }), true
         // เริ่มใหม่ตั้งแต่แผนกที่เลือก (ไม่ใส่ = ทำต่อจากที่ค้าง) — ต้องมีหัวข้อ ใช้กับคลิปที่มีอยู่แล้ว
         const restartFrom = title && ['script', 'voice', 'art', 'images', 'clips', 'edit'].includes(body.restartFrom) ? body.restartFrom : null
         const slug = autoTopic ? null : slugify(title)
@@ -848,7 +852,11 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           previews: c.images.map((name) => ({ name, dataUrl: `data:image/${name.endsWith('.png') ? 'png' : name.endsWith('.webp') ? 'webp' : 'jpeg'};base64,${readFileSync(join(CHARACTER_DIR, name)).toString('base64')}` })),
         })
         if (req.method === 'GET' && path === '/api/character') {
-          if (url.searchParams.has('attachments')) return json(res, 200, { attachments: characterAttachments() }), true
+          if (url.searchParams.has('attachments')) {
+            // ส่ง slug มา = รูปตามหมวดของคลิปนั้น (เช่น โหมดพระสอนธรรมแนบหน้าพระของฉัน) · slug ต้องเป็นชื่อโฟลเดอร์ล้วน
+            const slug = /^[\p{L}\p{N}_]{1,80}$/u.test(url.searchParams.get('slug') ?? '') ? url.searchParams.get('slug') : undefined
+            return json(res, 200, { attachments: characterAttachments(activeCharacter(slug)) }), true
+          }
           return json(res, 200, view(readCharacter())), true
         }
         if (req.method === 'POST' && path === '/api/character') return json(res, 200, view(updateCharacter(await readBody(req)))), true
@@ -860,6 +868,23 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         if (req.method === 'POST' && path === '/api/character/clear') return json(res, 200, view(clearCharacter())), true
       }
 
+      // ── พระของฉัน (โหมดพระสอนธรรม) — รูปหน้าพระ + ชื่อที่ใช้ในคลิป · เก็บในเครื่อง characters/self/ ──
+      if (path === '/api/self-monk' || path.startsWith('/api/self-monk/')) {
+        const view = (m) => ({
+          ...m,
+          ready: m.images.length > 0,
+          max: MAX_SELF_IMAGES,
+          previews: m.images.map((name) => ({ name, dataUrl: `data:${selfMime(name)};base64,${readFileSync(join(SELF_DIR, name)).toString('base64')}` })),
+        })
+        if (req.method === 'GET' && path === '/api/self-monk') return json(res, 200, view(readSelfMonk())), true
+        if (req.method === 'POST' && path === '/api/self-monk') return json(res, 200, view(updateSelfMonk(await readBody(req)))), true
+        if (req.method === 'POST' && path === '/api/self-monk/image') return json(res, 200, view(addSelfMonkImage(await readBody(req)))), true
+        if (req.method === 'POST' && path === '/api/self-monk/image/delete') {
+          const { name } = await readBody(req)
+          return json(res, 200, view(removeSelfMonkImage(String(name)))), true
+        }
+      }
+
       // ── ตั้งค่าคลิป: แนวภาพ · ซับไตเติล · ช่วงเงียบระหว่างประโยค ──
       if (path === '/api/clip-settings') {
         if (req.method === 'POST') {
@@ -869,6 +894,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             // ลายเส้น + วิธีเล่าหมวด 1 — ใช้กับคลิปใหม่ (คลิปเดิมจำแบบที่ใช้ไว้ใน 00_ref/profile.json)
             if (ART_STYLES[body.artStyle]) c.art = { ...(c.art ?? {}), style: body.artStyle }
             if (BUDDHA_NARRATIONS[body.buddhaNarration]) c.script.buddhaNarration = body.buddhaNarration
+            // หมวดเนื้อหาที่เลือกในแผงข้าง — ผลิตต่อเนื่องใช้ค่านี้ (เดิมแผงข้างไม่ได้บันทึก ผลิตต่อเนื่องเลยไม่รู้หมวดที่เลือก)
+            if (body.genre === 'mix' || GENRES.includes(body.genre)) c.script.genre = body.genre
             if (MOTION_PRESETS[body.motion]) c.render.motion = body.motion
             // ม้าน้ำ/Kie: 'off' หรือเปอร์เซ็นต์ของฉากทั้งเรื่อง
             const aiCoverage = body.aiCoverage ?? body.aiClips // aiClips รองรับ extension รุ่นเก่า

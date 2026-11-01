@@ -12,10 +12,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from '
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ROOT } from './config.mjs'
-import { GENRES } from '../../extension/prompts.js'
+import { GENRES, MIX_GENRES, CATEGORIES as CLIP_CATEGORIES } from '../../extension/prompts.js'
 
 /** หมวดหมู่หัวข้อ — ชุดเดียวกับตอนหาหัวข้อ (extension/prompts.js) ใช้จับคู่คลิปกับเพจ/ช่อง */
 export const CATEGORIES = GENRES
+/** หมวดที่ AI ตรวจคลิปเลือกได้ — ไม่รวมโหมดเฉพาะ (พระสอนธรรม) ซึ่งได้หมวดจากคลิปเท่านั้น */
+export const AI_CATEGORIES = MIX_GENRES
 
 // เทสต์ตั้ง POSTING_DIR ไปโฟลเดอร์ชั่วคราว — ไม่แตะคิว/โทเค็นจริงของผู้ใช้
 export const POSTING_DIR = process.env.POSTING_DIR || join(ROOT, 'projects', '_posting')
@@ -108,6 +110,41 @@ export function publicAccounts(data = loadAccounts()) {
 /** ปลายทางทั้งหมดในรูป "fb:<id>" / "yt:<id>" */
 export function allTargets(data = loadAccounts()) {
   return [...data.facebook.map((a) => `fb:${a.id}`), ...data.youtube.filter((a) => a.refreshToken).map((a) => `yt:${a.id}`)]
+}
+
+/**
+ * หมวดของคลิป (ชื่อหมวดแบบเดียวกับที่ตั้งให้เพจ) จากโปรไฟล์ที่ทำตอนผลิต projects/<slug>/00_ref/profile.json
+ * ไม่มีโปรไฟล์ / หมวดไม่รู้จัก → null (ให้ AI ระบุทีหลัง)
+ */
+export function clipCategory(slug, root = ROOT) {
+  try {
+    const profile = JSON.parse(readFileSync(join(root, 'projects', slug, '00_ref', 'profile.json'), 'utf8'))
+    return CLIP_CATEGORIES.find((c) => c.id === profile.category)?.name ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * ลำดับเพจของโหมด "แบ่งเพจ" — quota { "fb:<id>": จำนวนคลิป } เช่น เพจ 1 = 3 · เพจ 2 = 2
+ * → [เพจ1, เพจ2, เพจ1, เพจ2, เพจ1] (สลับกันไป ไม่ลงเพจเดียวติดกันหมด) · คลิปที่ n ใช้ลำดับที่ n (วนซ้ำเมื่อเกิน)
+ * keys = ปลายทางที่ยังเชื่อมอยู่ (เรียงตามที่แสดง) — เพจที่ถูกลบไปแล้วไม่นับ
+ */
+export function pageSequence(quota, keys) {
+  // smooth weighted round-robin: กระจายเพจให้ห่างกันเท่าๆ กัน (3/2 → ก ข ก ข ก ไม่ใช่ ก ก ข ก ข)
+  const pages = keys.map((k) => ({ k, w: Math.max(0, Math.floor(Number(quota?.[k]) || 0)), cur: 0 })).filter((p) => p.w > 0)
+  const total = pages.reduce((a, p) => a + p.w, 0)
+  const seq = []
+  for (let i = 0; i < total; i++) {
+    let best = null
+    for (const p of pages) {
+      p.cur += p.w
+      if (!best || p.cur > best.cur) best = p
+    }
+    best.cur -= total
+    seq.push(best.k)
+  }
+  return seq
 }
 
 /** บัญชีนี้รับคลิปหมวดนี้ไหม — ไม่ได้เลือกหมวด = รับทุกหมวด · คลิปที่ยังไม่รู้หมวดไปเฉพาะบัญชีที่รับทุกหมวด */
@@ -300,9 +337,9 @@ ${String(script ?? '').slice(0, 5000) || '(ไม่มีบท)'}
 ให้คะแนน 0–100 (80 ขึ้นไป = โพสต์ได้เลย) verdict เป็น "pass" เมื่อไม่มีปัญหาร้ายแรง หรือ "fix" เมื่อควรแก้ก่อนโพสต์
 issues: ปัญหาที่เจอ ข้อละ 1 ประโยค ระบุภาพที่/เวลา ถ้าเกี่ยวกับภาพ (ไม่มีปัญหาให้เป็น [])
 category: หมวดหมู่ของคลิปนี้ เลือก 1 หมวดจากรายการนี้เท่านั้น สะกดตรงตัว:
-${CATEGORIES.map((c) => `- ${c}`).join('\n')}
+${AI_CATEGORIES.map((c) => `- ${c}`).join('\n')}
 เขียน summary และ issues เป็นภาษาไทย ตอบเป็น JSON ก้อนเดียวเท่านั้น ไม่มีคำนำ รูปแบบนี้เป๊ะๆ:
-{"score": 85, "verdict": "pass", "summary": "สรุป 1–2 ประโยค", "issues": ["..."], "category": "${CATEGORIES[0]}"}`
+{"score": 85, "verdict": "pass", "summary": "สรุป 1–2 ประโยค", "issues": ["..."], "category": "${AI_CATEGORIES[0]}"}`
 }
 
 /** อ่านผลตรวจจากคำตอบของ ChatGPT — ทนต่อ ```json``` และข้อความนำหน้า */

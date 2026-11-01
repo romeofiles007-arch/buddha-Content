@@ -6,11 +6,14 @@
  *
  * prompt ใช้ชุดเดียวกับ pipeline/ (extension/prompts.js) ผลจึงเหมือนรันจาก terminal
  */
-import { BLUEPRINT_FILE, topicsPrompt, scriptPrompt, parseTopics, cleanScript, estimateMinutes, slugify, scoredTopicsPrompt, parseScoredTopics, GENRES } from './prompts.js'
+import { BLUEPRINT_FILE, topicsPrompt, scriptPrompt, parseTopics, cleanScript, estimateMinutes, slugify, scoredTopicsPrompt, parseScoredTopics, GENRES, categoryOf } from './prompts.js'
 import { initIcons, setIconLabel } from './icons.js'
 import { portrait, DEPARTMENTS, HANDOFF, AGENT_WORD, elapsed, SEA_ASSETS } from './agents.js'
 import { initPosting } from './posting.js'
 import { applyCategoryTheme, categoryGenre } from './category-themes.js'
+
+/** พระของฉัน (โหมดพระสอนธรรม) — ประกาศไว้บนสุด เพราะ render() ช่วงโหลดแรกอ่านค่านี้ */
+let selfMonk = null
 
 initIcons()
 
@@ -193,6 +196,8 @@ $('askScript').addEventListener('click', async () => {
   $('scriptRawBox').hidden = true
   S.minutes = Math.min(60, Math.max(1, Number($('minutes').value) || 1))
   const opts = { language: S.language, targetMinutes: S.minutes, wordsPerMinute: WORDS_PER_MINUTE }
+  // โหมดพระสอนธรรม: บทเป็นพระพูดเอง ("อาตมา") ตามกฎของโหมด
+  if (selfMode()) opts.profile = { category: 'self', self: { name: selfMonk?.name ?? '' } }
   try {
     const text = await withBusy('scriptStatus', 'ChatGPT กำลังเขียนบท (บทยาว ใช้เวลาหลายนาที)', async () =>
       askChatGPT(scriptPrompt(await blueprint(), S.selected.title, opts)),
@@ -593,7 +598,7 @@ $('startFlow').addEventListener('click', async () => {
     const tabId = await flowHomeTab()
     $('flowLinks').hidden = false
     setStatus('flowStatus', `สร้าง project ใหม่ → ตรวจว่า ${FLOW_MODEL} · x1 ใช้ 0 credits → ตั้งค่า Agent → ส่ง prompt…`, 'busy')
-    const res = await flowMessage(tabId, { type: 'FLOW_AGENT_RUN', prompt: shotsData.flowPrompt, expected, model: FLOW_MODEL, aspect: shotsData.aspect ?? '16:9', attachments: (await api(await localApp(), '/api/character?attachments=1').catch(() => ({}))).attachments ?? [] })
+    const res = await flowMessage(tabId, { type: 'FLOW_AGENT_RUN', prompt: shotsData.flowPrompt, expected, model: FLOW_MODEL, aspect: shotsData.aspect ?? '16:9', attachments: (await api(await localApp(), `/api/character?attachments=1&slug=${encodeURIComponent(slugify(S.selected?.title ?? ''))}`).catch(() => ({}))).attachments ?? [] })
     if (!res?.ok) throw new Error(res?.error ?? 'Google Flow ไม่ตอบกลับ')
     setStatus('flowStatus', `ส่ง prompt ${expected} ช็อตแล้ว · ${res.credits} credits · Agent: ${res.agent.model} ${res.agent.ratio} ${res.agent.count}`, 'ok')
     watchFlow(tabId, { expected, imagesBefore: res.imagesBefore, started: Date.now() })
@@ -1387,6 +1392,7 @@ function renderTopicMode() {
   $('topicSuggestBox').hidden = mode !== 'suggest'
   $('genreBox').hidden = false
   applyCategoryTheme(S.genre)
+  renderSelfMonk()
   $('topicGenre').disabled = busy || localBusy()
   $('topicGenre').value = categoryGenre(S.genre)
   $('topicAutoHint').hidden = mode !== 'auto'
@@ -1430,12 +1436,20 @@ function renderTopicMode() {
 
 // ── แนวคลิป: สุ่มหลากหลาย หรือเจาะแนวเดียว ──
 for (const g of ['mix', ...GENRES]) {
-  $('topicGenre').append(Object.assign(document.createElement('option'), { value: g, textContent: g === 'mix' ? 'คละทั้ง 3 หมวด' : g }))
+  // โหมดเฉพาะ (พระสอนธรรม) แยกเป็นกลุ่มท้ายรายการ — ไม่อยู่ใน "คละ"
+  const label = g === 'mix' ? 'คละทั้ง 3 หมวด' : categoryOf(g)?.exclusive ? `🙏 ${g} · โหมดเฉพาะ` : g
+  $('topicGenre').append(Object.assign(document.createElement('option'), { value: g, textContent: label }))
 }
+const selfMode = () => categoryOf(S.genre)?.id === 'self'
+/** บันทึกหมวดที่เลือกลงตั้งค่าในเครื่อง — ผลิตต่อเนื่องใช้หมวดนี้ */
+const syncGenre = async () => api(await localApp(), '/api/clip-settings', { genre: categoryGenre(S.genre) }).catch(() => null)
 $('topicGenre').addEventListener('change', async () => {
   S.genre = $('topicGenre').value
   applyCategoryTheme(S.genre)
   await save()
+  renderSelfMonk()
+  renderProdGenre()
+  await syncGenre()
 })
 
 $('autoTopicMode').addEventListener('click', async (e) => {
@@ -1802,6 +1816,87 @@ localApp()
   .then((data) => {
     character = data
     renderCharacter()
+  })
+  .catch(() => {})
+
+// ── พระของฉัน (โหมดพระสอนธรรม) — รูปหน้าพระ + ชื่อในคลิป · แสดงเฉพาะเมื่อเลือกโหมดนี้ ──
+function renderSelfMonk() {
+  const box = $('selfMonkBox')
+  box.hidden = !selfMode()
+  if (box.hidden) return
+  const hint = $('selfHint')
+  if (!selfMonk) {
+    hint.textContent = 'เปิดโปรแกรมในเครื่องก่อน แล้วรูปหน้าพระที่บันทึกไว้จะแสดงตรงนี้'
+    hint.className = 'hint'
+    return
+  }
+  const list = $('selfThumbs')
+  list.textContent = ''
+  for (const p of selfMonk.previews) {
+    const li = document.createElement('li')
+    const del = Object.assign(document.createElement('button'), { type: 'button', textContent: '✕', title: 'ลบรูปนี้' })
+    del.setAttribute('aria-label', 'ลบรูปหน้าพระนี้')
+    del.addEventListener('click', () => selfCall('/api/self-monk/image/delete', { name: p.name }))
+    li.append(Object.assign(document.createElement('img'), { src: p.dataUrl, alt: 'รูปหน้าพระ' }), del)
+    list.append(li)
+  }
+  if (document.activeElement !== $('selfName')) $('selfName').value = selfMonk.name
+  if (document.activeElement !== $('selfDesc')) $('selfDesc').value = selfMonk.description
+  hint.textContent = selfMonk.ready
+    ? `พร้อมแล้ว — ${selfMonk.images.length} รูป${selfMonk.name ? ` · ชื่อในคลิป: ${selfMonk.name}` : ''} · คลิปใหม่ทุกคลิปเป็นท่านสอนธรรม`
+    : 'ยังไม่มีรูปหน้าพระ — วางอย่างน้อย 1 รูปก่อนเริ่มทำคลิป (ระบบจะไม่ยอมเริ่มถ้ายังไม่มีรูป)'
+  hint.className = `hint${selfMonk.ready ? ' ok' : ' status err'}`
+}
+
+async function selfCall(path, body) {
+  try {
+    selfMonk = await api(await localApp(), path, body)
+  } catch (err) {
+    $('selfHint').textContent = err.message
+    $('selfHint').className = 'hint status err'
+    return
+  }
+  renderSelfMonk()
+}
+
+async function addSelfFiles(files) {
+  const images = [...files].filter((f) => /^image\/(png|jpeg|webp)$/.test(f.type))
+  if (!images.length) return
+  $('selfHint').textContent = 'กำลังบันทึกรูป…'
+  for (const f of images) await selfCall('/api/self-monk/image', await imageToUpload(f))
+}
+
+$('selfPaste').addEventListener('paste', async (e) => {
+  const files = [...(e.clipboardData?.files ?? [])]
+  if (!files.length) return
+  e.preventDefault()
+  await addSelfFiles(files)
+})
+$('selfPaste').addEventListener('click', (e) => {
+  if (!e.target.closest('label')) $('selfPaste').focus()
+})
+$('selfPaste').addEventListener('dragover', (e) => {
+  e.preventDefault()
+  $('selfPaste').classList.add('drag')
+})
+$('selfPaste').addEventListener('dragleave', () => $('selfPaste').classList.remove('drag'))
+$('selfPaste').addEventListener('drop', async (e) => {
+  e.preventDefault()
+  $('selfPaste').classList.remove('drag')
+  await addSelfFiles(e.dataTransfer?.files ?? [])
+})
+$('selfFile').addEventListener('change', async (e) => {
+  await addSelfFiles(e.target.files)
+  e.target.value = ''
+})
+$('selfName').addEventListener('change', () => selfCall('/api/self-monk', { name: $('selfName').value }))
+$('selfDesc').addEventListener('change', () => selfCall('/api/self-monk', { description: $('selfDesc').value }))
+
+localApp()
+  .then((app) => api(app, '/api/self-monk'))
+  .then((data) => {
+    selfMonk = data
+    renderSelfMonk()
   })
   .catch(() => {})
 
@@ -3216,6 +3311,7 @@ $('applyUpdate').addEventListener('click', async () => {
 
 await load()
 render()
+syncGenre() // หมวดที่เลือกไว้ในแผง → ตั้งค่าในเครื่อง (ผลิตต่อเนื่องใช้ค่านี้)
 resumeVoice()
 resumeAuto()
 loadUpdate()
@@ -3237,7 +3333,63 @@ function prodForm() {
     random: { genre: $('prodRandGenre').checked, art: $('prodRandArt').checked, narration: $('prodRandNarration').checked, language: $('prodRandLang').checked },
     languages: [...$('prodLangs').querySelectorAll('input:checked')].map((i) => i.value),
     autoPost: $('prodAutoPost').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'ai',
+    postPages: $('prodPages').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'all',
+    pageQuota: Object.fromEntries([...$('prodQuota').querySelectorAll('input[data-key]')].map((i) => [i.dataset.key, Math.max(0, Math.round(Number(i.value) || 0))])),
   }
+}
+
+/**
+ * ช่องจำนวนคลิปต่อเพจ (โหมดแบ่งเพจ) — วาดใหม่เฉพาะเมื่อรายชื่อเพจเปลี่ยน ไม่งั้นช่องที่กำลังพิมพ์หาย
+ * ยังไม่เคยตั้งจำนวน → แบ่งจำนวนคลิปต่อชุดให้เท่าๆ กันเป็นค่าเริ่มต้น (5 คลิป 2 เพจ = 3 · 2)
+ */
+let prodQuotaKeys = ''
+function renderProdQuota(pages, quota, count) {
+  const box = $('prodQuota')
+  const sig = pages.map((p) => `${p.key}=${p.name}`).join('|')
+  if (sig === prodQuotaKeys) return
+  prodQuotaKeys = sig
+  const empty = !pages.some((p) => quota?.[p.key] > 0)
+  const per = Math.max(1, count || pages.length)
+  box.textContent = ''
+  pages.forEach((p, i) => {
+    const label = Object.assign(document.createElement('label'), { textContent: `${p.kind === 'youtube' ? '▶️ YouTube' : '📘 เพจ'} ${i + 1} · ${p.name}` })
+    label.htmlFor = `prodQuota_${i}`
+    const input = Object.assign(document.createElement('input'), { type: 'number', min: '0', max: '100', id: `prodQuota_${i}` })
+    input.dataset.key = p.key
+    input.value = empty ? Math.floor(per / pages.length) + (i < per % pages.length ? 1 : 0) : quota?.[p.key] ?? 0
+    input.title = 'จำนวนคลิปที่ลงเพจนี้ในแต่ละชุด (0 = ไม่ลงเพจนี้)'
+    input.addEventListener('change', prodSave)
+    box.append(label, input)
+  })
+}
+
+/** โหมดพระสอนธรรม: ผลิตต่อเนื่องไม่สุ่มหมวด (bridge บังคับเอง) — แผงล็อกช่องติ๊กให้เห็น ค่าที่ติ๊กไว้ยังเก็บไว้ใช้ตอนกลับไปหมวดอื่น */
+function renderProdGenre() {
+  const locked = selfMode()
+  $('prodRandGenre').disabled = locked
+  $('prodGenreLock').hidden = !locked
+}
+
+function renderProdPages(s) {
+  const pages = prod.postPages ?? []
+  const form = prodForm()
+  $('prodPagesRow').style.display = form.autoPost === 'off' || !pages.length ? 'none' : ''
+  if (!pages.length) return
+  renderProdQuota(pages, s.pageQuota, Number($('prodCount').value))
+  const split = form.postPages === 'split'
+  $('prodQuota').style.display = split ? 'grid' : 'none'
+  if (!split) {
+    $('prodPagesHint').textContent = `ทุกคลิปลงทุกเพจ/ช่องที่รับหมวดของคลิป (${pages.length} ปลายทาง)`
+    return
+  }
+  const quota = prodForm().pageQuota
+  const total = Object.values(quota).reduce((a, b) => a + b, 0)
+  const count = Number($('prodCount').value)
+  const parts = pages.filter((p) => quota[p.key] > 0).map((p) => `${p.name} ${quota[p.key]}`)
+  $('prodPagesHint').textContent = !total
+    ? '⚠️ ใส่จำนวนคลิปอย่างน้อยหนึ่งเพจ — ถ้าเป็น 0 หมด ระบบลงทุกเพจแทน'
+    : `คลิปละเพจเดียว สลับกันไป: ${parts.join(' · ')}`
+      + (count && total !== count ? ` · ⚠️ รวม ${total} คลิป แต่ผลิตชุดละ ${count} คลิป — ${total > count ? 'เพจท้ายๆ จะได้น้อยกว่าที่ตั้ง' : 'ครบลำดับแล้ววนเพจแรกใหม่'}` : '')
 }
 
 function renderProd() {
@@ -3255,8 +3407,11 @@ function renderProd() {
     $('prodRandLang').checked = s.random.language
     for (const i of $('prodLangs').querySelectorAll('input')) i.checked = s.languages.includes(i.value)
     for (const b of $('prodAutoPost').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === s.autoPost))
+    for (const b of $('prodPages').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === (s.postPages ?? 'all')))
     for (const b of $('prodStart').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === s.start))
   }
+  renderProdPages(s)
+  renderProdGenre()
   const postMode = prodForm().autoPost
   $('prodPostHint').textContent = postMode === 'off'
     ? 'คลิปที่เสร็จอยู่ในคลังวิดีโอ ไม่เข้าคิวโพสต์'
@@ -3331,6 +3486,12 @@ $('prodAutoPost').addEventListener('click', (e) => {
   const b = e.target.closest('button')
   if (!b) return
   for (const x of $('prodAutoPost').querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b))
+  prodSave()
+})
+$('prodPages').addEventListener('click', (e) => {
+  const b = e.target.closest('button')
+  if (!b) return
+  for (const x of $('prodPages').querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b))
   prodSave()
 })
 for (const id of ['prodCount', 'prodTime', 'prodDelayMin', 'prodDelayMax', 'prodRandGenre', 'prodRandArt', 'prodRandNarration', 'prodRandLang']) {

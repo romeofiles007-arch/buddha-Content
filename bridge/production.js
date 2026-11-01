@@ -13,11 +13,12 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, linkSyn
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { ROOT, loadConfig } from '../pipeline/lib/config.mjs'
-import { GENRES } from '../extension/prompts.js'
+import { GENRES, categoryOf } from '../extension/prompts.js'
 import { clipSettings } from '../pipeline/lib/clips.mjs'
 import { hasKey } from '../pipeline/lib/env.mjs'
-import { loadQueue, loadAccounts, allTargets } from '../pipeline/lib/posting.mjs'
+import { loadQueue, loadAccounts, allTargets, findTarget, pageSequence } from '../pipeline/lib/posting.mjs'
 import { playDoneSound } from './runner.js'
+import { selfMonkReady, SELF_NOT_READY } from '../pipeline/lib/self_monk.mjs'
 
 const FILE = join(ROOT, 'projects', '_production.json')
 const LAST_RUN = join(ROOT, 'projects', '_autopilot_last.json')
@@ -34,10 +35,15 @@ export const DEFAULT_SETTINGS = {
   random: { genre: true, art: true, narration: true, language: false },
   languages: ['th'], // ภาษาที่สุ่มได้ (ใช้เมื่อ random.language)
   autoPost: 'ai', // off | ai = AI ตรวจผ่านแล้วตั้งเวลาโพสต์เอง | now = ตั้งเวลาโพสต์ทันที ไม่ตรวจ
+  // โพสต์ลงเพจไหน: all = ทุกเพจ/ช่องที่รับหมวดของคลิป · split = แบ่งคลิปตามจำนวนที่ตั้งต่อเพจ (คลิปละเพจเดียว)
+  postPages: 'all',
+  pageQuota: {}, // { "fb:<id>" | "yt:<id>": จำนวนคลิปต่อชุด } ใช้เมื่อ postPages = split
 }
 const AUTO_POST = ['off', 'ai', 'now']
+const POST_PAGES = ['all', 'split']
+const TARGET_KEY = /^(fb|yt):[\w.-]{1,64}$/
 
-const blankState = () => ({ active: false, made: 0, failed: 0, failsInRow: 0, nextAt: null, run: null, batch: 0, message: '', history: [] })
+const blankState = () => ({ active: false, pageIndex: 0, made: 0, failed: 0, failsInRow: 0, nextAt: null, run: null, batch: 0, message: '', history: [] })
 
 function readJson(file, fallback) {
   try {
@@ -65,6 +71,13 @@ export function cleanSettings(input = {}, base = DEFAULT_SETTINGS) {
   if (AUTO_POST.includes(input.autoPost)) s.autoPost = input.autoPost
   else if (typeof input.autoPost === 'boolean') s.autoPost = input.autoPost ? 'ai' : 'off' // ค่าแบบเก่า (ติ๊กถูก)
   if (!AUTO_POST.includes(s.autoPost)) s.autoPost = s.autoPost ? 'ai' : 'off'
+  if (POST_PAGES.includes(input.postPages)) s.postPages = input.postPages
+  if (!POST_PAGES.includes(s.postPages)) s.postPages = 'all'
+  if (input.pageQuota && typeof input.pageQuota === 'object') {
+    s.pageQuota = {}
+    for (const [k, v] of Object.entries(input.pageQuota)) if (TARGET_KEY.test(k) && Number.isFinite(Number(v)) && Number(v) > 0) s.pageQuota[k] = int(v, 0, 100)
+  }
+  s.pageQuota = { ...(s.pageQuota ?? {}) }
   return s
 }
 
@@ -83,8 +96,10 @@ export const randomDelayMs = (s, rand = Math.random) => Math.round((s.delayMin +
 export function pickClip(s, config, rand = Math.random) {
   const pick = (list) => list[Math.floor(rand() * list.length)]
   const language = s.random.language ? pick(s.languages) : config.script.language ?? 'th'
+  // โหมดเฉพาะ (พระสอนธรรม) เลือกไว้ = ทุกคลิปเป็นโหมดนั้น ไม่สุ่มหมวดทับ แม้ติ๊ก "สุ่มหมวด" ไว้
+  const fixed = categoryOf(config.script.genre)
   return {
-    genre: s.random.genre ? 'mix' : GENRES.includes(config.script.genre) ? config.script.genre : 'mix',
+    genre: fixed?.exclusive ? fixed.name : s.random.genre ? 'mix' : GENRES.includes(config.script.genre) ? config.script.genre : 'mix',
     language,
     // ชื่อเรื่องภาษาเดียวกับเสียงพากย์เมื่อสุ่มภาษา (คลิปจีนชื่อจีน)
     titleLanguage: s.random.language ? language : config.script.titleLanguage ?? language,
@@ -179,6 +194,23 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     return { slug, title, ok: status?.status === 'done', error: status?.status === 'done' ? null : status?.error ?? 'ไม่ทราบผล (โปรแกรมรีสตาร์ทระหว่างทำ)' }
   }
 
+  /**
+   * โหมดแบ่งเพจ: เพจของคลิปถัดไปตามลำดับ (pageSequence) — คืน [key] หนึ่งเพจ
+   * ทุกเพจหรือยังไม่ได้ตั้งจำนวน → null (posting เลือกทุกเพจที่รับหมวดของคลิปเอง)
+   */
+  function pagesForNextClip() {
+    if (settings.postPages !== 'split') return null
+    let keys = []
+    try {
+      keys = allTargets(loadAccounts())
+    } catch {}
+    const seq = pageSequence(settings.pageQuota, keys)
+    if (!seq.length) return null
+    const key = seq[(state.pageIndex ?? 0) % seq.length]
+    state.pageIndex = (state.pageIndex ?? 0) + 1
+    return [key]
+  }
+
   function finishRun(result, now = Date.now()) {
     state.history.push({ ...result, batch: state.batch, startedAt: state.run.startedAt, endedAt: now, language: state.run.language })
     state.history = state.history.slice(-40)
@@ -192,7 +224,8 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     }
     // คลิปเสร็จ → จ่อคิวโพสต์ทันที (posting.enqueueAuto ต่อสายมาจาก server.js)
     if (result.ok && result.slug && settings.autoPost !== 'off' && api.onClipReady) {
-      Promise.resolve(api.onClipReady(result.slug, settings.autoPost))
+      const pages = pagesForNextClip()
+      Promise.resolve(api.onClipReady(result.slug, settings.autoPost, pages))
         .catch((err) => log(`ผลิตต่อเนื่อง: ส่ง "${result.title ?? result.slug}" เข้าคิวโพสต์ไม่ได้ — ${err.message}`))
     }
     const name = result.title ? `"${result.title}"` : 'คลิป'
@@ -280,21 +313,27 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
   function postInfo() {
     let queue = []
     let targets = 0
+    let pages = []
     try {
       queue = loadQueue()
-      targets = allTargets(loadAccounts()).length
+      const accounts = loadAccounts()
+      pages = allTargets(accounts).map((key) => {
+        const { kind, account } = findTarget(accounts, key)
+        return { key, kind, name: account?.name ?? key } // ชื่อเพจ/ช่องเท่านั้น ไม่ส่ง token
+      })
+      targets = pages.length
     } catch {}
     const bySlug = new Map(queue.filter((q) => q.status !== 'removed').map((q) => [q.slug, q]))
     const history = state.history.slice(-10).reverse().map((h) => {
       const q = h.slug && bySlug.get(h.slug)
       return q ? { ...h, post: { status: q.status, scheduleAt: q.scheduleAt ?? null, ai: q.ai?.status === 'done' ? q.ai.verdict : q.ai?.status ?? null } } : h
     })
-    return { history, targets }
+    return { history, targets, pages }
   }
 
   function view() {
-    const { history, targets } = postInfo()
-    return { settings, state: { ...state, history }, postTargets: targets, languages: LANGUAGES, now: Date.now() }
+    const { history, targets, pages } = postInfo()
+    return { settings, state: { ...state, history }, postTargets: targets, postPages: pages, languages: LANGUAGES, now: Date.now() }
   }
 
   async function handle(req, res, path) {
@@ -311,6 +350,7 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     }
     if (path === '/api/production/start') {
       if (body.settings) settings = cleanSettings(body.settings, settings)
+      if (categoryOf(loadConfig().script.genre)?.id === 'self' && !selfMonkReady()) return json(res, 400, { error: SELF_NOT_READY }), true
       startBatch()
       tick()
       return json(res, 200, view()), true

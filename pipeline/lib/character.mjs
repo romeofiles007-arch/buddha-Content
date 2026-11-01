@@ -13,7 +13,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdir
 import { join, extname, basename } from 'node:path'
 import { ROOT } from './config.mjs'
 import { readProfile, profileImages, refDir } from './clip_profile.mjs'
-import { ART_STYLES } from '../../extension/prompts.js'
+import { ART_STYLES, selfMonkName } from '../../extension/prompts.js'
+import { readSelfMonk, SELF_DIR } from './self_monk.mjs'
 
 export const CHARACTER_DIR = join(ROOT, 'characters', 'current')
 const FILE = join(CHARACTER_DIR, 'character.json')
@@ -75,6 +76,12 @@ export function clearCharacter() {
  */
 export function activeCharacter(slug) {
   const profile = slug ? readProfile(slug) : null
+  // โหมดพระสอนธรรม: ตัวหลักคือพระผู้ใช้เอง (รูปจาก "พระของฉัน") — ไม่ใช้ตัวละครของฉัน
+  if (profile?.category === 'self') {
+    const m = readSelfMonk()
+    const name = selfMonkName(profile)
+    return { enabled: true, description: [`พระผู้สอนในคลิป: ${name} (ตัวละคร @monk)`, m.description].filter(Boolean).join(' · '), images: m.images, dir: SELF_DIR, selfMonk: name, selfNote: m.description }
+  }
   const refs = profileImages(profile, slug)
   if (refs.length && profile.monk) {
     return { enabled: true, description: `พระเกจิของคลิปนี้: ${profile.monk.name} (ตัวละคร @monk)`, images: refs.map((f) => basename(f)), dir: refDir(slug), monk: profile.monk.name }
@@ -88,7 +95,7 @@ export function activeCharacter(slug) {
 }
 
 /** หมวดที่ตัวละครหลักต้องเป็นการ์ตูนเต็มตัวเสมอ (พระพุทธเจ้า/พระเกจิ ห้ามเป็นตัวก้าง) */
-const fullBodyOf = (c, profile) => !!c?.images.length || profile?.category === 'buddha' || profile?.category === 'monk'
+const fullBodyOf = (c, profile) => !!c?.images.length || ['buddha', 'monk', 'self'].includes(profile?.category)
 
 /** รูปสำหรับแนบไปกับงาน (ChatGPT / Flow) */
 export function characterAttachments(c = activeCharacter()) {
@@ -104,6 +111,14 @@ export function characterAttachments(c = activeCharacter()) {
 export function characterRule(c = activeCharacter()) {
   if (!c) return ''
   const lines = ['- ตัวละครหลักของคลิปนี้กำหนดไว้แล้ว — ใช้ตัวละครนี้แทนตัวละครตัวอย่างใน Blueprint (กฎอื่นของ Blueprint ใช้เหมือนเดิม)']
+  if (c.selfMonk) {
+    lines.push(c.images.length
+      ? `- รูปที่แนบ ${c.images.length} รูปคือภาพจริงของ${c.selfMonk} พระผู้สอนในคลิปนี้: เขียน Character Bible ของ @monk ตามรูปหน้า ใบหน้า วัย รูปร่าง ศีรษะโกน แว่นตา (ถ้ามี) และสีจีวรในรูปให้ละเอียด เป็นการ์ตูนเต็มตัวหน้าเหมือนท่าน อย่างเคารพตามกฎ SACRED FIGURES`
+      : `- ${c.selfMonk} พระผู้สอนในคลิปนี้ (@monk): การ์ตูนเต็มตัว ห่มจีวร สงบ เมตตา อย่างเคารพตามกฎ SACRED FIGURES`)
+    if (c.selfNote) lines.push(`- รายละเอียดเพิ่มเติมของท่าน: ${c.selfNote}`)
+    lines.push('- ตัวละครอื่น (ญาติโยมในตัวอย่าง) ออกแบบให้เข้ากับสไตล์เดียวกัน')
+    return lines.join('\n')
+  }
   if (c.monk) {
     lines.push(`- รูปที่แนบ ${c.images.length} รูปคือภาพจริงของ${c.monk}: เขียน Character Bible ของ @monk ตามใบหน้า รูปร่าง วัย สีจีวร และอัฐบริขารในรูป เป็นการ์ตูนเต็มตัวอย่างเคารพตามกฎ SACRED FIGURES`)
     lines.push('- ตัวละครอื่น (ญาติโยม ลูกศิษย์ คนดู) ออกแบบให้เข้ากับสไตล์เดียวกัน')
@@ -143,6 +158,7 @@ export function bodyStyleFlowNote(c = activeCharacter(), profile = null) {
 /** ข้อความต่อท้ายคำสั่ง Flow เมื่อแนบรูปตัวละคร */
 export function characterFlowNote(c = activeCharacter()) {
   if (!c?.images.length) return ''
+  if (c.selfMonk) return `รูปที่แนบคือภาพจริงของ${c.selfMonk} พระผู้สอนในคลิป (ตัวละคร @monk) — วาดเป็นการ์ตูนเต็มตัวหน้าเหมือนท่าน ห่มจีวร อย่างเคารพ ล็อกใบหน้า วัย รูปร่าง และสีจีวรตามรูปในทุกภาพ ห้ามวาดล้อเลียน`
   if (c.monk) return `รูปที่แนบคือภาพจริงของ${c.monk} (ตัวละคร @monk) — วาดเป็นการ์ตูนเต็มตัวอย่างเคารพ ล็อกใบหน้า วัย รูปร่าง และสีจีวรตามรูปในทุกภาพ ห้ามวาดล้อเลียน`
   if (c.buddha) return 'รูปที่แนบคือพระพุทธรูป ใช้เป็นแบบของพระพุทธเจ้า (@buddha) — วาดเป็นการ์ตูนเต็มตัวที่มีชีวิตอย่างเคารพ พระพักตร์สงบ พระเกศาขมวด จีวรเหลืองทอง มีรัศมีทองรอบพระเศียร หน้าตาเดียวกันทุกภาพ ห้ามวาดล้อเลียน'
   return 'รูปที่แนบคือตัวละครหลัก ล็อกหน้าตา ทรงผม สี และชุดตามรูปนี้ในทุกภาพ'

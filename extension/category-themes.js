@@ -23,6 +23,8 @@ export const CATEGORY_THEMES = {
     dark:palette('dark',{bg:'#1e1d17',panel:'#2b2a21',ink:'#f5efda',muted:'#c7c0a7',accent:'#d3c28b',line:'#9a8e70',pick:'#403c2b',wood:'#242319',gold:'#d3c28b'}),
   },
 }
+// โหมดพระสอนธรรม (ตัวเราเอง) — ใช้ฉากและสีโทนพระแบบหมวดพระเกจิ
+CATEGORY_THEMES.self = { ...CATEGORY_THEMES.monk, title:'พระสอนธรรม (ตัวเราเอง)' }
 
 export const themeKey = value => categoryOf(value)?.id ?? 'mix'
 export const categoryGenre = value => categoryOf(value)?.name ?? 'mix'

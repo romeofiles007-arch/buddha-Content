@@ -14,7 +14,7 @@ import { ROOT } from '../pipeline/lib/config.mjs'
 import { run } from '../pipeline/lib/ffmpeg.mjs'
 import { clipSource, readPost } from '../pipeline/lib/post.mjs'
 import {
-  POSTING_DIR, loadAccounts, updateAccounts, publicAccounts, allTargets, findTarget, newId, cleanSlots, targetsFor, cleanCategories, CATEGORIES,
+  POSTING_DIR, loadAccounts, updateAccounts, publicAccounts, allTargets, findTarget, newId, cleanSlots, targetsFor, cleanCategories, CATEGORIES, AI_CATEGORIES, clipCategory,
   loadQueue, saveQueue, newItem, postFromFile, cleanHashtags, videosToEnroll, caption, nextFreeSlot, dueItems,
   frameTimes, qcPrompt, parseQc, STATUS, nextDriveUpload, driveToTrash,
 } from '../pipeline/lib/posting.mjs'
@@ -102,16 +102,32 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
    *   mode 'ai'  = AI ตรวจก่อน ผ่านแล้วลงช่องเวลาถัดไปเอง (ไม่ผ่าน → รอคนตรวจ)
    *   mode 'now' = ลงช่องเวลาถัดไปทันที ไม่ตรวจ
    */
-  async function enqueueAuto(slug, mode = 'ai') {
+  /**
+   * pages = ปลายทางที่ผลิตต่อเนื่องแบ่งให้คลิปนี้ (โหมด "แบ่งเพจ") — ใช้ตามนั้นเลย ไม่กรองตามหมวด เพราะผู้ใช้เลือกเอง
+   * ไม่ส่งมา = ทุกเพจ/ช่องที่รับหมวดของคลิป · หมวดอ่านจากโปรไฟล์ของคลิปเลย (เดิมไม่มีหมวด → เพจที่ตั้งหมวดไว้ไม่รับ คลิปค้างในคิว)
+   */
+  async function enqueueAuto(slug, mode = 'ai', pages = null) {
     const video = (await videosOf()).find((v) => v.slug === slug)
     const main = video?.files?.find((f) => f.name === `${slug}.mp4`) ?? video?.files?.[0]
     if (!main) throw new Error('ไม่พบไฟล์วิดีโอของคลิปนี้')
     const queue = loadQueue()
+    const accounts = loadAccounts()
+    const known = new Set(allTargets(accounts))
+    const chosen = (Array.isArray(pages) ? pages : []).filter((k) => known.has(k))
     let item = queue.find((q) => q.slug === slug && q.file === main.name)
     if (!item) {
-      item = newItem({ slug, file: main.name, title: video.title ?? slug, post: readPost(slug), targets: targetsFor(loadAccounts(), null) })
+      item = newItem({ slug, file: main.name, title: video.title ?? slug, post: readPost(slug) })
       queue.push(item)
     }
+    if (!item.category) {
+      const category = clipCategory(slug)
+      if (category) Object.assign(item, { category, categoryBy: 'clip' })
+    }
+    if (chosen.length) {
+      item.targets = chosen
+      item.targetsEdited = true // AI ระบุหมวดทีหลังก็ไม่เปลี่ยนเพจที่แบ่งไว้
+      note(item, `แบ่งเพจ: ${chosen.map((k) => findTarget(accounts, k).account?.name ?? k).join(', ')}`)
+    } else if (!item.targetsEdited) item.targets = targetsFor(accounts, item.category)
     item.auto = mode
     note(item, mode === 'now' ? 'ผลิตต่อเนื่อง: เข้าคิว → ตั้งเวลาโพสต์เองทันที' : 'ผลิตต่อเนื่อง: เข้าคิว → AI ตรวจ ผ่านแล้วตั้งเวลาเอง')
     saveQueue(queue)
@@ -200,7 +216,8 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         item.ai = { status: 'done', ...parseQc(job.result?.text), checkedAt: Date.now() }
         note(item, `AI ตรวจแล้ว: ${item.ai.verdict === 'pass' ? 'ผ่าน' : 'ควรแก้'} ${item.ai.score}/100`)
         // หมวดจาก AI — ไม่ทับหมวดที่ผู้ใช้เลือกเอง · ปลายทางเลือกให้ใหม่ถ้าผู้ใช้ยังไม่ได้ติ๊กเอง
-        if (item.ai.category && item.categoryBy !== 'manual') {
+        // คลิปโหมดเฉพาะ (พระสอนธรรม) ได้หมวดจากคลิปเอง — AI เลือกหมวดนี้ไม่ได้ จึงห้ามทับ
+        if (item.ai.category && item.categoryBy !== 'manual' && !(item.category && !AI_CATEGORIES.includes(item.category))) {
           item.category = item.ai.category
           item.categoryBy = 'ai'
           if (item.status === 'review' && !item.targetsEdited) item.targets = targetsFor(accounts, item.category)

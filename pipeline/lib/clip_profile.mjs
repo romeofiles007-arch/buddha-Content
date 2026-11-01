@@ -14,6 +14,7 @@ import { join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { ROOT, loadConfig } from './config.mjs'
 import { categoryOf, monkInTitle, ART_STYLES, BUDDHA_NARRATIONS } from '../../extension/prompts.js'
+import { readSelfMonk, selfMonkReady, SELF_NOT_READY } from './self_monk.mjs'
 
 const UA = { 'user-agent': 'DhammaAuto/1.0 (personal Dhamma video tool; Wikimedia API)' }
 const WIKI_API = 'https://th.wikipedia.org/w/api.php'
@@ -51,8 +52,10 @@ function clipStyle(category, title) {
   const config = loadConfig()
   const pick = (list) => list[Math.floor(Math.random() * list.length)]
   // ผลิตต่อเนื่องส่ง CLIP_ART_STYLE / CLIP_NARRATION มาแทนตั้งค่าคลิป (สุ่มต่อคลิปโดยไม่แก้ค่าของผู้ใช้)
+  // โหมดพระสอนธรรม: การ์ตูนหน้าเหมือนพระเสมอ (ลายเส้นภาพวาดเป็นสัดส่วนสมจริง ไม่ใช่การ์ตูน — ผู้ใช้เลือกการ์ตูน)
+  if (category === 'self') return { artStyle: 'doodle' }
   const art = process.env.CLIP_ART_STYLE || config.art?.style
-  const artStyle = ART_STYLES[art] && art !== 'random' ? art : art === 'random' ? pick(Object.keys(ART_STYLES).filter((k) => k !== 'random')) : 'doodle'
+  const artStyle =ART_STYLES[art] && art !== 'random' ? art : art === 'random' ? pick(Object.keys(ART_STYLES).filter((k) => k !== 'random')) : 'doodle'
   if (category !== 'buddha') return { artStyle }
   const want = process.env.CLIP_NARRATION || config.script?.buddhaNarration
   const t = String(title ?? '')
@@ -215,7 +218,11 @@ export async function ensureProfile(slug, { title, genre, log = console.log } = 
   let profile = readProfile(slug)
   if (!profile) {
     const category = categoryOf(genre)?.id ?? detectCategory(title)
+    // โหมดพระสอนธรรมต้องมีรูปหน้าพระก่อน — ไม่งั้นได้พระหน้าใครก็ไม่รู้
+    if (category === 'self' && !selfMonkReady()) throw new Error(SELF_NOT_READY)
     profile = { category, title, ...clipStyle(category, title) }
+    // จำชื่อพระไว้กับคลิป (เปลี่ยนชื่อในแผงข้างทีหลัง คลิปเดิมยังใช้ชื่อเดิม)
+    if (category === 'self') profile.self = { name: readSelfMonk().name }
     if (category === 'monk') {
       const monk = monkFromTitle(title)
       // หมวดพระเกจิแต่ชื่อเรื่องไม่มีชื่อท่าน → ถือเป็นธรรมะทั่วไป (ไม่มีใครให้ดึงภาพ)

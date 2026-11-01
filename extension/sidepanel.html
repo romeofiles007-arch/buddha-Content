@@ -234,6 +234,29 @@
       <select id="topicGenre" aria-label="หมวดคลิป"></select>
     </label>
 
+  <!-- โหมดพระสอนธรรม (ตัวเราเอง): รูปหน้าพระ + ชื่อในคลิป — แสดงเฉพาะเมื่อเลือกโหมดนี้ -->
+  <style>
+    .selfMonkBox { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; background: var(--panel); }
+    .selfMonkBox h2 { font-size: 15px; margin: 0 0 4px; }
+    .selfMonkBox input[type="text"] { width: 100%; }
+  </style>
+  <section class="selfMonkBox" id="selfMonkBox" aria-labelledby="selfMonkTitle" hidden>
+    <h2 id="selfMonkTitle">🙏 พระของฉัน</h2>
+    <p class="hint" style="margin:0 0 8px">ทุกคลิปในโหมดนี้เป็นท่านสอนธรรมเอง ใช้ "อาตมา" · วาดเป็นการ์ตูนหน้าเหมือนท่านจากรูปนี้ · ไม่ปนกับหมวดอื่น</p>
+    <div class="pasteZone" id="selfPaste" tabindex="0" role="button" aria-describedby="selfHint">
+      📋 คลิกตรงนี้แล้วกด <kbd>Ctrl</kbd>+<kbd>V</kbd> วางรูปหน้าพระ
+      <span class="sub">หรือ <label class="linkish">เลือกไฟล์<input type="file" id="selfFile" accept="image/png,image/jpeg,image/webp" multiple hidden /></label> · 1–4 รูป หน้าชัด เห็นจีวร</span>
+    </div>
+    <ul class="charThumbs" id="selfThumbs"></ul>
+    <label class="pick" style="margin-top:8px">ชื่อที่ใช้ในคลิป
+      <input type="text" id="selfName" maxlength="80" placeholder="เช่น พระอาจารย์สมชาย (ไม่บังคับ)" />
+    </label>
+    <label class="pick">รายละเอียดเพิ่มเติม
+      <textarea id="selfDesc" rows="2" maxlength="1000" placeholder="ไม่บังคับ เช่น ห่มจีวรสีกรัก ใส่แว่นกรอบดำ รูปร่างผอม"></textarea>
+    </label>
+    <p class="hint" id="selfHint" style="margin:4px 0 0"></p>
+  </section>
+
   <!-- ฉากวัดและตัวละคร 12 เฟรมอยู่ในส่วนขยาย -->
   <section class="studioHero" id="studioHero" aria-label="สถานะทีมงาน">
     <div class="heroBanner">
@@ -347,6 +370,7 @@
       </style>
       <div class="pick">สุ่มอะไรบ้าง <span class="hint" style="margin:0">(ไม่ติ๊ก = ใช้ค่าที่ตั้งไว้)</span>
         <label class="prodCheck"><input type="checkbox" id="prodRandGenre" /> หมวดและหัวข้อ</label>
+        <p class="hint" id="prodGenreLock" style="margin:0 0 6px 26px" hidden>🙏 โหมดพระสอนธรรมเลือกไว้ — ทุกคลิปเป็นท่านสอนธรรม ไม่สุ่มหมวด (สุ่มหัวข้อในโหมดนี้)</p>
         <label class="prodCheck"><input type="checkbox" id="prodRandArt" /> ลายเส้นของภาพ</label>
         <label class="prodCheck"><input type="checkbox" id="prodRandNarration" /> วิธีเล่า หมวด 1</label>
         <div class="prodCheck"><label class="prodCheck" style="margin:0"><input type="checkbox" id="prodRandLang" /> ภาษา:</label>
@@ -364,6 +388,14 @@
           <button type="button" data-value="now">ตั้งเวลาทันที</button>
         </div>
         <span class="hint" id="prodPostHint" style="margin:2px 0 0">คลิปเข้าคิวทันทีที่เสร็จ แล้วลงช่องเวลาโพสต์ถัดไปตามที่ตั้งในหน้า 📣</span>
+      </div>
+      <div class="pick" id="prodPagesRow">โพสต์ลงเพจ
+        <div class="seg" id="prodPages" role="group" aria-label="โพสต์ลงเพจไหน">
+          <button type="button" data-value="all" title="ทุกคลิปลงทุกเพจ/ช่องที่รับหมวดของคลิปนั้น">ทุกเพจ</button>
+          <button type="button" data-value="split" title="กำหนดว่าแต่ละเพจได้กี่คลิป คลิปละเพจเดียว">แบ่งเพจ</button>
+        </div>
+        <div id="prodQuota" style="display:none;grid-template-columns:1fr 72px;gap:6px 8px;align-items:center;margin-top:6px"></div>
+        <span class="hint" id="prodPagesHint" style="margin:2px 0 0"></span>
       </div>
       <div class="status" id="prodStatus" role="status" aria-live="polite" style="margin-top:8px"></div>
       <div class="controls" id="prodReady" style="display:none;margin:8px 0 0;gap:6px;flex-wrap:wrap">

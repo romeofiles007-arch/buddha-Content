@@ -188,7 +188,7 @@ const ui = createUi({ jobs, enqueue, lastPoll, token: TOKEN, port: PORT, json, r
 // โหมดโพสต์อัตโนมัติ (แผนกนกนางนวล) — ตัวตั้งเวลาโพสต์วนเฉพาะ bridge ตัวจริง
 const posting = createPosting({ jobs, enqueue, json, readBody, log, port: PORT, token: TOKEN, pipelineBusy: () => ui.busy(), scheduler: PORT === 8785 })
 // 🏭 ผลิตต่อเนื่อง: คลิปเสร็จ → จ่อคิวโพสต์ทันที
-ui.production.onClipReady = (slug, mode) => posting.enqueueAuto(slug, mode)
+ui.production.onClipReady = (slug, mode, pages) => posting.enqueueAuto(slug, mode, pages)
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
