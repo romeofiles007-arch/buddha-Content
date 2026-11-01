@@ -724,7 +724,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         try {
           return json(res, 200, { ...(await updater.apply()), installed: installedVersion() }), true
         } catch (err) {
-          return json(res, 409, { error: err.message, ...updater.snapshot(), installed: installedVersion() }), true
+          // error ไว้ท้ายสุด — snapshot() มี error: null ของตัวเอง ถ้าวางก่อนจะทับเหตุผล แผงเห็นแค่ "ตอบ 409"
+          return json(res, 409, { ...updater.snapshot(), installed: installedVersion(), error: err.message }), true
         }
       }
 

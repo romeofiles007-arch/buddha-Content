@@ -138,6 +138,15 @@ export function installTree(src, cwd, previousFiles = []) {
 }
 
 /** fetchFn ให้เทสต์แทนที่ได้ · followUps มาจาก update.js (คำเตือนตามไฟล์ที่เปลี่ยน) */
+/**
+ * อัปเดตไม่ได้เพราะมีงานค้าง — busy() คืนข้อความว่างานอะไร (เช่น "AI กำลังตรวจคลิปในคิวโพสต์") หรือแค่ true
+ * บอกให้ชัด ผู้ใช้จะได้รู้ว่ารออะไร (เดิมบอกแค่ "มีงานค้าง" ทั้งที่ไม่ได้ทำคลิปอยู่) · ใช้ร่วมกับตัวอัปเดตแบบ git (update.js)
+ */
+export function busyMessage(why) {
+  const what = typeof why === 'string' && why ? why : 'กำลังทำคลิปหรือมีงานค้างอยู่'
+  return `${what} — อัปเดตเมื่องานนี้เสร็จ (ลองกดใหม่อีกสักครู่) หรือกดหยุดก่อน · อัปเดตกลางงานโปรแกรมจะรีสตาร์ทระหว่างทำ`
+}
+
 export function createPackageUpdater({ log = () => {}, busy = () => false, cwd, schedule = true, fetchFn = fetch, followUps = () => [] }) {
   const version = () => readVersion(cwd)
   const state = {
@@ -208,7 +217,8 @@ export function createPackageUpdater({ log = () => {}, busy = () => false, cwd, 
     await check()
     if (state.error) throw new Error(state.error)
     if (!state.behind) return snapshot()
-    if (busy()) throw new Error('กำลังทำคลิปหรือมีงานค้างอยู่ — อัปเดตเมื่อทำเสร็จหรือกดหยุดก่อน (อัปเดตกลางงานโปรแกรมจะรีสตาร์ทระหว่างทำ)')
+    const why = busy()
+    if (why) throw new Error(busyMessage(why))
 
     const v = version()
     const sha = state.latest
