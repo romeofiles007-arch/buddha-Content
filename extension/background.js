@@ -324,8 +324,40 @@ async function checkAutopilot() {
   })
 }
 
+/**
+ * โพสต์อัตโนมัติ: โพสต์เสร็จ / พลาดบางที่ / AI ให้คลิปรอคนดู → แจ้งเตือนบนเครื่อง บอกว่าโพสต์ไปไหนบ้าง (แม้ปิดแผงข้าง)
+ * จำเวลาที่ถามล่าสุดใน storage — ครั้งแรกเริ่มนับจากตอนนี้ ไม่เด้งของเก่าย้อนหลัง
+ */
+const POST_ALERT = {
+  posted: '📣 โพสต์แล้ว',
+  failed: '⚠️ โพสต์ไม่สำเร็จบางที่',
+  held: '🔍 AI ให้คลิปนี้รอคนดูก่อนโพสต์',
+}
+async function checkPosting() {
+  const { base, token, enabled } = await settings()
+  if (!enabled || !token) return
+  const { postingSeen } = await chrome.storage.local.get('postingSeen')
+  const r = await fetch(`${base}/api/posting/recent?since=${postingSeen ?? Date.now()}`, { headers: { 'x-bridge-token': token } })
+    .then((res) => (res.ok ? res.json() : null))
+    .catch(() => null)
+  if (!r) return
+  await chrome.storage.local.set({ postingSeen: r.now })
+  for (const e of (r.events ?? []).slice(-5)) { // ปิดเครื่องไปนาน — เด้งแค่ 5 อันล่าสุด ที่เหลือดูในแท็บ "โพสต์แล้ว"
+    chrome.notifications.create(`post:${e.kind}:${e.id}:${e.at}`, {
+      type: 'basic',
+      iconUrl: 'icons/icon-128.png',
+      title: POST_ALERT[e.kind] ?? '📣 โพสต์อัตโนมัติ',
+      message: `${e.title}\n${e.text}`,
+      priority: e.kind === 'posted' ? 0 : 2,
+      requireInteraction: e.kind !== 'posted', // พลาด/รอคนดู ต้องค้างไว้ให้เห็น
+    })
+  }
+}
+
 chrome.notifications?.onClicked.addListener(async (id) => {
   chrome.notifications.clear(id)
+  // แจ้งเตือนของโพสต์อัตโนมัติ → แผงข้างเปิดหน้าโพสต์ที่แท็บ "โพสต์แล้ว" (รอตรวจ ถ้าเป็นคลิปที่ AI ให้รอ)
+  if (id.startsWith('post:')) await chrome.storage.session.set({ openPosting: id.split(':')[1] === 'held' ? 'review' : 'posted' }).catch(() => {})
   const win = await chrome.windows.getLastFocused().catch(() => null)
   if (win) chrome.sidePanel.open({ windowId: win.id }).catch(() => {})
 })
@@ -341,6 +373,7 @@ chrome.runtime.onStartup.addListener(pollLoop)
 chrome.alarms?.onAlarm.addListener(() => {
   pollLoop()
   checkAutopilot()
+  checkPosting()
   checkExtensionUpdate()
 })
 

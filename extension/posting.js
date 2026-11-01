@@ -25,6 +25,35 @@ const toLocalInput = (ms) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+/**
+ * กด "เชื่อมต่อ" (Drive/YouTube) แล้วต้องบันทึก Google client ที่กรอกไว้ก่อนไหม
+ *   typed — ค่าในช่องตอนนี้ · saved — ค่าที่ bridge มี (secret เป็นแบบปิดบัง ••••xxxx)
+ *   คืน {} = เชื่อมต่อได้เลย · {save} = บันทึกค่านี้ก่อน · {error} = กรอกไม่ครบ
+ */
+export function clientToSave(typed, saved = {}) {
+  const clientId = String(typed.clientId ?? '').trim()
+  const clientSecret = String(typed.clientSecret ?? '').trim()
+  const newSecret = !!clientSecret && !clientSecret.startsWith('••••')
+  if (saved.ready && clientId === saved.clientId && !newSecret) return {}
+  if (!clientId && !newSecret) return { error: 'ใส่ Client ID และ Client secret ก่อน แล้วกดเชื่อมต่ออีกครั้ง' }
+  if (!clientId) return { error: 'ใส่ Client ID ด้วย (ลงท้ายด้วย .apps.googleusercontent.com)' }
+  if (!newSecret && !saved.clientSecret) return { error: 'ใส่ Client secret ด้วย (ขึ้นต้นด้วย GOCSPX-)' }
+  return { save: { clientId, clientSecret } }
+}
+
+/** ＋ เพิ่มเวลา: เวลาที่เสนอให้ — ต่อจากเวลาสุดท้าย 3 ชั่วโมง (วนข้ามเที่ยงคืน) ไม่ซ้ำของเดิม */
+export function suggestSlot(slots) {
+  const mins = slots.map((s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m }).sort((a, b) => a - b)
+  if (!mins.length) return '12:00'
+  const taken = new Set(mins)
+  let t = mins.at(-1)
+  for (let i = 0; i < 8; i++) {
+    t = (t + 180) % 1440
+    if (!taken.has(t)) break
+  }
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
+}
+
 export function initPosting({ api, localApp }) {
   const root = document.getElementById('posting')
   const body = document.getElementById('postingBody')
@@ -64,7 +93,9 @@ export function initPosting({ api, localApp }) {
     }
   }
 
-  async function open() {
+  /** startTab — เปิดที่แท็บไหน (เช่น 'posted' จากบรรทัด "โพสต์ล่าสุด") · ไม่ส่ง = แท็บเดิม */
+  async function open(startTab) {
+    if (startTab) tab = startTab
     root.hidden = false
     document.getElementById('closePosting').focus()
     setStatus('กำลังโหลด…', 'busy')
@@ -91,6 +122,7 @@ export function initPosting({ api, localApp }) {
     const active = document.activeElement
     if (active && root.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return
     if (saveTimers.size || catTimers.size) return
+    if (typedUnsaved()) return
     try {
       data = await api(app, '/api/posting')
       render()
@@ -150,6 +182,38 @@ export function initPosting({ api, localApp }) {
     else panel = renderSettings()
 
     body.replaceChildren(hero, tabs, statusEl, panel)
+    // จำค่าตอนวาด — ใช้บอกว่าผู้ใช้พิมพ์อะไรค้างไว้ที่ยังไม่บันทึก
+    for (const i of fieldsOf(body)) i.dataset.saved = i.value
+  }
+
+  // ช่องข้อความในหน้าตั้งค่า (Page ID, โทเค็น, Client ID/secret, ช่องเวลา)
+  const fieldsOf = (node) => node.querySelectorAll('input[type=text], input[type=password]')
+  /** มีค่าที่พิมพ์/วางไว้แต่ยังไม่บันทึก — วาดใหม่อัตโนมัติจะลบทิ้ง (เคยลบ Client ID ที่วางไว้ทุก 6 วินาที) */
+  // เฉพาะแท็บตั้งค่า — ช่องในแท็บรอตรวจบันทึกเองอยู่แล้ว (drafts/saveTimers)
+  const typedUnsaved = () => tab === 'settings' && [...fieldsOf(body)].some((i) => i.dataset.saved !== undefined && i.value !== i.dataset.saved)
+
+  /**
+   * ปุ่มเชื่อมต่อ Drive/YouTube: บันทึก Google client ที่กรอกไว้ให้ก่อน (ไม่ต้องหาปุ่มบันทึกเอง) แล้วเปิดหน้าขอสิทธิ์
+   * note — ข้อความใต้ปุ่ม ผู้ใช้เห็นทันที (บรรทัดสถานะอยู่บนสุดของหน้า มือถือมองไม่เห็น)
+   *        หาใหม่ทุกครั้ง เพราะบันทึกสำเร็จแล้วหน้าถูกวาดใหม่
+   */
+  async function saveThenConnect({ typed, saved, savePath, connectPath, waitText, note }) {
+    const show = (text) => {
+      const msg = body.querySelector(`[data-note="${note}"]`)
+      if (msg) Object.assign(msg, { textContent: text, hidden: !text })
+      if (text) setStatus(text, 'error')
+    }
+    const plan = clientToSave(typed, saved)
+    if (plan.error) return show(plan.error)
+    try {
+      show('')
+      if (plan.save) await call(savePath, plan.save, 'บันทึก Google client แล้ว')
+      const { url } = await api(app, connectPath, {})
+      setStatus(waitText, 'busy')
+      chrome.tabs.create({ url })
+    } catch (err) {
+      show(err.message) // call() วาดหน้าใหม่ไม่ได้ตอนล้ม — ช่องที่กรอกและข้อความนี้ยังอยู่
+    }
   }
 
   // ── รอตรวจ ──
@@ -435,22 +499,54 @@ export function initPosting({ api, localApp }) {
     return d
   }
 
+  // Google ขึ้น "redirect_uri_mismatch" = สร้าง client เป็นแบบ Web application (Desktop app รับที่อยู่ 127.0.0.1 ทุกพอร์ตเอง)
+  const redirectHelp = () => el('li', {}, 'ขึ้น "redirect_uri_mismatch" (คำขอของแอปนี้ไม่ถูกต้อง) = เลือกประเภทผิดเป็น Web application → สร้างใหม่เป็น Desktop app แล้ววาง Client ID/secret ใหม่ · หรือเพิ่ม Authorized redirect URI ของ client เดิมเป็น ',
+    el('code', {}, data.redirectUri ?? 'http://127.0.0.1:<พอร์ต>'), ' (ไม่มี / ท้าย)')
+
   function renderSettings() {
     const s = data.settings
     const toggle = (key, label, help, checked) => el('label', { className: 'pSwitch' },
       el('input', { type: 'checkbox', checked, on: { change: (e) => call('/api/posting/settings', { [key]: e.target.checked }, 'บันทึกแล้ว').catch(() => {}) } }),
       el('span', {}, label, el('small', {}, help)))
-    const slots = el('input', { type: 'text', value: (s.slots ?? []).join(', '), placeholder: '12:00, 19:00' })
+    // ช่องเวลาประจำวัน: ตาราง เลือกเวลา/ลบ/เพิ่ม แล้วบันทึกเองทันที (bridge เรียงและตัดตัวซ้ำให้)
+    const list = s.slots ?? []
+    const saveSlots = (next, ok) => call('/api/posting/settings', { slots: next }, ok).catch(() => {})
+    const slotTable = el('div', { className: 'pSlotBox' },
+      el('div', { className: 'pSlotHead' }, 'เวลาโพสต์ประจำวัน', el('small', {}, 'โพสต์ทุกวันตามเวลาเหล่านี้ · แก้แล้วบันทึกเอง')),
+      el('ol', { className: 'pSlots' }, list.map((t, i) => el('li', {},
+        el('span', { className: 'pSlotN' }, `ช่อง ${i + 1}`),
+        el('input', {
+          type: 'time', value: t, step: 300, required: true, 'aria-label': `เวลาช่อง ${i + 1}`,
+          on: { change: (e) => { if (e.target.value) saveSlots(list.map((x, j) => (j === i ? e.target.value : x)), `เปลี่ยนเป็น ${e.target.value} น. แล้ว`) } },
+        }),
+        el('button', {
+          type: 'button', className: 'ghost pSlotDel', 'aria-label': `ลบเวลา ${t}`, title: list.length <= 1 ? 'ต้องมีอย่างน้อย 1 เวลา' : `ลบเวลา ${t}`,
+          disabled: list.length <= 1,
+          on: { click: () => saveSlots(list.filter((_, j) => j !== i), `ลบเวลา ${t} แล้ว`) },
+        }, '✕'),
+      ))),
+      el('button', { type: 'button', className: 'ghost', on: { click: () => { const t = suggestSlot(list); saveSlots([...list, t], `เพิ่มเวลา ${t} น. แล้ว — แตะที่เวลาเพื่อเปลี่ยนได้`) } } }, '＋ เพิ่มเวลา'),
+    )
+
+    // ปุ่มเดียวแทนการเปิด 3 สวิตช์เอง: เปิดโหมด + AI ตรวจเอง + อนุมัติเองเมื่อ AI ให้ผ่าน
+    const allAuto = !!s.enabledAt && !!s.autoCheck && !!s.autoApprove
+    const fullAuto = el('label', { className: 'pSwitch pMain' },
+      el('input', {
+        type: 'checkbox', checked: allAuto,
+        on: { change: (e) => call('/api/posting/settings', e.target.checked ? { enabled: true, autoCheck: true, autoApprove: true } : { autoApprove: false },
+          e.target.checked ? 'เปิดออโต้ทั้งหมดแล้ว — คลิปที่ผลิตเสร็จจะตรวจและโพสต์เองตามเวลาโพสต์' : 'ปิดออโต้แล้ว — คลิปที่ AI ให้ผ่านจะรอคนกดอนุมัติ').catch(() => {}) },
+      }),
+      el('span', {}, '🤖 ออโต้ทั้งหมด',
+        el('small', {}, 'ผลิตเสร็จเข้าคิวเอง → AI ตรวจ → ผ่านแล้วโพสต์ตามเวลาโพสต์ ไปทุกเพจ/ช่องที่รับหมวดของคลิป · ไม่ผ่านรอคนดู · ไม่มีข้อความโพสต์ให้ ChatGPT เขียนให้ · โพสต์แล้วแจ้งเตือนว่าไปไหนบ้าง')))
 
     const mode = el('section', { className: 'pBox', 'aria-label': 'การทำงาน' },
       el('h3', {}, 'การทำงาน'),
+      fullAuto,
       toggle('enabled', 'เปิดโหมดโพสต์อัตโนมัติ', 'คลิปที่ทำเสร็จหลังจากนี้เข้าคิวรอตรวจเอง (คลิปเก่าเพิ่มจากคลังได้)', !!s.enabledAt),
+      toggle('autoPull', 'ดึงคลิปจากคลังเอง', `เติมคิวให้มีคลิปรอโพสต์ครบทุกเวลาโพสต์ของวัน (ตอนนี้ ${(s.slots ?? []).length} เวลา) · หยิบคลิปที่เก่าที่สุดที่ยังไม่เคยเข้าคิวก่อน · คลิปที่ตีกลับหรือเอาออกจะไม่ถูกดึงกลับมา`, !!s.autoPull),
       toggle('autoCheck', 'ให้ AI ตรวจเองเมื่อคลิปเข้าคิว', 'ใช้ ChatGPT ในแท็บเดิม · ตรวจเฉพาะตอนไม่มีงานทำคลิปค้างอยู่ ไม่แย่งคิว', !!s.autoCheck),
       toggle('autoApprove', 'อนุมัติเองเมื่อ AI ให้ผ่าน', 'คลิปที่ AI ให้ผ่านลงช่องเวลาถัดไปเลยโดยไม่ต้องกด — ปิดไว้ถ้าอยากดูทุกคลิปก่อน', !!s.autoApprove),
-      el('div', { className: 'pWhen' },
-        el('label', { className: 'pField' }, 'ช่องเวลาโพสต์ประจำวัน (คั่นด้วยจุลภาค)', slots),
-        el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/settings', { slots: slots.value }, 'บันทึกช่องเวลาแล้ว').catch(() => {}) } }, 'บันทึกช่องเวลา'),
-      ),
+      slotTable,
       el('p', { className: 'hint' }, 'โปรแกรมในเครื่องต้องเปิดอยู่ตอนถึงเวลาโพสต์ — ถ้าปิดไว้ คลิปจะโพสต์ทันทีที่เปิดโปรแกรมครั้งถัดไป'),
     )
 
@@ -507,18 +603,15 @@ export function initPosting({ api, localApp }) {
           catPicker('youtube', a))))
         : el('p', { className: 'hint' }, 'ยังไม่มีช่อง'),
       el('button', {
-        type: 'button', className: 'primary', disabled: !g.ready,
-        on: { click: async () => {
-          try {
-            const { url } = await api(app, '/api/posting/youtube/connect', {})
-            setStatus('เลือกบัญชี/ช่องในแท็บที่เปิดขึ้น แล้วกดอนุญาต — เสร็จแล้วกลับมาที่นี่', 'busy')
-            chrome.tabs.create({ url })
-          } catch (err) {
-            setStatus(err.message, 'error')
-          }
-        } },
+        type: 'button', className: 'primary',
+        on: { click: () => saveThenConnect({
+          typed: { clientId: clientId.value, clientSecret: clientSecret.value }, saved: g,
+          savePath: '/api/posting/google', connectPath: '/api/posting/youtube/connect', note: 'yt',
+          waitText: 'เลือกบัญชี/ช่องในแท็บที่เปิดขึ้น แล้วกดอนุญาต — เสร็จแล้วกลับมาที่นี่',
+        }) },
       }, '＋ เชื่อมต่อช่อง YouTube'),
-      g.ready ? null : el('p', { className: 'hint' }, 'ใส่ Google OAuth client ด้านล่างก่อน ถึงจะเชื่อมต่อช่องได้'),
+      el('p', { className: 'pWarn', 'data-note': 'yt', role: 'alert', hidden: true }),
+      g.ready ? null : el('p', { className: 'hint' }, 'กรอก Google Client ID และ Client secret ด้านล่าง แล้วกดเชื่อมต่อได้เลย'),
       el('div', { className: 'pGrid2' },
         el('label', { className: 'pField' }, 'Google Client ID', clientId),
         el('label', { className: 'pField' }, 'Client secret', clientSecret),
@@ -530,6 +623,7 @@ export function initPosting({ api, localApp }) {
           el('li', {}, 'APIs & Services → Library → เปิด YouTube Data API v3'),
           el('li', {}, 'OAuth consent screen → External → ใส่ชื่อแอป + อีเมล → เพิ่มอีเมลตัวเองเป็น Test user'),
           el('li', {}, 'Credentials → Create credentials → OAuth client ID → ประเภท Desktop app → คัดลอก Client ID และ Client secret มาวาง'),
+          redirectHelp(),
           el('li', {}, 'กด Publish app ในหน้า consent screen (เป็น In production) — ถ้าค้างเป็น Testing การเชื่อมต่อช่องจะหมดอายุทุก 7 วัน'),
         )),
       el('p', { className: 'pWarn' }, 'ข้อจำกัดของ YouTube: โปรเจกต์ Google ที่ยังไม่ผ่านการตรวจ (audit) จะถูกล็อกคลิปที่อัปโหลดผ่าน API เป็น "ส่วนตัว" และโควตาฟรีอัปโหลดได้ราววันละ 6 คลิป — ยื่นตรวจได้ที่หน้า YouTube API Services Audit'),
@@ -540,15 +634,11 @@ export function initPosting({ api, localApp }) {
     const dc = s.driveClient ?? { ready: false }
     const driveId = el('input', { type: 'text', value: dc.clientId ?? '', placeholder: '….apps.googleusercontent.com', autocomplete: 'off' })
     const driveSecret = el('input', { type: 'password', value: dc.clientSecret ?? '', placeholder: 'GOCSPX-…', autocomplete: 'off' })
-    const connectDrive = async () => {
-      try {
-        const { url } = await api(app, '/api/posting/drive/connect', {})
-        setStatus('เลือกบัญชี Google ในแท็บที่เปิดขึ้น แล้วกดอนุญาต — เสร็จแล้วกลับมาที่นี่', 'busy')
-        chrome.tabs.create({ url })
-      } catch (err) {
-        setStatus(err.message, 'error')
-      }
-    }
+    const connectDrive = () => saveThenConnect({
+      typed: { clientId: driveId.value, clientSecret: driveSecret.value }, saved: dc,
+      savePath: '/api/posting/drive/client', connectPath: '/api/posting/drive/connect', note: 'drive',
+      waitText: 'เลือกบัญชี Google ในแท็บที่เปิดขึ้น แล้วกดอนุญาต — เสร็จแล้วกลับมาที่นี่',
+    })
     const driveBox = el('section', { className: 'pBox', 'aria-label': 'Google Drive' },
       el('h3', {}, el('span', { className: 'kind drive' }, 'DR'), 'Google Drive · ที่พักคลิป'),
       el('p', { className: 'hint' }, 'คลิปที่เข้าคิวจะอัปขึ้นโฟลเดอร์ "ธรรมะ Auto · รอโพสต์" เอง และย้ายไปถังขยะของ Drive เมื่อโพสต์ครบทุกที่ (รวมคลิปที่ตีกลับหรือเอาออกจากคิว) — ไฟล์ในเครื่องไม่ถูกลบ'),
@@ -557,9 +647,10 @@ export function initPosting({ api, localApp }) {
           el('strong', {}, dr.email || dr.name),
           dr.folderLink ? el('a', { href: dr.folderLink, target: '_blank', rel: 'noopener', className: 'ghost' }, 'เปิดโฟลเดอร์ ↗') : el('span', { className: 'pMeta' }, 'สร้างโฟลเดอร์ตอนอัปคลิปแรก'),
           el('button', { type: 'button', className: 'ghost', on: { click: () => { if (confirm('เลิกเชื่อมต่อ Google Drive? คลิปที่อยู่บน Drive แล้วจะไม่ถูกลบเอง ต้องลบในโฟลเดอร์เอง')) call('/api/posting/drive/remove', {}, 'เลิกเชื่อมต่อ Drive แล้ว').catch(() => {}) } } }, 'เลิกเชื่อมต่อ')))
-        : el('button', { type: 'button', className: 'primary', disabled: !dc.ready, on: { click: connectDrive } }, '＋ เชื่อมต่อ Google Drive'),
+        : el('button', { type: 'button', className: 'primary', on: { click: connectDrive } }, '＋ เชื่อมต่อ Google Drive'),
       dr.connected ? el('button', { type: 'button', className: 'ghost', on: { click: connectDrive } }, 'เปลี่ยนบัญชี / เชื่อมต่อใหม่') : null,
-      dc.ready ? null : el('p', { className: 'hint' }, 'ใส่ Client ID และ Client secret ของ Drive ด้านล่างก่อน ถึงจะเชื่อมต่อได้'),
+      el('p', { className: 'pWarn', 'data-note': 'drive', role: 'alert', hidden: true }),
+      dc.ready ? null : el('p', { className: 'hint' }, 'กรอก Client ID และ Client secret ของ Drive ด้านล่าง แล้วกดเชื่อมต่อได้เลย'),
       el('div', { className: 'pGrid2' },
         el('label', { className: 'pField' }, 'Drive · Client ID', driveId),
         el('label', { className: 'pField' }, 'Drive · Client secret', driveSecret),
@@ -571,6 +662,7 @@ export function initPosting({ api, localApp }) {
           el('li', {}, 'สร้างโปรเจกต์ (หรือใช้โปรเจกต์เดิม) → APIs & Services → Library → เปิด Google Drive API'),
           el('li', {}, 'OAuth consent screen → External → เพิ่มอีเมลบัญชีที่จะเก็บคลิปเป็น Test user แล้วกด Publish app'),
           el('li', {}, 'Credentials → Create credentials → OAuth client ID → Desktop app → คัดลอก Client ID และ Client secret มาวางด้านบน'),
+          redirectHelp(),
         )),
       el('p', { className: 'hint' }, 'สิทธิ์ที่ขอเห็นได้เฉพาะไฟล์ที่โปรแกรมนี้อัปเอง ไม่เห็นไฟล์อื่นใน Drive · เปลี่ยน Client ID แล้วต้องกดเชื่อมต่อใหม่'),
     )

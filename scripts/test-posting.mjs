@@ -65,14 +65,16 @@ await test('เข้าคิวเอง: เฉพาะคลิปหลั
 })
 
 await test('ปลายทางตามหมวด: ไม่เลือกหมวด = รับทุกหมวด · คลิปไม่รู้หมวดไปเฉพาะบัญชีที่รับทุกหมวด', () => {
+  // หมวดของธรรมะ Auto (เดิมเทสต์นี้ใช้หมวดการ์ตูนที่แอปนี้ไม่มี)
+  const [A, B] = P.CATEGORIES
   const data = {
-    facebook: [{ id: 'all' }, { id: 'space', categories: ['อวกาศ & จักรวาล'] }],
-    youtube: [{ id: 'dino', refreshToken: 'r', categories: ['ไดโนเสาร์ & โลกดึกดำบรรพ์'] }, { id: 'off', categories: [] }],
+    facebook: [{ id: 'all' }, { id: 'a', categories: [A] }],
+    youtube: [{ id: 'b', refreshToken: 'r', categories: [B] }, { id: 'off', categories: [] }],
   }
-  assert.deepEqual(P.targetsFor(data, 'อวกาศ & จักรวาล'), ['fb:all', 'fb:space'])
-  assert.deepEqual(P.targetsFor(data, 'ไดโนเสาร์ & โลกดึกดำบรรพ์'), ['fb:all', 'yt:dino'])
+  assert.deepEqual(P.targetsFor(data, A), ['fb:all', 'fb:a'])
+  assert.deepEqual(P.targetsFor(data, B), ['fb:all', 'yt:b'])
   assert.deepEqual(P.targetsFor(data, null), ['fb:all'], 'ช่องที่ไม่ได้เชื่อมต่อ (ไม่มี refreshToken) ไม่นับ')
-  assert.deepEqual(P.cleanCategories(['อวกาศ & จักรวาล', 'มั่ว', 'อวกาศ & จักรวาล']), ['อวกาศ & จักรวาล'])
+  assert.deepEqual(P.cleanCategories([A, 'มั่ว', A]), [A])
 })
 
 await test('ข้อมูลบัญชีที่ส่งให้แผงข้าง ไม่มีโทเค็นเต็ม', () => {
@@ -451,8 +453,8 @@ try {
   })
 
   await test('หมวด: AI ระบุหมวด → เลือกเพจตามหมวด · เลือกหมวดเอง · ติ๊กเองแล้วไม่ถูกเปลี่ยน · กลับไปเลือกตามหมวด', async () => {
-    const SPACE = 'อวกาศ & จักรวาล'
-    const DINO = 'ไดโนเสาร์ & โลกดึกดำบรรพ์'
+    // หมวดของธรรมะ Auto ที่ AI เลือกได้ (เดิมใช้หมวดการ์ตูน "อวกาศ"/"ไดโนเสาร์" — ตั้งชื่อตัวแปรไว้ตามเดิม)
+    const [SPACE, DINO] = P.AI_CATEGORIES
     await call('/api/posting/facebook', { pageId: '7000001', token: 'good-token-dino-page-0001', name: 'เพจไดโนเสาร์' })
     let v = await call('/api/posting/facebook', { pageId: '7000002', token: 'good-token-space-page-002', name: 'เพจอวกาศ' })
     const dinoPage = v.facebook.find((a) => a.pageId === '7000001').id
@@ -461,7 +463,7 @@ try {
     await call('/api/posting/account/categories', { kind: 'facebook', id: dinoPage, categories: [DINO, 'มั่ว'] })
     v = await call('/api/posting/account/categories', { kind: 'facebook', id: spacePage, categories: [SPACE] })
     assert.deepEqual(v.facebook.find((a) => a.id === dinoPage).categories, [DINO], 'หมวดมั่วถูกตัดทิ้ง')
-    assert.equal(v.categories.length > 20, true, 'ส่งรายการหมวดให้หน้าจอ')
+    assert.deepEqual(v.categories, P.CATEGORIES, 'ส่งรายการหมวดให้หน้าจอ')
 
     // คลิปใหม่ ยังไม่รู้หมวด → ลงเฉพาะช่องที่รับทุกหมวด
     await call('/api/posting/remove', { id: v.queue[0].id })

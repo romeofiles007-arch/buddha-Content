@@ -2658,6 +2658,37 @@ $('openLibrary').addEventListener('click', openLibrary)
 try {
   const postingView = initPosting({ api, localApp })
   $('openPosting').addEventListener('click', () => postingView.open())
+  // 📣 โพสต์ล่าสุด — คลิปไหนขึ้นไปที่ไหนบ้าง (ออโต้ทั้งหมดโพสต์เองตอนไม่ได้ดูอยู่) · กดแล้วเปิดแท็บ "โพสต์แล้ว"
+  $('lastPost').addEventListener('click', () => postingView.open('posted'))
+  const renderLastPost = (last) => {
+    const box = $('lastPost')
+    box.hidden = !last
+    if (!last) return
+    const when = new Date(last.at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    box.classList.toggle('fail', last.kind === 'failed')
+    box.replaceChildren(
+      libEl('span', { className: 'lpHead' }, `${last.kind === 'failed' ? '⚠️ โพสต์ล่าสุด (พลาดบางที่)' : '📣 โพสต์ล่าสุด'} · ${when}`),
+      libEl('strong', {}, last.title),
+      libEl('span', {}, last.text),
+    )
+    box.title = 'ดูลิงก์ของแต่ละโพสต์ในแท็บ "โพสต์แล้ว"'
+  }
+  const loadLastPost = async () => {
+    try {
+      renderLastPost((await api(await localApp(), '/api/posting/recent')).last)
+    } catch {} // โปรแกรมในเครื่องยังไม่เปิด — ไม่ต้องโชว์
+  }
+  loadLastPost()
+  setInterval(loadLastPost, 60_000)
+  // กดแจ้งเตือนของโพสต์อัตโนมัติ (background.js) → เปิดหน้าโพสต์ที่แท็บนั้น ทั้งตอนแผงเพิ่งเปิดและเปิดค้างอยู่
+  const openFromAlert = async () => {
+    const { openPosting } = await chrome.storage.session.get('openPosting').catch(() => ({}))
+    if (!openPosting) return
+    await chrome.storage.session.remove('openPosting').catch(() => {})
+    postingView.open(openPosting)
+  }
+  openFromAlert()
+  chrome.storage.session.onChanged?.addListener((changes) => { if (changes.openPosting?.newValue) openFromAlert() })
 } catch (err) {
   console.error('[posting] เปิดหน้าจอโพสต์อัตโนมัติไม่ได้', err)
   $('openPosting').hidden = true

@@ -82,6 +82,18 @@
 .pActions { display: flex; flex-wrap: wrap; gap: 8px; }
 .pActions > * { min-height: 40px; }
 .pActions .primary { flex: 1 1 180px; }
+/* ช่องเวลาโพสต์ประจำวัน — ตาราง เลือกเวลา/ลบ/เพิ่ม */
+.pSlotBox { display: grid; gap: 8px; }
+.pSlotHead { display: grid; gap: 2px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.pSlotHead small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.pSlots { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--gull-line); border-radius: 10px; overflow: hidden; }
+.pSlots li { display: grid; grid-template-columns: 56px 1fr 40px; gap: 8px; align-items: center; padding: 6px 8px; background: var(--gull-bg); }
+.pSlots li + li { border-top: 1px solid var(--gull-line); }
+.pSlotN { font-size: 12px; color: var(--muted); }
+.pSlots input[type='time'] { width: 100%; min-height: 40px; padding: 6px 10px; border: 1px solid var(--gull-line); border-radius: 8px; background: var(--gull-panel); color: var(--ink); font: inherit; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; color-scheme: light dark; }
+.pSlots input[type='time']:focus-visible { outline: 2px solid var(--gull); outline-offset: 1px; }
+.pSlotDel { min-width: 40px; min-height: 40px; padding: 0; }
+.pSlotDel:disabled { opacity: .35; cursor: not-allowed; }
 .pWhen { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .pWhen .pField { flex: 1 1 190px; }
 
@@ -104,6 +116,16 @@
 .pSwitch { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; cursor: pointer; }
 .pSwitch input { accent-color: var(--gull); width: 18px; height: 18px; margin-top: 2px; flex: none; }
 .pSwitch small { display: block; color: var(--muted); font-size: 12px; }
+/* ออโต้ทั้งหมด — สวิตช์หลัก เด่นกว่าสวิตช์ย่อย */
+.pSwitch.pMain { padding: 10px; border: 1px solid var(--gull); border-radius: 10px; background: color-mix(in srgb, var(--gull) 10%, transparent); font-weight: 700; font-size: 15px; }
+.pSwitch.pMain small { font-weight: 400; }
+
+/* แผงหลัก: โพสต์ล่าสุด ไปไหนบ้าง (กดแล้วเปิดแท็บ "โพสต์แล้ว") */
+.lastPost { display: grid; gap: 2px; width: 100%; margin-top: 8px; padding: 8px 10px; text-align: left; font: inherit; font-size: 13px; color: var(--ink); background: color-mix(in srgb, var(--ok) 10%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); border-radius: 10px; cursor: pointer; }
+.lastPost.fail { background: color-mix(in srgb, var(--warn) 10%, transparent); border-color: var(--warn); }
+.lastPost .lpHead { font-size: 12px; color: var(--muted); }
+.lastPost strong { overflow-wrap: anywhere; }
+.lastPost[hidden] { display: none; }
 .pAccounts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .pAccounts li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--gull-line); border-radius: 10px; font-size: 13px; }
 .pAccounts li strong { flex: 1 1 120px; overflow-wrap: anywhere; }

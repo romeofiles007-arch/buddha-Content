@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS = {
   autoCheck: true, // คลิปเข้าคิวแล้วให้ AI ตรวจทันที
   autoApprove: false, // AI ให้ผ่าน → อนุมัติ + ลงช่องเวลาถัดไปเอง (ค่าเริ่มต้นปิด — ให้คนดูก่อน)
   slots: ['12:00', '19:00'], // ช่องเวลาประจำวัน
+  autoPull: false, // ดึงคลิปจากคลังเข้าคิวเอง ให้มีคลิปรอโพสต์ครบทุกช่องเวลาของวัน (clipsToPull)
   google: { clientId: '', clientSecret: '' }, // OAuth client ของ Google Cloud (ประเภท Desktop app) — ใช้ร่วมทุกช่อง
   // OAuth client ของ Drive แยกจาก YouTube — Drive อาจอยู่คนละบัญชี/คนละโปรเจกต์ Google Cloud
   driveClient: { clientId: '', clientSecret: '' },
@@ -248,6 +249,69 @@ export function videosToEnroll(videos, queue, enabledAt) {
     out.push({ slug: v.slug, file: main.name, title: v.title ?? v.slug })
   }
   return out
+}
+
+/** สถานะที่ถือว่า "ยังรอโพสต์" — นับว่าคิวมีคลิปพอสำหรับช่องเวลาหรือยัง */
+const WAITING = new Set(['review', 'scheduled', 'posting'])
+
+/**
+ * ดึงคลิปจากคลังเอง: คลิปที่รอโพสต์น้อยกว่าจำนวนช่องเวลาต่อวัน → หยิบคลิปที่เก่าที่สุดมาเติมให้ครบ
+ * ไม่หยิบคลิปที่เคยอยู่ในคิวแล้ว (โพสต์แล้ว/ตีกลับ/เอาออก/โพสต์พลาด) — ผู้ใช้ตัดสินไปแล้ว
+ */
+export function clipsToPull(videos, queue, slots) {
+  const need = cleanSlots(slots).length - queue.filter((q) => WAITING.has(q.status)).length
+  if (need <= 0) return []
+  const known = new Set(queue.map((q) => `${q.slug}/${q.file}`))
+  return videos
+    .map((v) => {
+      const main = v.files?.find((f) => f.name === `${v.slug}.mp4`) ?? v.files?.find((f) => f.main) ?? v.files?.[0]
+      return main && { slug: v.slug, file: main.name, title: v.title ?? v.slug, at: main.createdAt ?? v.updatedAt ?? 0 }
+    })
+    .filter((v) => v && !known.has(`${v.slug}/${v.file}`))
+    .sort((a, b) => a.at - b.at)
+    .slice(0, need)
+    .map(({ at, ...v }) => v)
+}
+
+// ── บอกผู้ใช้ว่าโพสต์ไปไหนบ้าง (แจ้งเตือนบนเครื่อง + บรรทัด "โพสต์ล่าสุด" ในแผงข้าง) ──
+
+/** "เพจธรรมะ ✓ · ช่องธรรมะ ✗ (โควตาหมด)" */
+export function resultSummary(item) {
+  return (item.targets ?? []).map((k) => {
+    const r = item.results?.[k]
+    return r?.ok ? `${r.name ?? k} ✓` : `${r?.name ?? k} ✗ (${r?.error ?? 'ยังไม่ได้โพสต์'})`
+  }).join(' · ')
+}
+
+const postEvent = (item) => ({
+  id: item.id,
+  kind: item.status,
+  title: item.title,
+  at: item.finishedAt,
+  text: resultSummary(item),
+  links: Object.values(item.results ?? {}).filter((r) => r.ok && r.url).map((r) => ({ name: r.name, url: r.url })),
+})
+
+/**
+ * เหตุการณ์ที่เกิดหลังเวลา since — โพสต์เสร็จ (posted) / โพสต์พลาดบางที่ (failed) / AI ไม่ให้ผ่าน รอคนดู (held)
+ * finishedAt = เวลาที่พยายามโพสต์รอบล่าสุดจบ (ทั้งสำเร็จและพลาด)
+ */
+export function postingEvents(queue, since = 0) {
+  const out = []
+  for (const q of queue) {
+    if ((q.status === 'posted' || q.status === 'failed') && q.finishedAt > since) out.push(postEvent(q))
+    if (q.status === 'review' && q.ai?.status === 'done' && q.ai.verdict !== 'pass' && q.ai.checkedAt > since) {
+      out.push({ id: q.id, kind: 'held', title: q.title, at: q.ai.checkedAt, text: `AI ให้แก้ก่อนโพสต์: ${q.ai.summary || 'ดูรายละเอียดในแท็บรอตรวจ'}`, links: [] })
+    }
+  }
+  return out.sort((a, b) => a.at - b.at)
+}
+
+/** คลิปที่จบการโพสต์ล่าสุด (สำเร็จหรือพลาด) */
+export function lastPosted(queue) {
+  const done = queue.filter((q) => (q.status === 'posted' || q.status === 'failed') && q.finishedAt)
+  if (!done.length) return null
+  return postEvent(done.reduce((a, b) => (b.finishedAt > a.finishedAt ? b : a)))
 }
 
 /** ข้อความเต็มที่จะโพสต์ — คำบรรยาย + แฮชแท็ก */
