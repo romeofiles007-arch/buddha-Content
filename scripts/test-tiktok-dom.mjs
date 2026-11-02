@@ -14,6 +14,7 @@ test('account detection accepts own profile navigation, never arbitrary creator 
   const D = api()
   assert.equal(D.account(document([link('/@stranger', 'creator', false), link('/@Romeo', 'Profile')])).username, 'romeo')
   assert.throws(() => D.account(document([link('/@stranger', 'creator', false)])), /บัญชี/)
+  assert.throws(() => D.account(document([link('https://other.example/@romeo')])), /บัญชี/)
 })
 test('login and CAPTCHA stop the attempt with recovery text', () => {
   const D = api()

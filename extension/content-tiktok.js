@@ -8,9 +8,12 @@
   async function readAccount() {
     D.checkPage(document, location.href)
     try { return D.account(document) } catch {
-      const avatar = [...document.querySelectorAll('[data-e2e="profile-icon"], [data-e2e="user-avatar"], button[aria-label*="profile" i], button[aria-label*="account" i]')].find(D.visible)
-      if (avatar) { avatar.click(); await H.sleep(300) }
-      return D.account(document)
+      const avatar = D.avatarTrigger(document)
+      if (!avatar) throw new Error('ยังอ่านบัญชี TikTok ไม่ได้ — เปิดเมนูรูปโปรไฟล์แล้วเชื่อมต่อใหม่')
+      avatar.click()
+      return H.waitFor(() => {
+        try { return D.account(document, { fromAvatar: true }) } catch { return null }
+      }, { timeout: 5000, interval: 200, label: 'ชื่อบัญชี TikTok' })
     }
   }
   async function run(job) {
@@ -29,6 +32,7 @@
       return fn()
     }, { timeout, interval: 400, label })
     try {
+      await wait(() => document.querySelector('[data-e2e="select_video_button"], input[type="file"]'), 'หน้าอัปโหลด TikTok Studio พร้อมใช้งาน', 60_000)
       if (job.kind === 'tiktok-inspect') return { ok: true, url: location.href, ...D.inspectStudio(document) }
       if (job.kind === 'tiktok-account') return { ok: true, ...await readAccount() }
       if (job.kind !== 'tiktok-post') throw new Error('ไม่รู้จักงาน TikTok นี้')
@@ -102,7 +106,7 @@
       attempt.complete(result)
       return { ok: true, ...result }
     } catch (error) {
-      return { ok: false, error: String(error.message), needsVerification: error.needsVerification === true || attempt?.submitted === true }
+      return { ok: false, error: String(error.message), needsVerification: error.needsVerification === true || attempt?.submitted === true, ...(job.payload?.inspect === true ? { diagnostic: D.inspectStudio(document) } : {}) }
     } finally { stopBeat() }
   }
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {

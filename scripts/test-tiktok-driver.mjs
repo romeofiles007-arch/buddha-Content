@@ -5,8 +5,8 @@ import { runInNewContext } from 'node:vm'
 import { test } from 'node:test'
 const domSource = readFileSync(new URL('../extension/tiktok-dom.js', import.meta.url), 'utf8')
 const driverSource = readFileSync(new URL('../extension/content-tiktok.js', import.meta.url), 'utf8')
-function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
-  let listener, uploads = 0, clicks = 0, progress = 0, accountReads = 0, menuOpen = false, onCancel, rerendered = false
+function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, delayedStudio = false, cdnAvatar = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
+  let listener, uploads = 0, clicks = 0, progress = 0, accountReads = 0, menuOpen = false, onCancel, rerendered = false, readyChecks = 0
   const results = [], memory = new Map()
   const node = (extra = {}) => ({ textContent: '', getClientRects: () => [{}], getAttribute: () => null, matches: () => false, focus() {}, click() {}, dispatchEvent() {}, ...extra })
   class Textarea { constructor() { this._value = '' } get value() { return this._value } set value(v) { this._value = v } }
@@ -18,14 +18,17 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   const ai = node({ textContent: 'AI-generated content', checked: false, click() { this.checked = !this.checked } })
   const alerts = [], body = { innerText: '' }
   const post = node({ textContent: 'Post', disabled: false, click() { clicks++; if (confirm) { body.innerText = 'Video posted'; alerts.push(node({ innerText: 'Video posted' })) } } })
-  const profile = node({ textContent: 'Profile', getAttribute: n => n === 'href' ? `/@${signedIn}` : null, matches: () => true })
+  let markedProfile = false
+  const profile = node({ textContent: 'Profile', getAttribute: n => n === 'href' ? `/@${signedIn}` : null, matches: () => !cdnAvatar || markedProfile, closest: () => null, setAttribute: () => { markedProfile = true } })
   const avatar = node({ click: () => { menuOpen = true } })
+  const avatarImage = node({ getAttribute: n => n === 'src' ? 'https://p16.tiktokcdn.com/tos-alisg-avt-0068/account.jpeg' : null, closest: () => avatar })
   const document = {
     body,
-    querySelector: selector => selector === 'input[type="file"]' ? node() : null,
+    querySelector: selector => selector.includes('input[type="file"]') ? (++readyChecks >= (delayedStudio ? 2 : 1) ? node() : null) : null,
     querySelectorAll: selector => {
-      if (selector === 'a[href*="/@"]') { accountReads++; return cancelDuringAccount && accountReads > 1 && !menuOpen ? [] : [profile] }
-      if (selector.startsWith('[data-e2e="profile-icon"]')) return [avatar]
+      if (selector === 'a[href*="/@"]') { accountReads++; return (cdnAvatar && !menuOpen) || (delayedStudio && readyChecks < 2) || (cancelDuringAccount && accountReads > 1 && !menuOpen) ? [] : [profile] }
+      if (selector.startsWith('[data-e2e="profile-icon"]')) return cdnAvatar ? [] : [avatar]
+      if (selector === 'img') return cdnAvatar ? [avatarImage] : []
       if (selector === '[contenteditable="true"], textarea') return [rerendered ? replacement : editor]
       if (selector === 'select, button, [role="combobox"]') return missingPrivacy ? [] : [privacy]
       if (selector.startsWith('label,')) return [ai]
@@ -41,7 +44,7 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
     chrome: { runtime: { onMessage: { addListener: fn => { listener = fn } }, sendMessage: async () => { uploads++; return { ok: true } } } },
     bridgeHelpers: {
       heartbeat: (_id, cancel) => { onCancel = cancel; return () => {} }, sleep: async () => { if (cancelDuringAccount) onCancel() },
-      waitFor: async (fn, { label }) => { for (let i = 0; i < 3; i++) { const value = await fn(); if (value) { if (label === 'TikTok อัปโหลดเสร็จและพร้อมโพสต์') { if (resetAi) ai.checked = false; if (replaceCaption) rerendered = true } return value } } throw new Error(`รอ ${label} เกินเวลา`) },
+      waitFor: async (fn, { label }) => { for (let i = 0; i < 3; i++) { const value = await fn(); if (value) { if (cancelDuringAccount && label === 'ชื่อบัญชี TikTok') onCancel(); if (label === 'TikTok อัปโหลดเสร็จและพร้อมโพสต์') { if (resetAi) ai.checked = false; if (replaceCaption) rerendered = true } return value } } throw new Error(`รอ ${label} เกินเวลา`) },
       toBridge: async (type, body) => {
         if (type === 'RESULT') { results.push(body.meta); return { ok: true } }
         progress++; return { ok: true, status: 'running', cancelled: cancellation && progress > 1 }
@@ -100,4 +103,14 @@ test('replacing the caption editor during upload cannot publish a stale caption'
   const f = fixture({ replaceCaption: true }); await f.invoke()
   assert.equal(f.state().clicks, 0)
   assert.equal(f.results[0].needsVerification, false)
+})
+test('account detection waits until TikTok Studio has finished rendering its uploader', async () => {
+  const f = fixture({ delayedStudio: true }); await f.invoke()
+  assert.equal(f.results[0].ok, true)
+  assert.equal(f.state().clicks, 1)
+})
+test('the current Studio avatar opens its own account menu before identity verification', async () => {
+  const f = fixture({ cdnAvatar: true }); await f.invoke()
+  assert.equal(f.results[0].ok, true)
+  assert.equal(f.state().clicks, 1)
 })

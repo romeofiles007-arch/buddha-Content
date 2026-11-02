@@ -5,18 +5,34 @@
     const name = String(value ?? '').trim().replace(/^@/, '').toLowerCase()
     return /^[a-z0-9._]{1,24}$/.test(name) ? name : null
   }
-  const ownProfile = '[data-e2e="nav-profile"], [data-e2e="profile-icon"], [data-e2e="user-avatar"], [data-tt-account-profile]'
+  const ownProfile = '[data-e2e="nav-profile"], [data-e2e="profile-icon"], [data-e2e="user-avatar"], [data-dhamma-tiktok-current-account]'
   function checkPage(doc, url) {
     if (/\/login(?:[/?]|$)/.test(url) || /Log in to TikTok|เข้าสู่ระบบ TikTok/.test(doc.body?.innerText ?? '')) throw new Error('กรุณาล็อกอิน TikTok Studio ใน Chrome แล้วเชื่อมต่ออีกครั้ง')
     if (doc.querySelector('iframe[src*="captcha"], [id*="captcha-verify"], [class*="captcha_verify"], [data-e2e="captcha"]')) throw new Error('พบ CAPTCHA — เปิดแท็บ TikTok และยืนยันด้วยตัวเอง แล้วลองใหม่')
   }
-  function account(doc) {
-    const links = [...doc.querySelectorAll('a[href*="/@"]')].filter(visible)
-    const link = links.find(a => a.matches(ownProfile) || a.closest(ownProfile) || (/^(?:View profile|Profile|ดูโปรไฟล์|โปรไฟล์)$/i.test(text(a)) && a.closest('header, nav, [role="menu"], [role="navigation"], [role="dialog"]')))
+  function account(doc, { fromAvatar = false } = {}) {
+    const links = [...doc.querySelectorAll('a[href*="/@"]')].filter(visible).filter(link => {
+      try { const url = new URL(link.getAttribute('href'), 'https://www.tiktok.com'); return url.protocol === 'https:' && ['www.tiktok.com', 'tiktok.com'].includes(url.hostname) } catch { return false }
+    })
+    let link = links.find(a => a.matches(ownProfile) || a.closest(ownProfile) || (/^(?:View profile|Profile|ดูโปรไฟล์|โปรไฟล์)$/i.test(text(a)) && a.closest('header, nav, [role="menu"], [role="navigation"], [role="dialog"]')))
+    if (!link && fromAvatar) {
+      const menuLinks = links.filter(a => !a.closest('[contenteditable="true"], textarea') && /^\/@[^/]+\/?$/.test(new URL(a.getAttribute('href'), 'https://www.tiktok.com').pathname))
+      if (menuLinks.length === 1) { link = menuLinks[0]; link.setAttribute?.('data-dhamma-tiktok-current-account', 'true') }
+    }
     const path = link && new URL(link.getAttribute('href'), 'https://www.tiktok.com').pathname
     const name = path && /^\/@([^/]+)\/?$/.exec(path)?.[1]
     if (!username(name)) throw new Error('ยังอ่านบัญชี TikTok ไม่ได้ — เปิด TikTok Studio แล้วเปิดเมนูโปรไฟล์ให้เห็นชื่อบัญชี จากนั้นเชื่อมต่อใหม่')
     return { username: username(name), name: username(name) }
+  }
+  function avatarTrigger(doc) {
+    const explicit = [...doc.querySelectorAll('[data-e2e="profile-icon"], [data-e2e="user-avatar"], button[aria-label*="profile" i], button[aria-label*="account" i]')].find(visible)
+    if (explicit) return explicit
+    // Observed on TikTok Studio 2026-11-02: avatar buttons have no label/e2e;
+    // identify the unique avatar image rather than a generated CSS class.
+    const buttons = [...new Set([...doc.querySelectorAll('img')].filter(visible).filter(image => {
+      try { return /\/tos-[^/]*-avt-/.test(new URL(image.getAttribute('src'), 'https://www.tiktok.com').pathname) } catch { return false }
+    }).map(image => image.closest('button, [role="button"]')).filter(visible))]
+    return buttons.length === 1 ? buttons[0] : null
   }
   function assertAccount(actual, expected) {
     if (!username(expected) || username(actual?.username) !== username(expected)) throw new Error(`บัญชี TikTok ไม่ตรง — ต้องล็อกอิน @${expected} แต่ขณะนี้เป็น @${actual?.username ?? '?'}`)
@@ -67,7 +83,13 @@
       ...(node.tagName === 'BUTTON' ? { text: text(node).slice(0, 120) } : {}),
     }))
     const profiles = [...doc.querySelectorAll('a[href*="/@"]')].filter(visible).map(node => ({ href: node.getAttribute('href'), e2e: node.getAttribute('data-e2e'), text: text(node).slice(0, 80) }))
-    return { controls, profiles }
+    const describe = node => node ? { tag: node.tagName, className: node.getAttribute('class'), role: node.getAttribute('role'), label: node.getAttribute('aria-label'), e2e: node.getAttribute('data-e2e'), title: node.getAttribute('title'), alt: node.getAttribute('alt'), text: text(node).slice(0, 100) } : null
+    const avatars = [...doc.querySelectorAll('img, [class*="avatar" i], [class*="profile" i], [class*="user-info" i]')].filter(visible).slice(0, 30).map(node => {
+      const src = node.getAttribute('src')
+      return { ...describe(node), ...(src && /^https:/.test(src) ? { imagePath: new URL(src).pathname } : {}), parent: describe(node.parentElement), grandparent: describe(node.parentElement?.parentElement) }
+    })
+    const navigation = [...doc.querySelectorAll('a[href]')].filter(visible).map(node => ({ path: new URL(node.getAttribute('href'), 'https://www.tiktok.com').pathname, text: text(node).slice(0, 100), e2e: node.getAttribute('data-e2e'), className: node.getAttribute('class') })).filter(link => /^\/(?:tiktokstudio|@|creator)/.test(link.path)).slice(0, 40)
+    return { controls, profiles, avatars, navigation, pageText: text(doc.body).slice(0, 4000) }
   }
-  globalThis.DhammaTikTokDom = { text, visible, username, checkPage, account, assertAccount, published, publicationSignals, claimAttempt, privacyLabels, exact, findButton, enabled, privacyControl, aiControl, checked, inspectStudio }
+  globalThis.DhammaTikTokDom = { text, visible, username, checkPage, account, avatarTrigger, assertAccount, published, publicationSignals, claimAttempt, privacyLabels, exact, findButton, enabled, privacyControl, aiControl, checked, inspectStudio }
 })()

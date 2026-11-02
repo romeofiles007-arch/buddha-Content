@@ -40,7 +40,7 @@ Files: `pipeline/lib/posting.mjs`, new `pipeline/lib/tiktok-browser.mjs`, `bridg
 
 Files: `extension/background.js`, `extension/manifest.json`, new `extension/tiktok-dom.js`, new `extension/content-tiktok.js`, `scripts/test-tiktok-dom.mjs`.
 
-- [ ] Read the actual TikTok Studio DOM after user login; use fixtures reflecting observed controls. **Pending user login:** the opened TikTok Studio tab redirects to login; signed-in selectors remain unverified.
+- [x] Read the signed-in upload page on the SSH machine; verify the Select video control and avatar/account menu. Added readiness and avatar-menu fixture regressions. Controls shown after file selection and actual publication still require an authorized test upload.
 - [x] Write and run failing tests for account mismatch, login/CAPTCHA, caption editing, privacy verification, and duplicate job delivery.
 - [x] Register the TikTok agent and host/content permissions. Scope file injection to the active job and expected TikTok tab; obtain paths from the authenticated bridge rather than message-supplied arbitrary paths.
 - [x] Implement account detection and single-submit posting, with heartbeat, progress, cancellation, and durable per-attempt browser guards.
@@ -58,3 +58,7 @@ Files: `extension/posting.js`, `extension/posting.css`, `extension/sidepanel.js`
 ## Review ledger
 
 Independent review found four P2 issues: global-body success text, a final cancellation gap, stale AI settings, and overlapping jobs after worker restart. Added adversarial regressions and fixed each. Follow-up found a detached caption editor; its regression failed before the final-editor reacquisition fix and now passes. Real HTTP tests also confirm serialized dispatch and that bridge restart never replays a queued publish attempt. No real user files were uploaded or published during development.
+
+## SSH verification
+
+The remote package was updated through its own updater after the active production clip finished; continuous-production settings were preserved. The signed-in Studio page revealed an unlabeled avatar button containing an avatar CDN image. The driver now waits for the uploader and opens the unique avatar button without relying on generated CSS classes. A real read-only account job successfully returned the current username. A local five-second test card is prepared outside the production project library; uploading/publishing it awaits explicit permission.
