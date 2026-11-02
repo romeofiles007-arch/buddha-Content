@@ -18,6 +18,7 @@ import { ensureProfile } from './lib/clip_profile.mjs'
 import { coverShot, coverBriefLines, hasCover, COVER_NAME } from './lib/cover.mjs'
 import { probeSize } from './lib/ffmpeg.mjs'
 import { collectImages } from './lib/shotfile.mjs'
+import { generateWithFailover } from './lib/flow-failover.mjs'
 
 const slug = process.argv[2]
 if (!slug) {
@@ -91,9 +92,15 @@ await requireBridge()
 console.log(`ส่ง ${coverOnly ? 'ภาพปก' : `${shots.length} ช็อต`}ให้ Google Flow — เปิดดูเบราว์เซอร์ได้ ห้ามปิดแท็บระหว่างรอ`)
 if (!coverOnly) console.log('งาน batch ขนาดนี้ปกติใช้เวลา 10-40 นาที')
 
-const result = await runJob({
-  agent: 'flow',
-  kind: 'generate-images',
+const result = await generateWithFailover({
+  runJob,
+  promptFor: remaining => flowPrompt([
+    briefHead,
+    '=== SHOT LIST ===',
+    ...remaining.filter(s => s.filename !== COVER_NAME).map(s => `${s.filename} ${s.prompt}`),
+    ...remaining.filter(s => s.filename === COVER_NAME).flatMap(s => coverBriefLines(untag(shots.find(original => original.filename === s.filename)), aspect === '9:16')),
+  ].join('\n\n'), undefined, slug),
+  onSwitch: (quota, missing) => console.log(`\n  บัญชี Flow ${quota.email} ติดลิมิต — สลับบัญชีอัตโนมัติและทำต่อเฉพาะ ${missing} ภาพที่ขาด`),
   payload: {
     prompt: flowPrompt(brief, undefined, slug),
     shots: shots.map(untag).map((s) => ({ filename: s.filename, shot: s.shot, prompt: s.prompt })), // คำสั่งซ้ำ/ขอช็อตที่ขาดก็ไม่มี @TAG ในคำบรรยาย
@@ -107,7 +114,6 @@ const result = await runJob({
     agentMode: true,
     askAgentToRename: process.argv.includes('--rename'),
   },
-  timeoutMs: 100 * 60_000, // เผื่อรอ Flow คิวเต็มได้ถึง 40 นาที
   onProgress: (p) => {
     if (p.stage === 'project') {
       if (p.projectUrl && p.projectUrl !== savedProject?.url) {

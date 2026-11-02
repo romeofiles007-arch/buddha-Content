@@ -434,6 +434,7 @@ async function imagesDepartment() {
     const before = cov.have
     cov = imageCoverage()
     if (!run.ok) console.warn(`   Flow รอบนี้มีปัญหา: ${lastLine(run.tail)}`)
+    if (!run.ok && /FLOW_ACCOUNTS_EXHAUSTED/.test(run.tail)) throw new Error(`FLOW_ACCOUNTS_EXHAUSTED: บัญชี Flow ใช้งานต่อไม่ได้ — ${lastLine(run.tail)}`)
     stalls = cov.have > before ? 0 : stalls + 1
     if (cov.have >= cov.total) break
     if (stalls >= 3 || attempt >= 12) {
@@ -453,6 +454,7 @@ async function imagesDepartment() {
     dept('images', { status: 'working', detail: `สร้างภาพปกคลิป (ครั้งที่ ${attempt})` })
     const run = await step('5_images.mjs', [slug, '--cover-only'])
     if (!run.ok) console.warn(`   สร้างปกไม่สำเร็จ: ${lastLine(run.tail)}`)
+    if (!run.ok && /FLOW_ACCOUNTS_EXHAUSTED/.test(run.tail)) throw new Error(`FLOW_ACCOUNTS_EXHAUSTED: บัญชี Flow ใช้งานต่อไม่ได้ — ${lastLine(run.tail)}`)
   }
   if (!hasCover(slug)) console.warn('   ยังไม่ได้ภาพปก — สร้างทีหลังได้จากคลังวิดีโอ')
   dept('images', { status: 'done', detail: `ภาพ ${cov.have}/${cov.total} ใบ${hasCover(slug) ? ' + ปกคลิป' : ' · ยังไม่มีปก'}` })

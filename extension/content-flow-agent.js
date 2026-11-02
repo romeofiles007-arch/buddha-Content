@@ -26,6 +26,25 @@ const errorText = (err) => `[extension ${VERSION}] ${pageTranslated() ? `${TRANS
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const FLOW_PROMPT_GAP_MS = 2 * 60_000 // เว้นอย่างน้อย 2 นาทีระหว่างคำสั่งที่ส่งให้ Flow
 const FLOW_LAST_PROMPT_KEY = 'flowLastPromptAt'
+const Q = globalThis.DhammaFlowQuota
+let expectedAccount = ''
+const accountEmail = () => Q.emailOf($$('button[aria-label], a[aria-label]').map(el => el.getAttribute('aria-label')).find(s => /(?:Google Account|บัญชี Google).*@/i.test(s)))
+class FlowQuotaError extends Error {
+  constructor(quota) { super(quota.reason); this.quota = quota }
+}
+function checkAccountQuota() {
+  const email = accountEmail()
+  if (expectedAccount && !Q.sameAccount(email, expectedAccount)) throw new Error('FLOW_ACCOUNTS_EXHAUSTED: บัญชี Flow เปลี่ยนระหว่างทำงาน — หยุดก่อนส่งคำสั่งสร้างภาพ')
+  const lines = [
+    ...$$('[role="alert"], flow-error-tile, mat-snack-bar-container').filter(visible).map(el => el.innerText ?? ''),
+    ...(SEL.agentPanel()?.innerText ?? '').split('\n').filter(s => /^\s*(?:you|daily |free |image |video |generation |usage |limit |คุณ|ใช้โควต้า|ถึงขีดจำกัด)/i.test(s)),
+  ]
+  const quota = lines.map(s => Q.quotaNotice(s)).find(Boolean)
+  if (quota) {
+    if (!email) throw new Error('FLOW_ACCOUNTS_EXHAUSTED: Flow แจ้งลิมิตแต่อ่านบัญชีปัจจุบันไม่ได้ — กรุณาตรวจหน้า Flow')
+    throw new FlowQuotaError({ ...quota, email })
+  }
+}
 
 async function waitBeforeNextPrompt() {
   // เก็บเวลาใน storage.local เพื่อคงระยะห่างแม้ Flow โหลดหน้าใหม่หรือ service worker เริ่มใหม่
@@ -38,6 +57,7 @@ async function waitBeforeNextPrompt() {
 async function waitFor(fn, { timeout = 20_000, interval = 250, label = 'หน้าเว็บ' } = {}) {
   const deadline = Date.now() + timeout
   for (;;) {
+    if (running && expectedAccount) checkAccountQuota()
     const value = fn()
     if (value) return value
     if (Date.now() > deadline) throw new Error(`รอ ${label} ไม่เจอ (${Math.round(timeout / 1000)} วิ) — หน้า Google Flow อาจเปลี่ยน`)
@@ -381,7 +401,9 @@ async function attachImages(editor, attachments) {
 }
 
 async function sendPrompt(prompt, attachments) {
+  checkAccountQuota()
   await waitBeforeNextPrompt()
+  checkAccountQuota()
   await attachImages(await waitFor(SEL.editor, { label: 'ช่องพิมพ์' }), attachments)
   // แนบรูปแล้ว Flow วาดช่องพิมพ์ใหม่ (element เดิมหลุดจากหน้า — ตรวจกับหน้าจริงแล้ว) → ต้องหาช่องพิมพ์ใหม่ทุกครั้ง
   const pasteText = async () => {
@@ -601,6 +623,7 @@ async function waitAgentIdle(job, { before, expected, stage, onTick }) {
   let idleSince = null
   for (let tick = 1; ; tick++) {
     await sleep(5000)
+    checkAccountQuota()
     // เก็บภาพที่ตั้งชื่อแล้วระหว่างที่ agent ยังวาดอยู่ทุก 15 วิ — ไม่ต้องรอให้ agent นิ่ง 75 วิก่อนค่อยเริ่มดึง
     if (onTick && tick % 3 === 0) await onTick().catch(() => {})
     const made = collectTiles().size - before
@@ -655,18 +678,10 @@ async function renameProject(title) {
 
 async function runImageJob(job) {
   const { prompt, shots, model = 'Nano Banana 2 Lite', aspect = '16:9', attachments = [], projectTitle } = job.payload
+  const email = await waitFor(accountEmail, { timeout: 15000, label: 'บัญชี Google Flow' })
+  expectedAccount = job.payload.expectedAccount || email
   const expected = shots.length
   const wanted = new Set(shots.map((s) => s.filename))
-  await openProject()
-  await renameProject(projectTitle).catch(() => {})
-  tiles.clear() // A reused content-script world must not retain a previous project's tiles.
-  await toBridge('PROGRESS', { id: job.id, progress: { done: 0, total: expected, stage: 'project', projectUrl: location.href } })
-  const credits = await verifyFreeSettings(model, aspect)
-  if (credits !== 0) throw new Error(`ชุด ${model} · x1 ใช้ ${Number.isFinite(credits) ? credits : '?'} credits ไม่ใช่ 0 — หยุดไว้ก่อน ไม่ได้สั่ง agent`)
-  await configureAgent(model, { dryRun: false, ratio: aspect })
-  await scanAllTiles() // project เดิมมีภาพอยู่แล้ว → นับของเดิมไว้ก่อน ภาพใหม่จะได้นับถูก
-  const before = collectTiles().size
-
   const saved = new Set()
   // เซฟภาพที่ได้ทุกรอบทันที (PARTIAL) — ถ้ารอบหลังพัง ภาพที่ได้แล้วไม่หาย
   async function saveNew(picks) {
@@ -675,96 +690,124 @@ async function runImageJob(job) {
       const files = []
       for (const [name, src] of entries.slice(i, i + PNG_BATCH)) {
         try {
-          files.push({ name, base64: (await imageAsPngBase64(src)).base64 })
-        } catch {} // src หมดอายุ → รอบหน้าสแกนใหม่ได้ src ใหม่
+            files.push({ name, base64: (await imageAsPngBase64(src)).base64 })
+          } catch {} // src หมดอายุ → รอบหน้าสแกนใหม่ได้ src ใหม่
+        }
+        if (!files.length) continue
+        await toBridge('PARTIAL', { id: job.id, files })
+        for (const f of files) saved.add(f.name)
+        await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'save' } })
       }
-      if (!files.length) continue
-      await toBridge('PARTIAL', { id: job.id, files })
-      for (const f of files) saved.add(f.name)
-      await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'save' } })
     }
-  }
 
-  await sendPrompt(prompt, attachments)
-  // รูปตัวละครที่แนบไปกลายเป็น tile ใน project ด้วย — นับเป็นฐานใหม่ ไม่งั้นถูกนับว่าเป็น "ภาพใหม่ที่ยังไม่ตั้งชื่อ"
-  await sleep(3000)
-  const base = Math.max(before, collectTiles().size)
-  let stalls = 0
-  let nudges = 0
-  const tries = new Map(shots.map((s) => [s.filename, 1])) // จำนวนครั้งที่สั่งแต่ละช็อตไปแล้ว
-  const failuresAtStart = failureCounts()
-  let seenHighDemand = failuresAtStart.highDemand
-  let busyWaits = 0
-  let busyWaited = 0
-  for (let round = 1; ; round++) {
-    const beforeRound = collectTiles().size
-    await waitAgentIdle(job, { before, expected, stage: 'generate', onTick: () => saveNew(namedPicks(wanted)) })
-    const newThisRound = collectTiles().size - beforeRound
+    try {
+    const { flowAccountLimits = {} } = await chrome.storage.local.get('flowAccountLimits')
+    if (flowAccountLimits[email]?.retryAt > Date.now()) throw new FlowQuotaError({ ...flowAccountLimits[email], email })
+    checkAccountQuota()
+    await openProject()
+    await renameProject(projectTitle).catch(() => {})
+    tiles.clear() // A reused content-script world must not retain a previous project's tiles.
+    await toBridge('PROGRESS', { id: job.id, progress: { done: 0, total: expected, stage: 'project', projectUrl: location.href } })
     await scanAllTiles()
-    let picks = namedPicks(wanted)
-
-    // ยังไม่มีภาพใหม่เลย = agent หยุดถามยืนยัน/สรุปแผน → สั่งให้เริ่มสร้าง (ห้ามสั่งเปลี่ยนชื่อ เพราะไม่มีภาพให้เปลี่ยน)
-    if (collectTiles().size - base <= 0 && !picks.size && nudges < 3) {
-      nudges++
-      if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
-      await sendPrompt(goInstruction(shots))
-      continue
+    const before = collectTiles().size
+    await saveNew(namedPicks(wanted)) // Keep already named images when resuming this account's project.
+    if (saved.size) {
+      // The pipeline owns the complete style/cover prompt. Let it rebuild only missing shots.
+      await toBridge('RESULT', { id: job.id, files: [], meta: { recovered: true, projectUrl: location.href, expected, named: saved.size } })
+      return
     }
-
-    // มีภาพใหม่ที่ยังไม่ได้ตั้งชื่อ timecode → ให้ agent ตั้งชื่อก่อน
-    const unnamed = collectTiles().size - base - picks.size
-    if (unnamed > 0 && picks.size < expected) {
-      await toBridge('PROGRESS', { id: job.id, progress: { done: picks.size, total: expected, stage: 'rename' } })
-      await sendPrompt(renameInstruction(shots.filter((s) => !picks.has(s.filename))))
-      await sleep(3000)
-      await waitAgentIdle(job, { before, expected, stage: 'rename' })
+    const credits = await verifyFreeSettings(model, aspect)
+    if (credits !== 0) throw new Error(`ชุด ${model} · x1 ใช้ ${Number.isFinite(credits) ? credits : '?'} credits ไม่ใช่ 0 — หยุดไว้ก่อน ไม่ได้สั่ง agent`)
+    await configureAgent(model, { dryRun: false, ratio: aspect })
+    await sendPrompt(prompt, attachments)
+    // รูปตัวละครที่แนบไปกลายเป็น tile ใน project ด้วย — นับเป็นฐานใหม่ ไม่งั้นถูกนับว่าเป็น "ภาพใหม่ที่ยังไม่ตั้งชื่อ"
+    await sleep(3000)
+    const base = Math.max(before, collectTiles().size)
+    let stalls = 0
+    let nudges = 0
+    const tries = new Map(shots.map((s) => [s.filename, 1])) // จำนวนครั้งที่สั่งแต่ละช็อตไปแล้ว
+    const failuresAtStart = failureCounts()
+    let seenHighDemand = failuresAtStart.highDemand
+    let busyWaits = 0
+    let busyWaited = 0
+    for (let round = 1; ; round++) {
+      const beforeRound = collectTiles().size
+      await waitAgentIdle(job, { before, expected, stage: 'generate', onTick: () => saveNew(namedPicks(wanted)) })
+      const newThisRound = collectTiles().size - beforeRound
       await scanAllTiles()
-      picks = namedPicks(wanted)
-    }
-    await saveNew(picks)
+      let picks = namedPicks(wanted)
 
-    const missing = shots.filter((s) => !saved.has(s.filename))
-    if (!missing.length) break
-    const failures = failureCounts()
-    const failed = {
-      images: failures.imageFailed - failuresAtStart.imageFailed,
-      agent: failures.agentFailed - failuresAtStart.agentFailed,
-    }
-    await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'retry', failed } })
-
-    // Flow คิวเต็ม → ไม่นับเป็นรอบที่ล้ม รอให้คิวว่างก่อนแล้วสั่งช็อตเดิมใหม่
-    if (failures.highDemand > seenHighDemand) {
-      seenHighDemand = failures.highDemand
-      const wait = BUSY_WAITS_MS[Math.min(busyWaits++, BUSY_WAITS_MS.length - 1)]
-      if (busyWaited + wait > BUSY_MAX_MS) break
-      busyWaited += wait
-      console.warn(`[cartoon-auto] Flow คิวเต็ม (high demand) — รอ ${wait / 60_000} นาทีแล้วลองใหม่`)
-      for (const until = Date.now() + wait; Date.now() < until; ) {
-        await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'busy', retryAt: until } }) // heartbeat กัน bridge คิดว่าแท็บหลุด
-        await sleep(20_000)
+      // ยังไม่มีภาพใหม่เลย = agent หยุดถามยืนยัน/สรุปแผน → สั่งให้เริ่มสร้าง (ห้ามสั่งเปลี่ยนชื่อ เพราะไม่มีภาพให้เปลี่ยน)
+      if (collectTiles().size - base <= 0 && !picks.size && nudges < 3) {
+        nudges++
+        if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
+        await sendPrompt(goInstruction(shots))
+        continue
       }
+
+      // มีภาพใหม่ที่ยังไม่ได้ตั้งชื่อ timecode → ให้ agent ตั้งชื่อก่อน
+      const unnamed = collectTiles().size - base - picks.size
+      if (unnamed > 0 && picks.size < expected) {
+        await toBridge('PROGRESS', { id: job.id, progress: { done: picks.size, total: expected, stage: 'rename' } })
+        await sendPrompt(renameInstruction(shots.filter((s) => !picks.has(s.filename))))
+        await sleep(3000)
+        await waitAgentIdle(job, { before, expected, stage: 'rename' })
+        await scanAllTiles()
+        picks = namedPicks(wanted)
+      }
+      await saveNew(picks)
+
+      const missing = shots.filter((s) => !saved.has(s.filename))
+      if (!missing.length) break
+      const failures = failureCounts()
+      const failed = {
+        images: failures.imageFailed - failuresAtStart.imageFailed,
+        agent: failures.agentFailed - failuresAtStart.agentFailed,
+      }
+      await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'retry', failed } })
+
+      // Flow คิวเต็ม → ไม่นับเป็นรอบที่ล้ม รอให้คิวว่างก่อนแล้วสั่งช็อตเดิมใหม่
+      if (failures.highDemand > seenHighDemand) {
+        seenHighDemand = failures.highDemand
+        const wait = BUSY_WAITS_MS[Math.min(busyWaits++, BUSY_WAITS_MS.length - 1)]
+        if (busyWaited + wait > BUSY_MAX_MS) break
+        busyWaited += wait
+        console.warn(`[cartoon-auto] Flow คิวเต็ม (high demand) — รอ ${wait / 60_000} นาทีแล้วลองใหม่`)
+        for (const until = Date.now() + wait; Date.now() < until; ) {
+          await toBridge('PROGRESS', { id: job.id, progress: { done: saved.size, total: expected, stage: 'busy', retryAt: until } }) // heartbeat กัน bridge คิดว่าแท็บหลุด
+          await sleep(20_000)
+        }
+        if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
+        await sendPrompt(continueInstruction(missing.slice(0, RETRY_BATCH), { remaining: missing.length, safer: false }))
+        continue
+      }
+      busyWaits = 0
+      stalls = newThisRound > 0 ? 0 : stalls + 1
+      if (stalls >= MAX_STALLS) break
+
+      // ช็อตที่ขาด: ตัวที่ลองน้อยครั้งก่อน · ลองครบ SAFE_AFTER แล้วยังไม่ได้ → ขอแบบปลอดภัยขึ้นแยกชุด
+      const safer = missing.filter((s) => tries.get(s.filename) >= SAFE_AFTER)
+      const normal = missing.filter((s) => tries.get(s.filename) < SAFE_AFTER)
+      const useSafer = safer.length && (!normal.length || round % 2 === 0)
+      const batch = (useSafer ? safer : normal).slice(0, RETRY_BATCH)
+      // ช็อตที่ขอแบบปลอดภัยไปแล้วหลายรอบก็ยังไม่ได้ → เลิกขอ ให้ภาพข้างเคียงค้างแทน
+      if (useSafer && batch.every((s) => tries.get(s.filename) >= SAFE_AFTER + 2)) break
+      for (const s of batch) tries.set(s.filename, tries.get(s.filename) + 1)
       if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
-      await sendPrompt(continueInstruction(missing.slice(0, RETRY_BATCH), { remaining: missing.length, safer: false }))
-      continue
+      await sendPrompt(continueInstruction(batch, { remaining: missing.length, safer: useSafer }))
     }
-    busyWaits = 0
-    stalls = newThisRound > 0 ? 0 : stalls + 1
-    if (stalls >= MAX_STALLS) break
 
-    // ช็อตที่ขาด: ตัวที่ลองน้อยครั้งก่อน · ลองครบ SAFE_AFTER แล้วยังไม่ได้ → ขอแบบปลอดภัยขึ้นแยกชุด
-    const safer = missing.filter((s) => tries.get(s.filename) >= SAFE_AFTER)
-    const normal = missing.filter((s) => tries.get(s.filename) < SAFE_AFTER)
-    const useSafer = safer.length && (!normal.length || round % 2 === 0)
-    const batch = (useSafer ? safer : normal).slice(0, RETRY_BATCH)
-    // ช็อตที่ขอแบบปลอดภัยไปแล้วหลายรอบก็ยังไม่ได้ → เลิกขอ ให้ภาพข้างเคียงค้างแทน
-    if (useSafer && batch.every((s) => tries.get(s.filename) >= SAFE_AFTER + 2)) break
-    for (const s of batch) tries.set(s.filename, tries.get(s.filename) + 1)
-    if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' })
-    await sendPrompt(continueInstruction(batch, { remaining: missing.length, safer: useSafer }))
-  }
-
-  if (!saved.size) throw new Error('Agent ไม่ได้สร้างภาพที่ตั้งชื่อเป็น timecode เลย — ดูในแท็บ Flow')
-  await toBridge('RESULT', { id: job.id, files: [], meta: { generated: collectTiles().size - before, expected, named: saved.size } })
+    if (!saved.size) throw new Error('Agent ไม่ได้สร้างภาพที่ตั้งชื่อเป็น timecode เลย — ดูในแท็บ Flow')
+    await toBridge('RESULT', { id: job.id, files: [], meta: { generated: collectTiles().size - before, expected, named: saved.size } })
+  } catch (error) {
+    if (error instanceof FlowQuotaError) {
+      if (/\/project\//.test(location.pathname)) {
+        await scanAllTiles()
+        await saveNew(namedPicks(wanted))
+      }
+    }
+    throw error
+  } finally { expectedAccount = '' }
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -787,6 +830,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       })
       .then(() => sendResponse({ ok: true }))
       .catch(async (err) => {
+        expectedAccount = ''
+        if (err instanceof FlowQuotaError) {
+          const limits = (await chrome.storage.local.get('flowAccountLimits')).flowAccountLimits ?? {}
+          limits[err.quota.email] = { retryAt: err.quota.retryAt, reason: err.quota.reason }
+          await chrome.storage.local.set({ flowAccountLimits: limits })
+          await toBridge('RESULT', { id: msg.job.id, files: [], meta: { flowQuota: err.quota } }).catch(() => {})
+          sendResponse({ ok: true, reported: true })
+          return
+        }
         const message = errorText(err)
         await toBridge('ERROR', { id: msg.job.id, message }).catch(() => {})
         sendResponse({ ok: true, reported: true })

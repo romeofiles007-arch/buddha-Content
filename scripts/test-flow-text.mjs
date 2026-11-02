@@ -175,9 +175,9 @@ test('manifest: no-translate.js ที่ document_start บน flow.google.com 
 
 test('flow-text.js โหลดก่อน content-flow-agent.js ทุกทาง (manifest · background · แผงข้าง)', () => {
   const cs = manifest.content_scripts.find((c) => c.js.includes('content-flow-agent.js'))
-  assert.deepEqual(cs.js, ['flow-text.js', 'content-flow-agent.js'])
-  assert.match(bg, /flow: \['flow-text\.js', 'content-flow-agent\.js'\]/)
-  assert.match(src('sidepanel.js'), /files: \['flow-text\.js', 'content-flow-agent\.js'\]/)
+  assert.deepEqual(cs.js, ['flow-text.js', 'flow-quota.js', 'content-flow-agent.js'])
+  assert.match(bg, /flow: \['flow-text\.js', 'flow-quota\.js', 'content-flow-agent\.js'\]/)
+  assert.match(src('sidepanel.js'), /files: \['flow-text\.js', 'flow-quota\.js', 'content-flow-agent\.js'\]/)
 })
 
 test('ตัวขับ Flow: เทียบชื่อรุ่นผ่าน sameModel ทุกจุด · ไม่ส่ง Escape ระดับ document ตรง ๆ แล้ว', () => {

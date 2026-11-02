@@ -62,7 +62,7 @@ function makeChrome({ tabs, windows, focused, session = {}, translated = false }
 function loadBackground(env) {
   const { chrome, calls } = makeChrome(env)
   const ctx = vm.createContext({ ...flowNavigation, chrome, console: { log() {}, warn() {} }, setTimeout, clearTimeout, queueMicrotask, URL, fetch: async () => ({ ok: false, status: 500 }) })
-  vm.runInContext(bgSource.replace(/^import \{[^\n]+\} from '\.\/flow-navigation\.js'\r?\n/m, ''), ctx)
+  vm.runInContext(bgSource.replace(/^import \{[^\n]+\} from '\.\/flow-(?:navigation|account-switch)\.js'\r?\n/gm, ''), ctx)
   return { ctx, calls }
 }
 const names = (calls) => calls.map((c) => c[0])

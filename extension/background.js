@@ -8,6 +8,7 @@
 
 const NATIVE_HOST = 'com.dhamma_auto.bridge'
 import { preferredFlowTab, flowHomeUrl, flowJobNavigation } from './flow-navigation.js'
+import { switchFlowAccount, inspectFlowAccounts } from './flow-account-switch.js'
 
 const AGENTS = {
   chatgpt: { match: 'https://chatgpt.com/', pattern: ['https://chatgpt.com/*', 'https://chat.openai.com/*'], key: 'chatTabId' },
@@ -18,7 +19,7 @@ const AGENTS = {
 }
 const CONTENT_FILES = {
   chatgpt: ['selectors.js', 'content-common.js', 'content-chatgpt.js'],
-  flow: ['flow-text.js', 'content-flow-agent.js'],
+  flow: ['flow-text.js', 'flow-quota.js', 'content-flow-agent.js'],
   tiktok: ['content-common.js', 'tiktok-dom.js', 'content-tiktok.js'],
 }
 
@@ -164,6 +165,19 @@ async function handleJob(job) {
     return
   }
   const tab = await ensureTab(agent)
+
+  if (agent === 'flow' && ['flow-switch-account', 'flow-account-inspect'].includes(job.kind)) {
+    const action = job.kind === 'flow-account-inspect' ? inspectFlowAccounts : switchFlowAccount
+    const meta = await action({ chrome, tabId: tab.id, payload: job.payload,
+      heartbeat: async () => {
+        const res = await post('/progress', { id: job.id, progress: { stage: 'switch-account' } })
+        return res.json()
+      },
+    })
+    await postReliable('/result', { id: job.id, meta })
+    await setStatus(meta.exhausted ? 'บัญชี Flow ติดลิมิตครบแล้ว — รอโควต้าคืน' : job.kind === 'flow-account-inspect' ? 'ตรวจบัญชี Flow แล้ว' : 'สลับบัญชี Flow แล้ว')
+    return
+  }
 
   if (agent === 'tiktok') await loadInTab(tab.id, AGENTS.tiktok.match, 1500)
 

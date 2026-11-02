@@ -92,6 +92,9 @@ export function nextTimeAt(hhmm, now = Date.now()) {
 
 export const randomDelayMs = (s, rand = Math.random) => Math.round((s.delayMin + rand() * (s.delayMax - s.delayMin)) * 60_000)
 
+// Autopilot prints a human recovery hint after its error; retain the actionable quota marker.
+export const productionError = lines => (lines ?? []).findLast(line => /FLOW_ACCOUNTS_EXHAUSTED/.test(line)) ?? lines?.at(-1) ?? null
+
 /** ตัวเลือกของคลิปถัดไป — สุ่มเฉพาะข้อที่ติ๊กไว้ */
 export function pickClip(s, config, rand = Math.random) {
   const pick = (list) => list[Math.floor(rand() * list.length)]
@@ -188,7 +191,7 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     const title = slug ? last.title : null
     if (snap && snap.startedAt === run.startedAt) {
       if (snap.status === 'running') return null
-      return { slug, title, ok: snap.status === 'done', error: snap.status === 'done' ? null : snap.lines.at(-1) ?? snap.status }
+      return { slug, title, ok: snap.status === 'done', error: snap.status === 'done' ? null : productionError(snap.lines) ?? snap.status }
     }
     const status = slug ? readJson(join(ROOT, 'projects', slug, 'autopilot.json'), null) : null
     return { slug, title, ok: status?.status === 'done', error: status?.status === 'done' ? null : status?.error ?? 'ไม่ทราบผล (โปรแกรมรีสตาร์ทระหว่างทำ)' }
@@ -229,7 +232,11 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
         .catch((err) => log(`ผลิตต่อเนื่อง: ส่ง "${result.title ?? result.slug}" เข้าคิวโพสต์ไม่ได้ — ${err.message}`))
     }
     const name = result.title ? `"${result.title}"` : 'คลิป'
-    if (state.made >= target()) {
+    if (!result.ok && /FLOW_ACCOUNTS_EXHAUSTED/.test(result.error ?? '')) {
+      state.active = false
+      state.nextAt = null
+      say('หยุด — บัญชี Flow ติดลิมิตครบแล้วหรือยืนยันบัญชีใหม่ไม่ได้ รอโควต้าคืนแล้วกดทำต่อคลิปเดิม')
+    } else if (state.made >= target()) {
       playDoneSound()
       // คลิปพร้อมดู: รวมเป็นโฟลเดอร์เดียว เปิดโฟลเดอร์ + เปิดคลิปแรกเต็มจอ
       try {

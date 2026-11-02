@@ -1,0 +1,135 @@
+import './flow-quota.js'
+import { flowHomeUrl } from './flow-navigation.js'
+const Q = globalThis.DhammaFlowQuota
+const LIMITS_KEY = 'flowAccountLimits'
+const CHOOSER = 'https://accounts.google.com/AccountChooser?continue=https%3A%2F%2Fflow.google.com%2F'
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+const isFlow = value => { try { return new URL(value).origin === 'https://flow.google.com' } catch { return false } }
+const isChooser = value => { try { const u = new URL(value); return u.origin === 'https://accounts.google.com' && /\/(?:AccountChooser|v3\/signin\/accountchooser)$/i.test(u.pathname) } catch { return false } }
+
+/** The policy is independent of Chrome so identity and exhaustion have deterministic tests. */
+export async function rotateAccount({ currentEmail, payload, store, list, select, identity, now = Date.now() }) {
+  const current = Q.emailOf(currentEmail)
+  if (!current || current !== Q.emailOf(payload.limitedEmail)) throw new Error('บัญชี Flow เปลี่ยนระหว่างตรวจลิมิต — หยุดก่อนสลับบัญชี')
+  const limits = await store.get()
+  const retryAt = Number(payload.retryAt)
+  limits[current] = { retryAt: Number.isFinite(retryAt) && retryAt > now ? Math.min(retryAt, now + 7 * 86400000) : now + 86400000, reason: String(payload.reason ?? 'Flow account limit').slice(0, 500) }
+  await store.set(limits) // Persist before leaving the exhausted account.
+  const accounts = await list()
+  if (!accounts.some(a => Q.emailOf(a.email) === current)) throw new Error('ไม่พบบัญชี Flow เดิมในรายชื่อ Google — กรุณาตรวจการเข้าสู่ระบบ')
+  const next = Q.nextAccount(accounts, current, limits, payload.excludedEmails, now)
+  if (!next) {
+    const resets = accounts.filter(a => !a.signedOut).map(a => Number(limits[Q.emailOf(a.email)]?.retryAt)).filter(n => n > now)
+    return { exhausted: true, retryAt: resets.length ? Math.min(...resets) : null }
+  }
+  await select(next.email)
+  const actual = await identity()
+  if (!Q.sameAccount(actual, next.email)) throw new Error('ยืนยันบัญชี Flow หลังสลับไม่ตรง — ไม่ได้ส่งคำสั่งสร้างภาพ')
+  return { email: Q.emailOf(next.email), previousEmail: current }
+}
+
+export async function flowIdentity(chrome, tabId) {
+  const tab = await chrome.tabs.get(tabId)
+  if (!isFlow(tab.url)) return ''
+  const [r] = await chrome.scripting.executeScript({ target: { tabId }, func: () => {
+    const labels = [...document.querySelectorAll('button[aria-label], a[aria-label]')].map(el => el.getAttribute('aria-label'))
+    return labels.find(s => /(?:Google Account|บัญชี Google).*@/i.test(s)) ?? ''
+  } })
+  return Q.emailOf(r?.result)
+}
+
+async function withDebugger(chrome, tabId, fn) {
+  const target = { tabId }
+  const command = (method, params = {}) => new Promise((resolve, reject) => chrome.debugger.sendCommand(target, method, params, result => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(result)))
+  await new Promise((resolve, reject) => chrome.debugger.attach(target, '1.3', () => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve()))
+  try { return await fn(command) } finally { await new Promise(resolve => chrome.debugger.detach(target, () => resolve())) }
+}
+
+/** Only account row names/status are read. Never inspect login fields, cookies or credentials. */
+async function chooserAccounts(chrome, tabId, selectEmail) {
+  if (!isChooser((await chrome.tabs.get(tabId)).url)) throw new Error('Google ต้องการเข้าสู่ระบบหรือยืนยันตัวตน — กรุณาจัดการในเบราว์เซอร์ก่อน')
+  return withDebugger(chrome, tabId, async command => {
+    const { nodes } = await command('Accessibility.getFullAXTree')
+    const accounts = []
+    for (const node of nodes) {
+      if (node.ignored || node.role?.value !== 'link' || !node.backendDOMNodeId) continue
+      const email = Q.emailOf(node.name?.value)
+      if (!email || accounts.some(a => a.email === email)) continue
+      const { object } = await command('DOM.resolveNode', { backendNodeId: node.backendDOMNodeId })
+      const { result } = await command('Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true, functionDeclaration: `function() { const row=this.closest('li')||this; return {text:row.innerText||'',disabled:this.getAttribute('aria-disabled')==='true'} }` })
+      const signedOut = !!result?.value?.disabled || /signed out|ออกจากระบบ|ลงชื่อออก/i.test(result?.value?.text ?? '')
+      accounts.push({ email, signedOut })
+      if (selectEmail && email === Q.emailOf(selectEmail)) {
+        if (signedOut) throw new Error('บัญชี Google ถัดไปออกจากระบบอยู่ — กรุณาเข้าสู่ระบบก่อน')
+        await command('Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true, functionDeclaration: 'function() { this.click(); return true }' })
+        return accounts
+      }
+    }
+    if (selectEmail) throw new Error('รายชื่อบัญชี Google เปลี่ยนก่อนเลือก — หยุดเพื่อไม่เลือกผิดบัญชี')
+    if (!accounts.length) throw new Error('อ่านรายชื่อบัญชี Google ที่ล็อกอินไว้ไม่ได้ — กรุณาตรวจหน้าเลือกบัญชี')
+    return accounts
+  })
+}
+
+/** Diagnostic inventory in a disposable tab; never change the selected Flow account/project. */
+export async function inspectFlowAccounts({ chrome, tabId, heartbeat = async () => {} }) {
+  const email = await flowIdentity(chrome, tabId)
+  const tab = await chrome.tabs.create({ url: CHOOSER, active: false })
+  try {
+    for (let tick = 0; tick < 30; tick++) {
+      if (tick % 5 === 0 && (await heartbeat())?.cancelled) throw new Error('งานตรวจบัญชีถูกยกเลิกแล้ว')
+      if (isChooser((await chrome.tabs.get(tab.id)).url)) {
+        try {
+          const accounts = await chooserAccounts(chrome, tab.id)
+          return { email, accounts, limits: (await chrome.storage.local.get(LIMITS_KEY))[LIMITS_KEY] ?? {}, version: chrome.runtime.getManifest().version }
+        } catch (e) { if (!/อ่านรายชื่อ/.test(e.message)) throw e }
+      }
+      await sleep(1000)
+    }
+    throw new Error('อ่านรายชื่อบัญชี Google ไม่สำเร็จ')
+  } finally { await chrome.tabs.remove(tab.id) }
+}
+
+export async function switchFlowAccount({ chrome, tabId, payload, heartbeat = async () => {} }) {
+  let cancelled = false
+  let selectedEmail = ''
+  const pulse = async () => { const r = await heartbeat(); if (r?.cancelled) { cancelled = true; throw new Error('งานสลับบัญชีถูกยกเลิกแล้ว') } }
+  const wait = async fn => {
+    for (let tick = 0; tick < 45; tick++) {
+      if (cancelled) throw new Error('งานสลับบัญชีถูกยกเลิกแล้ว')
+      const value = await fn()
+      if (value) return value
+      if (tick % 5 === 0) await pulse()
+      await sleep(1000)
+    }
+    throw new Error('Google ต้องการเข้าสู่ระบบหรือยืนยันตัวตน หรือสลับบัญชีไม่สำเร็จ — หยุดก่อนสร้างภาพ')
+  }
+  await pulse()
+  const currentEmail = await flowIdentity(chrome, tabId)
+  const result = await rotateAccount({ currentEmail, payload,
+    store: { get: async () => (await chrome.storage.local.get(LIMITS_KEY))[LIMITS_KEY] ?? {}, set: limits => chrome.storage.local.set({ [LIMITS_KEY]: limits }) },
+    list: async () => {
+      await chrome.tabs.update(tabId, { url: CHOOSER, active: true })
+      await wait(async () => isChooser((await chrome.tabs.get(tabId)).url))
+      return wait(async () => {
+        try { return await chooserAccounts(chrome, tabId) } catch (e) { if (/อ่านรายชื่อ/.test(e.message)) return null; throw e }
+      })
+    },
+    select: async email => { await pulse(); selectedEmail = email; await chooserAccounts(chrome, tabId, email) },
+    identity: async () => {
+      await wait(async () => isFlow((await chrome.tabs.get(tabId)).url))
+      const home = flowHomeUrl((await chrome.tabs.get(tabId)).url)
+      // The chooser returns the observed /u/N/ account route, sometimes in Thai.
+      await chrome.tabs.update(tabId, { url: home, active: true })
+      const email = await wait(async () => {
+        if ((await chrome.tabs.get(tabId)).status !== 'complete') return ''
+        const actual = await flowIdentity(chrome, tabId).catch(() => '')
+        return Q.sameAccount(actual, selectedEmail) ? actual : ''
+      })
+      await chrome.storage.local.set({ flowAccountHome: home })
+      await chrome.storage.session.set({ flowTabId: tabId })
+      return email
+    },
+  })
+  return result
+}

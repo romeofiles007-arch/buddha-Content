@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { pageSequence, clipCategory, acceptsCategory } from '../pipeline/lib/posting.mjs'
-import { cleanSettings, DEFAULT_SETTINGS } from '../bridge/production.js'
+import { cleanSettings, DEFAULT_SETTINGS, productionError } from '../bridge/production.js'
 import { CATEGORIES } from '../extension/prompts.js'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -17,6 +17,11 @@ const test = (name, fn) => {
   passed++
   console.log(`  ✓ ${name}`)
 }
+
+test('production retains exhausted-account errors when autopilot prints a recovery hint afterward', () => {
+  assert.match(productionError(['FLOW_ACCOUNTS_EXHAUSTED: บัญชีติดลิมิตครบแล้ว', 'กดทำคลิปอัตโนมัติอีกครั้งด้วยหัวข้อเดิม']), /FLOW_ACCOUNTS_EXHAUSTED/)
+  assert.equal(productionError(['ordinary failure']), 'ordinary failure')
+})
 
 test('แบ่งเพจ 3/2 → สลับกัน ครบ 5 คลิป (เพจ 1 = 3 · เพจ 2 = 2)', () => {
   const seq = pageSequence({ 'fb:a': 3, 'fb:b': 2 }, ['fb:a', 'fb:b'])
