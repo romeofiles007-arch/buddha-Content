@@ -84,19 +84,51 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     saveQueue(loadQueue().map((q) => (q.status === 'review' && !q.targetsEdited ? { ...q, targets: targetsFor(data, q.category) } : q)))
   }
 
+  /** เติมหมวดจากคลิปและปลายทางที่ว่าง — ไม่ทับเพจที่เลือก/อนุมัติไว้แล้ว */
+  function fillTargets(item, accounts) {
+    let changed = false
+    if (!item.category && !item.categoryBy) {
+      const category = clipCategory(item.slug)
+      if (category) {
+        Object.assign(item, { category, categoryBy: 'clip' })
+        changed = true
+      }
+    }
+    if (!item.targetsEdited && !item.targets?.length) {
+      const targets = targetsFor(accounts, item.category)
+      if (targets.length) {
+        item.targets = targets
+        changed = true
+      }
+    }
+    return changed
+  }
+
+  /** คิวเก่า/เพจที่ลบแล้วเชื่อมใหม่: เติมให้เห็นก่อนถึงเวลาโพสต์ โดยคงเวลาเดิม */
+  function repairMissingTargets() {
+    const accounts = loadAccounts()
+    const queue = loadQueue()
+    let changed = false
+    for (const item of queue) {
+      if (item.status !== 'review' && item.status !== 'scheduled') continue
+      if (fillTargets(item, accounts)) changed = true
+    }
+    if (changed) saveQueue(queue)
+  }
+
   // ── เข้าคิวเอง ──
   async function enroll({ force = false } = {}) {
     if (!force && Date.now() - lastEnroll < ENROLL_EVERY_MS) return
     lastEnroll = Date.now()
-    const { settings } = loadAccounts()
+    const accounts = loadAccounts()
+    const { settings } = accounts
     if (!settings.enabledAt) return
     const fresh = videosToEnroll(await videosOf(), loadQueue(), settings.enabledAt)
     if (!fresh.length) return
-    // ยังไม่รู้หมวด → ไปเฉพาะเพจ/ช่องที่รับทุกหมวด · AI ระบุหมวดตอนตรวจแล้วค่อยเลือกให้ใหม่
-    const targets = targetsFor(loadAccounts(), null)
     const queue = loadQueue()
     for (const v of fresh) {
-      const item = newItem({ ...v, post: readPost(v.slug), targets })
+      const item = newItem({ ...v, post: readPost(v.slug) })
+      fillTargets(item, accounts)
       note(item, 'คลิปทำเสร็จ เข้าคิวรอตรวจ')
       queue.push(item)
       log(`โพสต์อัตโนมัติ: "${v.title}" เข้าคิวรอตรวจ`)
@@ -339,8 +371,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   async function postItem(id) {
     const accounts = loadAccounts()
     let item = mutateItem(id, (it) => {
-      // ปลายทางถูกล้าง (ลบเพจแล้วเพิ่มใหม่) และผู้ใช้ไม่ได้ติ๊กเอง → เลือกเพจ/ช่องที่มีตอนนี้ตามหมวดให้ใหม่
-      if (!it.targets?.length && !it.targetsEdited) it.targets = targetsFor(accounts, it.category ?? null)
+      fillTargets(it, accounts)
       it.status = 'posting'
       it.error = null
       note(it, 'เริ่มโพสต์')
@@ -451,6 +482,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     try {
       await enroll().catch((err) => log(`โพสต์อัตโนมัติ: ดึงคลิปเข้าคิวไม่ได้ — ${err.message}`))
       await pull().catch((err) => log(`โพสต์อัตโนมัติ: ดึงคลิปจากคลังไม่ได้ — ${err.message}`))
+      repairMissingTargets()
       collectChecks()
       fillPosts()
       scheduleAuto()
@@ -467,6 +499,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   // ── มุมมองให้แผงข้าง ──
   async function view() {
     await enroll({ force: true }).catch(() => {})
+    repairMissingTargets()
     collectChecks()
     const videos = await videosOf()
     const bySlug = new Map(videos.map((v) => [v.slug, v]))
@@ -652,7 +685,8 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         const queue = loadQueue().filter((q) => !(q.slug === slug && q.file === file && q.status === 'removed'))
         if (!queue.some((q) => q.slug === slug && q.file === file)) {
           const v = (await videosOf()).find((x) => x.slug === slug)
-          const item = newItem({ slug, file, title: v?.title ?? slug, post: readPost(slug), targets: targetsFor(loadAccounts(), null) })
+          const item = newItem({ slug, file, title: v?.title ?? slug, post: readPost(slug) })
+          fillTargets(item, loadAccounts())
           note(item, 'เพิ่มจากคลังวิดีโอ')
           queue.push(item)
         }

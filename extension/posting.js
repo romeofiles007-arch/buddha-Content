@@ -433,13 +433,14 @@ export function initPosting({ api, localApp }) {
       return el('li', { className: 'pCard' },
         head(q, [el('span', { className: 'pBadge gold' }, posting ? 'กำลังโพสต์…' : `โพสต์ ${fmtWhen(q.scheduleAt)}`)]),
         el('div', { className: 'pTargets' }, (q.targets ?? []).map((k) => el('span', { className: 'pTarget' }, kindTag(k.slice(0, 2)), targetName(k)))),
+        !q.targets?.length ? el('p', { className: 'pWarn' }, 'ยังไม่มีเพจหรือช่องปลายทาง — กดยกเลิกเวลา แล้วเลือกหมวดและเพจในแท็บรอตรวจ ก่อนตั้งเวลาใหม่') : null,
         el('p', { className: 'pMeta' }, q.post?.title ?? ''),
         posting
           ? el('p', { className: 'status' }, el('span', { className: 'spinner' }), 'กำลังอัปโหลด — อย่าปิดโปรแกรมในเครื่อง')
           : el('div', { className: 'pWhen' },
             el('label', { className: 'pField' }, 'เปลี่ยนเวลา', when),
-            el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/approve', { id: q.id, when: new Date(when.value).getTime() }, 'เปลี่ยนเวลาแล้ว').catch(() => {}) } }, 'บันทึกเวลา'),
-            el('button', { type: 'button', className: 'ghost', on: { click: () => { if (confirm(`โพสต์ "${q.title}" ตอนนี้เลยไหม?`)) call('/api/posting/approve', { id: q.id, when: 'now' }, 'กำลังโพสต์…').catch(() => {}) } } }, 'โพสต์ตอนนี้'),
+            el('button', { type: 'button', className: 'ghost', disabled: !q.targets?.length, on: { click: () => call('/api/posting/approve', { id: q.id, when: new Date(when.value).getTime() }, 'เปลี่ยนเวลาแล้ว').catch(() => {}) } }, 'บันทึกเวลา'),
+            el('button', { type: 'button', className: 'ghost', disabled: !q.targets?.length, on: { click: () => { if (confirm(`โพสต์ "${q.title}" ตอนนี้เลยไหม?`)) call('/api/posting/approve', { id: q.id, when: 'now' }, 'กำลังโพสต์…').catch(() => {}) } } }, 'โพสต์ตอนนี้'),
             el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/unschedule', { id: q.id }, 'ยกเลิกเวลาแล้ว กลับไปรอตรวจ').catch(() => {}) } }, 'ยกเลิกเวลา'),
           ),
       )
