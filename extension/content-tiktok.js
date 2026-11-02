@@ -83,7 +83,15 @@
       ai = ai.matches('label') ? ai.querySelector('input, [role="switch"], [role="checkbox"]') : ai
       if (!ai) throw new Error('ไม่พบสวิตช์ป้ายกำกับ AI ของ TikTok')
       if (D.checked(ai) !== (job.payload.aigc === true)) ai.click()
-      await wait(() => D.checked(ai) === (job.payload.aigc === true), 'ยืนยันป้ายกำกับ AI ของ TikTok', 5000)
+      let confirmedAi = false
+      await wait(() => {
+        let current = D.aiControl(document)
+        if (current?.matches('label')) current = current.querySelector('input, [role="switch"], [role="checkbox"]')
+        if (current && D.checked(current) === (job.payload.aigc === true)) return true
+        const confirm = job.payload.aigc === true && !confirmedAi ? D.aiConfirmation(document) : null
+        if (confirm && D.enabled(confirm)) { confirmedAi = true; confirm.click() }
+        return false
+      }, 'ยืนยันป้ายกำกับ AI ของ TikTok', 5000)
       const post = await wait(() => {
         const error = [...document.querySelectorAll('[role="alert"]')].find(node => /upload failed|couldn.t upload|อัปโหลดไม่สำเร็จ/i.test(D.text(node)))
         if (error) throw new Error(D.text(error))

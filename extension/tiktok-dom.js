@@ -84,6 +84,10 @@
     })
   }
   const checked = node => node.checked === true || node.getAttribute('aria-checked') === 'true'
+  function aiConfirmation(doc) {
+    const dialogs = [...doc.querySelectorAll('[role="dialog"]')].filter(visible).filter(node => /^Labeling AI-generated content(?:\s|$)/i.test(text(node)))
+    return dialogs.length === 1 ? findButton(dialogs[0], ['Turn on']) : null
+  }
   function inspectStudio(doc) {
     const controls = [...doc.querySelectorAll('button, input, select, [role="button"], [role="combobox"], [role="switch"], [contenteditable="true"]')].filter(visible).filter(node => !['password', 'email', 'tel'].includes(node.type)).slice(0, 100).map(node => ({
       tag: node.tagName, role: node.getAttribute('role'), type: node.getAttribute('type'), label: node.getAttribute('aria-label'), placeholder: node.getAttribute('placeholder'), e2e: node.getAttribute('data-e2e'), className: node.getAttribute('class'), ariaChecked: node.getAttribute('aria-checked'),
@@ -102,5 +106,5 @@
     })
     return { controls, profiles, avatars, navigation, settingRows, pageText: text(doc.body).slice(0, 4000) }
   }
-  globalThis.DhammaTikTokDom = { text, visible, username, checkPage, account, avatarTrigger, assertAccount, published, publicationSignals, claimAttempt, privacyLabels, exact, findButton, enabled, privacyControl, aiControl, checked, inspectStudio }
+  globalThis.DhammaTikTokDom = { text, visible, username, checkPage, account, avatarTrigger, assertAccount, published, publicationSignals, claimAttempt, privacyLabels, exact, findButton, enabled, privacyControl, aiControl, aiConfirmation, checked, inspectStudio }
 })()

@@ -27,6 +27,14 @@ test('Studio Show more uses its observed collapse control without a button role'
   const doc = document(); doc.querySelectorAll = selector => selector.includes('.more-collapse') ? [more] : []
   assert.equal(api().findButton(doc, ['Show more']), more)
 })
+test('AI consent never accepts an unrelated Turn on dialog', () => {
+  const button = { innerText: 'Turn on', getClientRects: () => [{}] }
+  const dialog = { innerText: 'Turn on automatic content checks?', getClientRects: () => [{}], querySelectorAll: () => [button] }
+  const doc = document(); doc.querySelectorAll = () => [dialog]
+  assert.equal(api().aiConfirmation(doc), null)
+  dialog.innerText = 'Labeling AI-generated content Creators should label content. Turn on'
+  assert.equal(api().aiConfirmation(doc), button)
+})
 test('account mismatch prevents publishing to the currently signed-in account', () => {
   assert.throws(() => api().assertAccount({ username: 'other' }, 'romeo'), /ไม่ตรง/)
   assert.doesNotThrow(() => api().assertAccount({ username: 'Romeo' }, '@romeo'))

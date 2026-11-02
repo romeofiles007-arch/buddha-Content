@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 import { test } from 'node:test'
 const domSource = readFileSync(new URL('../extension/tiktok-dom.js', import.meta.url), 'utf8')
 const driverSource = readFileSync(new URL('../extension/content-tiktok.js', import.meta.url), 'utf8')
-function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, delayedStudio = false, cdnAvatar = false, studioSwitch = false, ambiguousSwitch = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
+function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, delayedStudio = false, cdnAvatar = false, studioSwitch = false, ambiguousSwitch = false, aiConsent = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
   let listener, uploads = 0, clicks = 0, progress = 0, accountReads = 0, menuOpen = false, onCancel, rerendered = false, readyChecks = 0
   const results = [], memory = new Map()
   const node = (extra = {}) => ({ textContent: '', getClientRects: () => [{}], getAttribute: () => null, matches: () => false, focus() {}, click() {}, dispatchEvent() {}, ...extra })
@@ -15,7 +15,10 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   const options = ['Everyone', 'Friends', 'Only you'].map((textContent, i) => node({ textContent, value: ['public', 'friends', 'private'][i] }))
   const privacy = node({ tagName: 'SELECT', value: 'public', options, getAttribute: n => n === 'aria-label' ? 'Who can watch this video' : null })
   Object.defineProperty(privacy, 'selectedOptions', { get: () => options.filter(o => o.value === privacy.value) })
-  const ai = node({ textContent: studioSwitch ? '' : 'AI-generated content', checked: false, closest: () => null, click() { this.checked = !this.checked } })
+  let consentOpen = false
+  const ai = node({ textContent: studioSwitch ? '' : 'AI-generated content', checked: false, closest: () => null, click() { if (aiConsent) consentOpen = true; else this.checked = !this.checked } })
+  const consentButton = node({ textContent: 'Turn on', click() { ai.checked = true; consentOpen = false } })
+  const consentDialog = node({ textContent: 'Labeling AI-generated content Creators should label content that is completely AI-generated. Not now Turn on', querySelectorAll: () => [consentButton] })
   const aiRow = node({ textContent: 'AI-generated content', querySelectorAll: () => ambiguousSwitch ? [ai, node()] : [ai] })
   const alerts = [], body = { innerText: '' }
   const post = node({ textContent: 'Post', disabled: false, click() { clicks++; if (confirm) { body.innerText = 'Video posted'; alerts.push(node({ innerText: 'Video posted' })) } } })
@@ -34,6 +37,7 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
       if (selector === 'select, button, [role="combobox"]') return missingPrivacy ? [] : [privacy]
       if (selector.startsWith('label,')) return [ai]
       if (selector.startsWith('button, [role="button"]')) return [post]
+      if (selector === '[role="dialog"]') return consentOpen ? [consentDialog] : []
       if (selector.includes('[role="alert"]')) return alerts
       return []
     },
@@ -129,4 +133,11 @@ test('an ambiguous unlabeled AIGC row stops before publication', async () => {
   assert.equal(f.results[0].ok, false)
   assert.equal(f.state().clicks, 0)
   assert.equal(f.results[0].needsVerification, false)
+})
+
+test('first-time AI labeling consent is scoped and confirmed before publishing', async () => {
+  const f = fixture({ studioSwitch: true, aiConsent: true }); await f.invoke()
+  assert.equal(f.results[0].ok, true)
+  assert.equal(f.state().aigc, true)
+  assert.equal(f.state().clicks, 1)
 })
