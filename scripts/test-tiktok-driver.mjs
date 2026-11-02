@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 import { test } from 'node:test'
 const domSource = readFileSync(new URL('../extension/tiktok-dom.js', import.meta.url), 'utf8')
 const driverSource = readFileSync(new URL('../extension/content-tiktok.js', import.meta.url), 'utf8')
-function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, delayedStudio = false, cdnAvatar = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
+function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, delayedStudio = false, cdnAvatar = false, studioSwitch = false, ambiguousSwitch = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
   let listener, uploads = 0, clicks = 0, progress = 0, accountReads = 0, menuOpen = false, onCancel, rerendered = false, readyChecks = 0
   const results = [], memory = new Map()
   const node = (extra = {}) => ({ textContent: '', getClientRects: () => [{}], getAttribute: () => null, matches: () => false, focus() {}, click() {}, dispatchEvent() {}, ...extra })
@@ -15,7 +15,8 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   const options = ['Everyone', 'Friends', 'Only you'].map((textContent, i) => node({ textContent, value: ['public', 'friends', 'private'][i] }))
   const privacy = node({ tagName: 'SELECT', value: 'public', options, getAttribute: n => n === 'aria-label' ? 'Who can watch this video' : null })
   Object.defineProperty(privacy, 'selectedOptions', { get: () => options.filter(o => o.value === privacy.value) })
-  const ai = node({ textContent: 'AI-generated content', checked: false, click() { this.checked = !this.checked } })
+  const ai = node({ textContent: studioSwitch ? '' : 'AI-generated content', checked: false, closest: () => null, click() { this.checked = !this.checked } })
+  const aiRow = node({ textContent: 'AI-generated content', querySelectorAll: () => ambiguousSwitch ? [ai, node()] : [ai] })
   const alerts = [], body = { innerText: '' }
   const post = node({ textContent: 'Post', disabled: false, click() { clicks++; if (confirm) { body.innerText = 'Video posted'; alerts.push(node({ innerText: 'Video posted' })) } } })
   let markedProfile = false
@@ -24,7 +25,7 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   const avatarImage = node({ getAttribute: n => n === 'src' ? 'https://p16.tiktokcdn.com/tos-alisg-avt-0068/account.jpeg' : null, closest: () => avatar })
   const document = {
     body,
-    querySelector: selector => selector.includes('input[type="file"]') ? (++readyChecks >= (delayedStudio ? 2 : 1) ? node() : null) : null,
+    querySelector: selector => selector.includes('input[type="file"]') ? (++readyChecks >= (delayedStudio ? 2 : 1) ? node() : null) : studioSwitch && selector === '[data-e2e="aigc_container"]' ? aiRow : null,
     querySelectorAll: selector => {
       if (selector === 'a[href*="/@"]') { accountReads++; return (cdnAvatar && !menuOpen) || (delayedStudio && readyChecks < 2) || (cancelDuringAccount && accountReads > 1 && !menuOpen) ? [] : [profile] }
       if (selector.startsWith('[data-e2e="profile-icon"]')) return cdnAvatar ? [] : [avatar]
@@ -32,7 +33,7 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
       if (selector === '[contenteditable="true"], textarea') return [rerendered ? replacement : editor]
       if (selector === 'select, button, [role="combobox"]') return missingPrivacy ? [] : [privacy]
       if (selector.startsWith('label,')) return [ai]
-      if (selector === 'button, [role="button"]') return [post]
+      if (selector.startsWith('button, [role="button"]')) return [post]
       if (selector.includes('[role="alert"]')) return alerts
       return []
     },
@@ -78,6 +79,7 @@ test('missing visibility controls and cancellation prevent the publish action', 
     assert.equal(f.state().clicks, 0)
     assert.equal(f.results[0].ok, false)
     assert.equal(f.results[0].needsVerification, false)
+    assert.ok(f.results[0].diagnostic?.controls, 'failed browser posts retain visible control diagnostics for repair')
   }
 })
 test('losing confirmation after one publish produces an uncertain result, never another click', async () => {
@@ -113,4 +115,18 @@ test('the current Studio avatar opens its own account menu before identity verif
   const f = fixture({ cdnAvatar: true }); await f.invoke()
   assert.equal(f.results[0].ok, true)
   assert.equal(f.state().clicks, 1)
+})
+
+test('Studio AI setting locates its unlabeled switch inside the dedicated AIGC row', async () => {
+  const f = fixture({ studioSwitch: true }); await f.invoke()
+  assert.equal(f.results[0].ok, true)
+  assert.equal(f.state().aigc, true)
+  assert.equal(f.state().clicks, 1)
+})
+
+test('an ambiguous unlabeled AIGC row stops before publication', async () => {
+  const f = fixture({ studioSwitch: true, ambiguousSwitch: true }); await f.invoke()
+  assert.equal(f.results[0].ok, false)
+  assert.equal(f.state().clicks, 0)
+  assert.equal(f.results[0].needsVerification, false)
 })

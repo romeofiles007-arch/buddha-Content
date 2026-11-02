@@ -22,6 +22,11 @@ test('login and CAPTCHA stop the attempt with recovery text', () => {
   const doc = document(); doc.querySelector = selector => selector.includes('captcha') ? {} : null
   assert.throws(() => D.checkPage(doc, 'https://www.tiktok.com/tiktokstudio/upload'), /CAPTCHA/)
 })
+test('Studio Show more uses its observed collapse control without a button role', () => {
+  const more = { innerText: 'Show more', getClientRects: () => [{}] }
+  const doc = document(); doc.querySelectorAll = selector => selector.includes('.more-collapse') ? [more] : []
+  assert.equal(api().findButton(doc, ['Show more']), more)
+})
 test('account mismatch prevents publishing to the currently signed-in account', () => {
   assert.throws(() => api().assertAccount({ username: 'other' }, 'romeo'), /ไม่ตรง/)
   assert.doesNotThrow(() => api().assertAccount({ username: 'Romeo' }, '@romeo'))

@@ -140,4 +140,18 @@ await test('โค้ดไม่มีการเปิดหน้าต่�
   assert.ok(manifest.permissions.includes('sidePanel'))
 })
 
+await test('read-only TikTok inspection preserves the uploaded form; posting always starts fresh', async () => {
+  for (const kind of ['tiktok-inspect', 'tiktok-post']) {
+    const tabs = [{ id: 7, windowId: 1, url: 'https://www.tiktok.com/tiktokstudio/upload' }]
+    const { ctx, calls } = loadBackground({ tabs, windows: [{ id: 1 }], focused: 1 })
+    ctx.fetch = async () => ({ ok: true, json: async () => ({}) })
+    await ctx.handleJob({ id: 'tk1', agent: 'tiktok', kind, payload: { preserve: true } })
+    assert.equal(calls.some(c => c[0] === 'tabs.update' && c[2]?.url), kind === 'tiktok-post')
+    if (kind === 'tiktok-inspect') {
+      assert.ok(calls.some(c => c[0] === 'scripting.executeScript'), 'inspection reads existing TikTok tabs directly')
+      assert.ok(!calls.some(c => c[0] === 'tabs.create'), 'inspection cannot replace a user upload with a new tab')
+    }
+  }
+})
+
 console.log(`\nผ่าน ${passed} ข้อ`)

@@ -106,7 +106,11 @@
       attempt.complete(result)
       return { ok: true, ...result }
     } catch (error) {
-      return { ok: false, error: String(error.message), needsVerification: error.needsVerification === true || attempt?.submitted === true, ...(job.payload?.inspect === true ? { diagnostic: D.inspectStudio(document) } : {}) }
+      let diagnostic
+      if (job.kind === 'tiktok-post' || job.payload?.inspect === true) {
+        try { diagnostic = D.inspectStudio(document) } catch {}
+      }
+      return { ok: false, error: String(error.message), needsVerification: error.needsVerification === true || attempt?.submitted === true, ...(diagnostic ? { diagnostic } : {}) }
     } finally { stopBeat() }
   }
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {

@@ -154,8 +154,19 @@ function withEnglish(url) {
 
 async function handleJob(job) {
   await setStatus(`กำลังทำ ${job.kind}`)
-  const tab = await ensureTab(job.payload.agent ?? jobAgent(job))
   const agent = job.payload.agent ?? jobAgent(job)
+  if (agent === 'tiktok' && job.kind === 'tiktok-inspect' && job.payload.preserve === true) {
+    const tabs = await chrome.tabs.query({ url: AGENTS.tiktok.pattern })
+    const snapshots = []
+    for (const tab of tabs) {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['tiktok-dom.js'] })
+      const [snapshot] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ url: location.href, ...globalThis.DhammaTikTokDom.inspectStudio(document) }) })
+      snapshots.push({ tabId: tab.id, ...snapshot?.result })
+    }
+    await postReliable('/result', { id: job.id, meta: { ok: true, tabs: snapshots } })
+    return
+  }
+  const tab = await ensureTab(agent)
 
   if (agent === 'tiktok') await loadInTab(tab.id, AGENTS.tiktok.match, 1500)
 

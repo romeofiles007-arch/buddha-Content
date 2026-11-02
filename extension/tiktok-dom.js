@@ -64,12 +64,19 @@
     private: ['Only you', 'Only me', 'เฉพาะคุณ', 'เฉพาะฉัน'],
   }
   const exact = (value, choices) => choices.some(choice => value.toLowerCase() === choice.toLowerCase())
-  const findButton = (doc, choices) => [...doc.querySelectorAll('button, [role="button"]')].find(node => visible(node) && exact(text(node), choices))
+  const findButton = (doc, choices) => [...doc.querySelectorAll('button, [role="button"], .more-collapse')].find(node => visible(node) && exact(text(node), choices))
   const enabled = node => visible(node) && !node.disabled && node.getAttribute('aria-disabled') !== 'true'
   function privacyControl(doc) {
     return [...doc.querySelectorAll('select, button, [role="combobox"]')].find(node => visible(node) && (/(?:Who can watch|Who can view|ผู้ที่สามารถดู|ใคร.*ดูวิดีโอ)/i.test(node.getAttribute('aria-label') ?? '') || exact(text(node), Object.values(privacyLabels).flat())))
   }
   function aiControl(doc) {
+    const row = doc.querySelector('[data-e2e="aigc_container"]')
+    if (visible(row)) {
+      // Studio's switch input has no accessible name; the dedicated setting row
+      // supplies its identity. Never take a neighboring disclosure/upload switch.
+      const switches = [...row.querySelectorAll('input[role="switch"], input[type="checkbox"], [role="switch"]')]
+      return switches.length === 1 ? switches[0] : null
+    }
     return [...doc.querySelectorAll('label, [role="switch"], [role="checkbox"], input[type="checkbox"]')].find(node => {
       if (!visible(node)) return false
       const label = text(node) || node.getAttribute('aria-label') || text(node.closest('label'))
@@ -79,8 +86,8 @@
   const checked = node => node.checked === true || node.getAttribute('aria-checked') === 'true'
   function inspectStudio(doc) {
     const controls = [...doc.querySelectorAll('button, input, select, [role="button"], [role="combobox"], [role="switch"], [contenteditable="true"]')].filter(visible).filter(node => !['password', 'email', 'tel'].includes(node.type)).slice(0, 100).map(node => ({
-      tag: node.tagName, role: node.getAttribute('role'), type: node.getAttribute('type'), label: node.getAttribute('aria-label'), placeholder: node.getAttribute('placeholder'), e2e: node.getAttribute('data-e2e'), className: node.getAttribute('class'),
-      ...(node.tagName === 'BUTTON' ? { text: text(node).slice(0, 120) } : {}),
+      tag: node.tagName, role: node.getAttribute('role'), type: node.getAttribute('type'), label: node.getAttribute('aria-label'), placeholder: node.getAttribute('placeholder'), e2e: node.getAttribute('data-e2e'), className: node.getAttribute('class'), ariaChecked: node.getAttribute('aria-checked'),
+      ...(node.tagName === 'BUTTON' || node.getAttribute('role') === 'button' ? { text: text(node).slice(0, 120) } : {}),
     }))
     const profiles = [...doc.querySelectorAll('a[href*="/@"]')].filter(visible).map(node => ({ href: node.getAttribute('href'), e2e: node.getAttribute('data-e2e'), text: text(node).slice(0, 80) }))
     const describe = node => node ? { tag: node.tagName, className: node.getAttribute('class'), role: node.getAttribute('role'), label: node.getAttribute('aria-label'), e2e: node.getAttribute('data-e2e'), title: node.getAttribute('title'), alt: node.getAttribute('alt'), text: text(node).slice(0, 100) } : null
@@ -89,7 +96,11 @@
       return { ...describe(node), ...(src && /^https:/.test(src) ? { imagePath: new URL(src).pathname } : {}), parent: describe(node.parentElement), grandparent: describe(node.parentElement?.parentElement) }
     })
     const navigation = [...doc.querySelectorAll('a[href]')].filter(visible).map(node => ({ path: new URL(node.getAttribute('href'), 'https://www.tiktok.com').pathname, text: text(node).slice(0, 100), e2e: node.getAttribute('data-e2e'), className: node.getAttribute('class') })).filter(link => /^\/(?:tiktokstudio|@|creator)/.test(link.path)).slice(0, 40)
-    return { controls, profiles, avatars, navigation, pageText: text(doc.body).slice(0, 4000) }
+    const settingRows = [...doc.querySelectorAll('div, span')].filter(visible).filter(node => node.children?.length === 0 && /^AI.generated content$/i.test(text(node))).slice(0, 2).map(node => {
+      const row = node.closest('[data-e2e="aigc_container"]') ?? node.parentElement?.parentElement
+      return { label: describe(node), parent: describe(node.parentElement), row: describe(row), children: [...(row?.querySelectorAll('*') ?? [])].slice(0, 30).map(child => ({ ...describe(child), checked: child.checked, ariaChecked: child.getAttribute('aria-checked'), dataState: child.getAttribute('data-state') })) }
+    })
+    return { controls, profiles, avatars, navigation, settingRows, pageText: text(doc.body).slice(0, 4000) }
   }
   globalThis.DhammaTikTokDom = { text, visible, username, checkPage, account, avatarTrigger, assertAccount, published, publicationSignals, claimAttempt, privacyLabels, exact, findButton, enabled, privacyControl, aiControl, checked, inspectStudio }
 })()
