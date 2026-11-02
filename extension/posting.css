@@ -39,9 +39,21 @@
 .pTabs .n.bad { background: var(--danger); color: #fff; }
 
 .pList { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.pCard { background: var(--gull-panel); border: 1px solid var(--gull-line); border-left: 1px solid var(--gull-edge); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
-.pCard.fail { border-left-color: var(--danger); }
-.pCard.done { border-left-color: var(--ok); }
+/* สลับสีเต็มกล่องให้แยกคลิปติดกันได้ แม้ทุกคลิปจะมีสถานะเดียวกัน */
+.pCard { --p-card-bg: #eaf2fa; --p-card-line: #64829e; background: var(--p-card-bg); border: 1px solid var(--p-card-line); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
+.pList > .pCard:nth-child(4n + 2) { --p-card-bg: #f2ecf8; --p-card-line: #90759f; }
+.pList > .pCard:nth-child(4n + 3) { --p-card-bg: #e9f3ee; --p-card-line: #628571; }
+.pList > .pCard:nth-child(4n + 4) { --p-card-bg: #fbefd9; --p-card-line: #957744; }
+@media (prefers-color-scheme: dark) {
+  .pCard { --p-card-bg: #182c3a; --p-card-line: #688ba7; }
+  .pList > .pCard:nth-child(4n + 2) { --p-card-bg: #302438; --p-card-line: #a08bad; }
+  .pList > .pCard:nth-child(4n + 3) { --p-card-bg: #203529; --p-card-line: #789d88; }
+  .pList > .pCard:nth-child(4n + 4) { --p-card-bg: #3b2f1d; --p-card-line: #b79a63; }
+}
+.pCard.fail { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--p-card-bg)); }
+.pCard.done { border-color: var(--ok); }
+.pCard .pField input, .pCard .pField textarea, .pCard .pField select { background: var(--gull-panel); border-color: var(--p-card-line); }
+.pCard .pTarget { background: var(--gull-panel); }
 .pHead { display: grid; grid-template-columns: 54px 1fr; gap: 10px; align-items: start; }
 .pThumb { width: 54px; aspect-ratio: 9 / 16; border-radius: 6px; object-fit: cover; background: #10262b; display: block; }
 .pTitle { margin: 0; font-weight: 700; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
