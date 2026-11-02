@@ -1,5 +1,5 @@
 /**
- * โหมดโพสต์อัตโนมัติ (แผนกนกนางนวล) — คิวคลิปที่ทำเสร็จ → ตรวจ (AI + คน) → ตั้งเวลา → โพสต์ Facebook Page / YouTube
+ * โหมดโพสต์อัตโนมัติ (แผนกนกนางนวล) — คิวคลิปที่ทำเสร็จ → ตรวจ (AI + คน) → ตั้งเวลา → โพสต์ Facebook Page / YouTube / TikTok
  *
  * เก็บใน projects/_posting/ (อยู่ใต้ .gitignore และไม่ถูกใส่ในแพ็กเกจลูกค้า — มีโทเค็น)
  *   accounts.json  การตั้งค่า + บัญชีเพจ/ช่อง (โทเค็นอยู่ที่นี่ที่เดียว ห้ามส่งออกไปหน้าแผงข้างตรงๆ)
@@ -78,6 +78,7 @@ export function loadAccounts() {
     },
     facebook: Array.isArray(raw.facebook) ? raw.facebook : [],
     youtube: Array.isArray(raw.youtube) ? raw.youtube : [],
+    tiktok: Array.isArray(raw.tiktok) ? raw.tiktok : [],
   }
 }
 
@@ -108,12 +109,13 @@ export function publicAccounts(data = loadAccounts()) {
     },
     facebook: data.facebook.map(({ token, ...a }) => ({ ...a, token: mask(token) })),
     youtube: data.youtube.map(({ refreshToken, ...a }) => ({ ...a, connected: !!refreshToken })),
+    tiktok: (data.tiktok ?? []).map(({ id, username, name, privacy, aigc, categories, addedAt, checkedAt }) => ({ id, username, name, privacy, aigc, categories, addedAt, checkedAt })),
   }
 }
 
-/** ปลายทางทั้งหมดในรูป "fb:<id>" / "yt:<id>" */
+/** ปลายทางทั้งหมดในรูป "fb:<id>" / "yt:<id>" / "tk:<id>" */
 export function allTargets(data = loadAccounts()) {
-  return [...data.facebook.map((a) => `fb:${a.id}`), ...data.youtube.filter((a) => a.refreshToken).map((a) => `yt:${a.id}`)]
+  return [...data.facebook.map((a) => `fb:${a.id}`), ...data.youtube.filter((a) => a.refreshToken).map((a) => `yt:${a.id}`), ...(data.tiktok ?? []).map((a) => `tk:${a.id}`)]
 }
 
 /**
@@ -162,6 +164,7 @@ export function targetsFor(data, category) {
   return [
     ...data.facebook.filter((a) => acceptsCategory(a, category)).map((a) => `fb:${a.id}`),
     ...data.youtube.filter((a) => a.refreshToken && acceptsCategory(a, category)).map((a) => `yt:${a.id}`),
+    ...(data.tiktok ?? []).filter((a) => acceptsCategory(a, category)).map((a) => `tk:${a.id}`),
   ]
 }
 
@@ -172,6 +175,7 @@ export function findTarget(data, key) {
   const [kind, id] = String(key).split(':')
   if (kind === 'fb') return { kind: 'facebook', account: data.facebook.find((a) => a.id === id) }
   if (kind === 'yt') return { kind: 'youtube', account: data.youtube.find((a) => a.id === id) }
+  if (kind === 'tk') return { kind: 'tiktok', account: (data.tiktok ?? []).find((a) => a.id === id) }
   return { kind: null, account: null }
 }
 

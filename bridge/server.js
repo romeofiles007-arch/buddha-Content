@@ -21,6 +21,7 @@ import { watchBridgeCode, extensionVersion } from './selfupdate.js'
 import { createUpdater } from './update.js'
 import { createPosting } from './posting.js'
 import { createKeepAwake } from './keepawake.js'
+import { canRetryJob, canDispatchJob } from './job-policy.js'
 
 loadEnv()
 
@@ -49,14 +50,17 @@ function saveJobs() {
   }, 300)
 }
 try {
-  if (existsSync(JOBS_FILE)) for (const j of JSON.parse(readFileSync(JOBS_FILE, 'utf8'))) jobs.set(j.id, { ...j, touchedAt: Date.now() })
+  if (existsSync(JOBS_FILE)) for (const j of JSON.parse(readFileSync(JOBS_FILE, 'utf8'))) {
+    if (!canRetryJob(j) && (j.status === 'running' || j.status === 'queued')) Object.assign(j, { status: 'error', cancelled: true, error: 'โปรแกรมเริ่มใหม่ระหว่างโพสต์ TikTok — ตรวจในบัญชีก่อนลองใหม่' })
+    jobs.set(j.id, { ...j, touchedAt: Date.now() })
+  }
 } catch {}
 
 /**
  * งานที่ส่งให้ extension แล้วเงียบหาย (แท็บถูกปิด, service worker ตาย, Chrome ปิด)
  * content script ส่ง heartbeat ทุก 20 วิระหว่างทำงาน → เงียบเกินนี้ถือว่าหลุด ส่งงานให้ใหม่
  */
-const STALE_MS = { chatgpt: 3 * 60_000, flow: 6 * 60_000, meta: 4 * 60_000 }
+const STALE_MS = { chatgpt: 3 * 60_000, flow: 6 * 60_000, meta: 4 * 60_000, tiktok: 2 * 60_000 }
 const MAX_ATTEMPTS = 3
 
 /**
@@ -82,6 +86,11 @@ setInterval(() => {
     }
     if (job.status !== 'running') continue
     if (Date.now() - (job.touchedAt ?? job.createdAt) < (STALE_MS[job.agent] ?? 5 * 60_000)) continue
+    if (!canRetryJob(job)) {
+      Object.assign(job, { status: 'error', cancelled: true, error: 'TikTok ขาดการติดต่อ — ตรวจในบัญชีก่อนลองใหม่ เพื่อไม่ให้โพสต์ซ้ำ' })
+      saveJobs()
+      continue
+    }
     job.attempts = (job.attempts ?? 1) + 1
     if (job.attempts > MAX_ATTEMPTS) {
       job.status = 'error'
@@ -162,6 +171,7 @@ function writeFiles(job, files) {
 
 /** ส่งงานให้ extension ที่กำลังรออยู่ ถ้าไม่มีคนรอก็ค้างในคิว */
 function dispatch(job) {
+  if (!canDispatchJob(job, jobs.values())) return
   const idx = waiting.findIndex((w) => w.agent === job.agent)
   if (idx === -1) return
   const [w] = waiting.splice(idx, 1)
@@ -248,7 +258,7 @@ const server = createServer(async (req, res) => {
       const agent = url.searchParams.get('agent')
       lastPoll[agent] = Date.now()
       for (const j of jobs.values()) if (j.agent === agent && j.status === 'queued' && isOrphan(j)) dropOrphan(j)
-      const pending = [...jobs.values()].find((j) => j.agent === agent && j.status === 'queued')
+      const pending = [...jobs.values()].find((j) => j.agent === agent && canDispatchJob(j, jobs.values()))
       if (pending) {
         pending.status = 'running'
         pending.touchedAt = Date.now()
@@ -352,7 +362,7 @@ const server = createServer(async (req, res) => {
 
 /** มีงานค้างอยู่ไหม: งานของ ChatGPT/Flow ในคิว หรือขั้นของ pipeline กำลังรัน */
 // นับเฉพาะงานของแท็บจริง — งานทดสอบ (agent x / cancel-test / flow-selftest) ที่ค้างไว้เคยขวางไม่ให้ bridge รีสตาร์ทรับโค้ดใหม่
-const REAL_AGENTS = new Set(['chatgpt', 'flow', 'meta'])
+const REAL_AGENTS = new Set(['chatgpt', 'flow', 'meta', 'tiktok'])
 const liveJob = (j) => REAL_AGENTS.has(j.agent) && (j.status === 'running' || (j.status === 'queued' && Date.now() - j.createdAt < 30 * 60_000))
 const workInProgress = () => ui.busy() || posting.busy() || [...jobs.values()].some(liveJob)
 
@@ -368,7 +378,7 @@ function busyReason() {
   const label = String(job.payload?.label ?? '')
   if (/ตรวจคลิป/.test(label)) return 'AI กำลังตรวจคลิปในคิวโพสต์'
   if (/คิดชื่อคลิป/.test(label)) return 'ChatGPT กำลังเขียนชื่อคลิปและคำบรรยาย'
-  return job.agent === 'flow' ? 'Google Flow กำลังทำงานอยู่' : job.agent === 'meta' ? 'Meta AI กำลังทำงานอยู่' : 'ChatGPT กำลังทำงานอยู่'
+  return job.agent === 'tiktok' ? 'TikTok กำลังทำงานอยู่' : job.agent === 'flow' ? 'Google Flow กำลังทำงานอยู่' : job.agent === 'meta' ? 'Meta AI กำลังทำงานอยู่' : 'ChatGPT กำลังทำงานอยู่'
 }
 
 // โค้ดของโปรแกรมเปลี่ยน → รีสตาร์ทตัวเองเมื่อว่าง (เฉพาะตัวจริงที่ port 8785 — ตัวทดสอบไม่ต้อง)

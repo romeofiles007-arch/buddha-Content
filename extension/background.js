@@ -13,10 +13,12 @@ const AGENTS = {
   // Google Flow ย้ายจาก labs.google/fx/tools/flow มาที่ flow.google.com แล้ว
   // ?hl=en: บัญชีที่ตั้งภาษาไทย Flow จะเป็นภาษาไทย (ปุ่ม "โปรเจ็กต์ใหม่") — ตัวขับหาปุ่มจากข้อความอังกฤษ จึงบังคับภาษาอังกฤษเสมอ
   flow: { match: 'https://flow.google.com/?hl=en', pattern: 'https://flow.google.com/*', key: 'flowTabId' },
+  tiktok: { match: 'https://www.tiktok.com/tiktokstudio/upload', pattern: 'https://www.tiktok.com/tiktokstudio/*', key: 'tiktokTabId' },
 }
 const CONTENT_FILES = {
   chatgpt: ['selectors.js', 'content-common.js', 'content-chatgpt.js'],
   flow: ['flow-text.js', 'content-flow-agent.js'],
+  tiktok: ['content-common.js', 'tiktok-dom.js', 'content-tiktok.js'],
 }
 
 async function settings() {
@@ -63,7 +65,8 @@ async function ensureTab(agent) {
   const { pattern, match, key } = AGENTS[agent]
   const tabs = await chrome.tabs.query({ url: pattern })
   const { [key]: savedId } = await chrome.storage.session.get(key)
-  const existing = tabs.find((t) => t.id === savedId) ?? tabs.find((t) => !t.discarded) ?? tabs[0]
+  // TikTok uses its own tab so navigating for a job never discards a user's upload draft.
+  const existing = tabs.find((t) => t.id === savedId) ?? (agent === 'tiktok' ? null : tabs.find((t) => !t.discarded) ?? tabs[0])
   if (existing) {
     if (existing.id !== savedId) await chrome.storage.session.set({ [key]: existing.id })
     return existing
@@ -154,6 +157,8 @@ async function handleJob(job) {
   const tab = await ensureTab(job.payload.agent ?? jobAgent(job))
   const agent = job.payload.agent ?? jobAgent(job)
 
+  if (agent === 'tiktok') await loadInTab(tab.id, AGENTS.tiktok.match, 1500)
+
   // Flow: เริ่มจากหน้าแรกทุกครั้ง → content script กด New project ได้ project ใหม่ต่อคลิป
   if (agent === 'flow' && job.kind === 'generate-images') {
     // คลิปนี้เคยมี project ใน Flow แล้ว → กลับไป project เดิม (ตัวละครเดิม ไม่เปิด project ใหม่ทุกครั้งที่ลองซ้ำ)
@@ -240,7 +245,7 @@ async function pollLoop() {
                 let message = String(err?.message ?? err)
                 // แท็บหายกลางงาน = มีคนปิดแท็บ Flow / ChatGPT ที่ extension เปิดให้
                 if (/No tab with id/i.test(message)) {
-                  message = `แท็บ ${agent === 'flow' ? 'Google Flow' : 'ChatGPT'} ถูกปิดระหว่างทำงาน — อย่าปิดแท็บที่ extension เปิดให้ กดทำต่อได้เลย (${message})`
+                  message = `แท็บ ${agent === 'tiktok' ? 'TikTok' : agent === 'flow' ? 'Google Flow' : 'ChatGPT'} ถูกปิดระหว่างทำงาน — อย่าปิดแท็บที่ extension เปิดให้ (${message})`
                 }
                 return postReliable('/error', { id: job.id, message })
               })
@@ -394,6 +399,40 @@ async function checkExtensionUpdate() {
   chrome.runtime.reload()
 }
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === 'TIKTOK_SET_FILE') {
+    ;(async () => {
+      const tabId = _sender.tab?.id
+      const { tiktokTabId } = await chrome.storage.session.get('tiktokTabId')
+      if (!tabId || tabId !== tiktokTabId || !/^https:\/\/www\.tiktok\.com\/tiktokstudio\//.test(_sender.tab?.url ?? '')) throw new Error('คำขอไฟล์ไม่ได้มาจากแท็บ TikTok ที่กำลังทำงาน')
+      const { base, token } = await settings()
+      const res = await fetch(`${base}/api/posting/tiktok/job?id=${encodeURIComponent(msg.jobId)}`, { headers: { 'x-bridge-token': token } })
+      const info = await res.json()
+      if (!res.ok || !info.file) throw new Error(info.error ?? 'งานอัปโหลด TikTok ถูกยกเลิกแล้ว')
+      const target = { tabId }
+      const command = (method, params) => new Promise((resolve, reject) => chrome.debugger.sendCommand(target, method, params, result => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(result)))
+      let attached = false
+      try {
+        await new Promise((resolve, reject) => chrome.debugger.attach(target, '1.3', () => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve()))
+        attached = true
+        const { root } = await command('DOM.getDocument', { depth: -1, pierce: true })
+        const inputs = []
+        const walk = node => {
+          if (node.nodeName === 'INPUT') {
+            const attrs = Object.fromEntries(Array.from({ length: (node.attributes?.length ?? 0) / 2 }, (_, i) => [node.attributes[i * 2], node.attributes[i * 2 + 1]]))
+            if (attrs.type === 'file' && (!attrs.accept || /video|mp4|mov|webm/i.test(attrs.accept))) inputs.push(node)
+          }
+          for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? []), ...(node.contentDocument ? [node.contentDocument] : [])]) walk(child)
+        }
+        walk(root)
+        if (inputs.length !== 1) throw new Error('ไม่พบช่องอัปโหลดวิดีโอ TikTok ที่แน่นอน — กรุณาตรวจหน้า TikTok Studio')
+        await command('DOM.setFileInputFiles', { nodeId: inputs[0].nodeId, files: [info.file] })
+        return { ok: true }
+      } finally {
+        if (attached) await new Promise(resolve => chrome.debugger.detach(target, () => resolve()))
+      }
+    })().then(sendResponse).catch(error => sendResponse({ ok: false, error: error.message }))
+    return true
+  }
   if (msg.type === 'FLOW_TRUSTED_ENTER') {
     const sender = _sender
     if (!sender.tab?.id || !/^https:\/\/flow\.google\.com\//.test(sender.tab.url ?? '')) {
@@ -468,7 +507,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!polling) pollLoop()
     post('/progress', msg.body)
       .then((res) => res.json())
-      .then((data) => sendResponse({ ok: true, cancelled: !!data?.cancelled }))
+      .then((data) => sendResponse({ ok: data?.ok === true, status: data?.status, cancelled: !!data?.cancelled }))
       .catch(() => sendResponse({ ok: true }))
     return true
   }

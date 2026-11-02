@@ -134,10 +134,11 @@ export function initPosting({ api, localApp }) {
     return [
       ...(data?.facebook ?? []).map((a) => ({ key: `fb:${a.id}`, kind: 'fb', name: a.name })),
       ...(data?.youtube ?? []).filter((a) => a.connected).map((a) => ({ key: `yt:${a.id}`, kind: 'yt', name: a.name })),
+      ...(data?.tiktok ?? []).map((a) => ({ key: `tk:${a.id}`, kind: 'tk', name: `${a.name} (@${a.username})` })),
     ]
   }
   const targetName = (key) => targetList().find((t) => t.key === key)?.name ?? 'บัญชีที่ถูกลบ'
-  const kindTag = (kind) => el('span', { className: `kind ${kind}` }, kind === 'fb' ? 'FB' : 'YT')
+  const kindTag = (kind) => el('span', { className: `kind ${kind}` }, kind === 'fb' ? 'FB' : kind === 'tk' ? 'TT' : 'YT')
 
   // ── วาดทั้งหน้า ──
   function render() {
@@ -457,13 +458,17 @@ export function initPosting({ api, localApp }) {
         el('ul', { className: 'pResults' }, (q.targets ?? []).map((k) => {
           const r = q.results?.[k]
           return el('li', {}, kindTag(k.slice(0, 2)), el('strong', {}, r?.name ?? targetName(k)),
-            r?.ok ? el('a', { href: r.url, target: '_blank', rel: 'noopener' }, 'เปิดโพสต์ ↗') : el('span', { className: 'err' }, r?.error ?? 'ยังไม่ได้โพสต์'),
+            r?.ok ? r.url ? el('a', { href: r.url, target: '_blank', rel: 'noopener' }, 'เปิดโพสต์ ↗') : el('span', {}, 'ยืนยันว่าโพสต์สำเร็จแล้ว') : el('span', { className: 'err' }, r?.error ?? 'ยังไม่ได้โพสต์'),
             r?.ok && r.privacy && r.privacy !== 'public' ? el('span', { className: 'pBadge fix' }, r.privacy === 'private' ? 'ส่วนตัว' : 'ไม่เป็นสาธารณะ') : null)
         })),
         // บอกเหตุผลเมื่อไม่มีปลายทางไหนแสดงผล (เช่น ไม่มีเพจ/ช่องเลย หรือผลเก่าเป็นของเพจที่ลบไปแล้ว)
         fail && q.error && !(q.targets ?? []).some((k) => q.results?.[k]) ? el('p', { className: 'status err' }, q.error) : null,
         el('div', { className: 'pActions' },
-          fail ? el('button', { type: 'button', className: 'primary', on: { click: () => call('/api/posting/retry', { id: q.id }, 'กำลังลองโพสต์ใหม่ (เฉพาะที่พลาด)…').catch(() => {}) } }, '↻ ลองโพสต์ใหม่เฉพาะที่พลาด') : null,
+          fail ? el('button', { type: 'button', className: 'primary', on: { click: () => {
+            const uncertain = (q.targets ?? []).some(k => k.startsWith('tk:') && q.results?.[k]?.needsVerification)
+            if (uncertain && !confirm('ยังไม่รู้ผล TikTok — เปิด TikTok ตรวจแล้วว่าคลิปนี้ยังไม่ขึ้นใช่ไหม? กดยืนยันเพื่อส่งใหม่ ซึ่งอาจซ้ำได้ถ้าคลิปขึ้นไปแล้ว')) return
+            call('/api/posting/retry', { id: q.id, ...(uncertain ? { confirmTikTokRetry: true } : {}) }, 'กำลังลองโพสต์ใหม่ (เฉพาะที่พลาด)…').catch(() => {})
+          } } }, '↻ ลองโพสต์ใหม่เฉพาะที่พลาด') : null,
           el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/remove', { id: q.id }, 'เอาออกจากรายการแล้ว').catch(() => {}) } }, 'เอาออกจากรายการ'),
         ),
       )
@@ -686,7 +691,35 @@ export function initPosting({ api, localApp }) {
       el('p', { className: 'hint' }, 'สิทธิ์ที่ขอเห็นได้เฉพาะไฟล์ที่โปรแกรมนี้อัปเอง ไม่เห็นไฟล์อื่นใน Drive · เปลี่ยน Client ID แล้วต้องกดเชื่อมต่อใหม่'),
     )
 
-    return el('div', { className: 'pList' }, mode, fb, yt, driveBox)
+    const connection = data.tiktokConnection
+    const tiktok = el('section', { className: 'pBox', 'aria-label': 'TikTok' },
+      el('h3', {}, kindTag('tk'), 'TikTok · ผ่าน Chrome'),
+      el('p', { className: 'hint' }, 'ล็อกอิน TikTok Studio ใน Chrome เดียวกับส่วนขยาย แล้วกดเชื่อมต่อ ไม่ต้องใช้ API Key · เมื่อถึงเวลาโพสต์ เครื่องและ Chrome ต้องเปิดอยู่'),
+      el('button', { type: 'button', className: 'primary', disabled: connection?.status === 'running', on: { click: () => call('/api/posting/tiktok/connect', {}, 'กำลังตรวจบัญชี TikTok ใน Chrome…').catch(() => {}) } }, connection?.status === 'running' ? 'กำลังตรวจบัญชี TikTok…' : 'เชื่อมบัญชีที่ล็อกอินใน Chrome'),
+      connection?.status === 'error' ? el('p', { className: 'pWarn', role: 'alert' }, connection.error) : null,
+      connection?.status === 'done' ? el('p', { className: 'hint' }, `เชื่อม @${connection.username} แล้ว`) : null,
+      el('a', { className: 'ghost', href: 'https://www.tiktok.com/tiktokstudio/upload', target: '_blank', rel: 'noopener' }, 'เปิด TikTok Studio ↗'),
+      ...(data.tiktok ?? []).map(a => {
+        const visibility = el('select', { 'aria-label': `การมองเห็น TikTok @${a.username}` },
+          el('option', { value: 'private', selected: a.privacy === 'private' || !a.privacy }, 'เฉพาะฉัน'),
+          el('option', { value: 'public', selected: a.privacy === 'public' }, 'สาธารณะ'),
+          el('option', { value: 'friends', selected: a.privacy === 'friends' }, 'เพื่อน'),
+        )
+        const aigc = el('input', { type: 'checkbox', checked: a.aigc !== false })
+        const save = () => call('/api/posting/tiktok/update', { id: a.id, privacy: visibility.value, aigc: aigc.checked }, 'บันทึกการโพสต์ TikTok แล้ว').catch(() => {})
+        visibility.addEventListener('change', save)
+        aigc.addEventListener('change', save)
+        return el('div', { className: 'pTikTokAccount' },
+          el('strong', {}, `${a.name} · @${a.username}`),
+          el('label', { className: 'pField' }, 'การมองเห็นของคลิป', visibility),
+          el('label', { className: 'pSwitch' }, aigc, el('span', {}, 'เปิดป้ายกำกับเนื้อหาที่สร้างด้วย AI')),
+          catPicker('tiktok', a),
+          el('button', { type: 'button', className: 'ghost', on: { click: () => { if (confirm(`เอา @${a.username} ออกจากปลายทางโพสต์?`)) call('/api/posting/tiktok/remove', { id: a.id }, 'เอาบัญชี TikTok ออกจากปลายทางแล้ว').catch(() => {}) } } }, 'เอาบัญชีออก'),
+        )
+      }),
+      el('p', { className: 'pWarn' }, 'บัญชีใหม่เริ่มเป็น “เฉพาะฉัน” เปลี่ยนเป็นสาธารณะได้ด้านบน · จำหลายบัญชีได้ แต่ต้องล็อกอินบัญชีที่จะโพสต์อยู่จริง หากไม่ตรง ระบบจะหยุดให้สลับบัญชี · หากเจอ CAPTCHA ให้แก้ใน TikTok เอง'),
+    )
+    return el('div', { className: 'pList' }, mode, fb, yt, tiktok, driveBox)
   }
 
   document.getElementById('closePosting').addEventListener('click', close)

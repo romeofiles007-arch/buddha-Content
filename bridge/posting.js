@@ -20,6 +20,7 @@ import {
 } from '../pipeline/lib/posting.mjs'
 import { facebookPageInfo, facebookUpload, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
 import { listVideos } from './videos.js'
+import { runTikTokJob, tiktokUsername, tiktokFailure } from '../pipeline/lib/tiktok-browser.mjs'
 
 const PROJECTS = join(ROOT, 'projects')
 const TICK_MS = 30_000
@@ -37,6 +38,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   let driveBusy = false
   let ticking = false
   let lastEnroll = 0
+  let tiktokConnection = null
 
   // โปรแกรมถูกปิดกลางการโพสต์ → ไม่รู้ว่าขึ้นไปแล้วหรือยัง ห้ามโพสต์ซ้ำเอง ให้คนดูในเพจก่อนกดลองใหม่
   {
@@ -44,6 +46,8 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     let changed = false
     for (const q of queue) {
       if (q.status === 'posting') {
+        const interrupted = jobs.get(q.tiktokJobId)
+        if (interrupted) Object.assign(interrupted, { cancelled: true, status: 'error', error: 'โปรแกรมถูกปิดระหว่างโพสต์ TikTok — ตรวจในบัญชีก่อนลองใหม่' })
         q.status = 'failed'
         q.error = 'โปรแกรมถูกปิดระหว่างโพสต์ — ดูในเพจ/ช่องก่อนว่าขึ้นไปแล้วหรือยัง แล้วค่อยกดลองใหม่'
         changed = true
@@ -82,6 +86,30 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   function retarget() {
     const data = loadAccounts()
     saveQueue(loadQueue().map((q) => (q.status === 'review' && !q.targetsEdited ? { ...q, targets: targetsFor(data, q.category) } : q)))
+  }
+
+  function collectTikTokConnection() {
+    if (tiktokConnection?.status !== 'running') return
+    const job = jobs.get(tiktokConnection.jobId)
+    if (job?.status === 'queued' || job?.status === 'running') {
+      if (Date.now() - tiktokConnection.startedAt < 3 * 60_000) return
+      Object.assign(job, { cancelled: true, status: 'error', error: 'รอ TikTok เกินเวลา — เปิด Chrome ล็อกอิน แล้วกดเชื่อมต่ออีกครั้ง' })
+    }
+    const result = job?.result?.meta
+    const username = tiktokUsername(result?.username)
+    if (job?.status !== 'done' || result?.ok !== true || !username) {
+      tiktokConnection = { status: 'error', error: String(result?.error ?? job?.error ?? 'อ่านบัญชี TikTok ไม่สำเร็จ — ล็อกอิน TikTok Studio แล้วเชื่อมต่อใหม่') }
+      return
+    }
+    updateAccounts(data => {
+      const old = data.tiktok.find(a => a.username === username)
+      const info = { username, name: String(result.name ?? username).slice(0, 100), checkedAt: Date.now() }
+      if (old) Object.assign(old, info)
+      else data.tiktok.push({ id: newId(), ...info, privacy: 'private', aigc: true, addedAt: Date.now() })
+    })
+    tiktokConnection = { status: 'done', username }
+    retarget()
+    log(`โพสต์อัตโนมัติ: เชื่อม TikTok @${username} ผ่าน Chrome แล้ว`)
   }
 
   /** เติมหมวดจากคลิปและปลายทางที่ว่าง — ไม่ทับเพจที่เลือก/อนุมัติไว้แล้ว */
@@ -398,18 +426,23 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         let out
         if (kind === 'facebook') {
           out = await fb.upload({ pageId: account.pageId, token: account.token, file, title: item.post.title, description: text })
-        } else {
+        } else if (kind === 'tiktok') {
+          if (results[key]?.needsVerification) throw tiktokFailure('ตรวจใน TikTok ก่อนว่าคลิปขึ้นแล้วหรือยัง แล้วกดยืนยันลองใหม่')
+          results[key] = { ok: false, name: account.name, needsVerification: true, error: 'กำลังส่ง TikTok — ถ้าโปรแกรมหยุด ต้องตรวจในบัญชีก่อนลองใหม่', at: Date.now() }
+          mutateItem(id, it => { it.results = { ...results } })
+          out = await runTikTokJob({ jobs, enqueue, payload: { username: account.username, privacy: account.privacy ?? 'private', aigc: account.aigc !== false, file, caption: text || item.post.title }, onStart: job => mutateItem(id, it => { it.tiktokJobId = job.id }) }, { timeoutMs: deps.tiktokTimeoutMs, pollMs: deps.tiktokPollMs })
+        } else if (kind === 'youtube') {
           const { clientId, clientSecret } = accounts.settings.google
           if (!account.refreshToken) throw new Error('ช่องนี้ยังไม่ได้เชื่อมต่อ')
           out = await yt.upload({ clientId, clientSecret, refreshToken: account.refreshToken, file, title: item.post.title, description: text, tags: item.post.hashtags, privacy: account.privacy ?? 'public' })
-        }
+        } else throw new Error('ไม่รู้จักปลายทางนี้')
         results[key] = { ok: true, ...out, name: account.name, at: Date.now() }
         log(`โพสต์อัตโนมัติ: "${item.title}" ขึ้น ${account.name} แล้ว ${out.url}`)
       } catch (err) {
-        results[key] = { ok: false, error: err.message, name: account?.name ?? key, at: Date.now() }
+        results[key] = { ok: false, error: err.message, name: account?.name ?? key, at: Date.now(), ...(kind === 'tiktok' ? { needsVerification: !!err.needsVerification } : {}) }
         log(`โพสต์อัตโนมัติ: "${item.title}" ขึ้น ${account?.name ?? key} ไม่สำเร็จ — ${err.message}`)
       }
-      mutateItem(id, (it) => { it.results = { ...results } }) // บันทึกทีละปลายทาง — ปิดโปรแกรมกลางทางจะได้ไม่โพสต์ซ้ำที่สำเร็จแล้ว
+      mutateItem(id, (it) => { it.results = { ...results }; it.tiktokJobId = null }) // บันทึกทีละปลายทาง — ปิดโปรแกรมกลางทางจะได้ไม่โพสต์ซ้ำที่สำเร็จแล้ว
     }
     return mutateItem(id, (it) => {
       const failed = (it.targets ?? []).filter((k) => !results[k]?.ok)
@@ -480,6 +513,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     if (ticking) return
     ticking = true
     try {
+      collectTikTokConnection()
       await enroll().catch((err) => log(`โพสต์อัตโนมัติ: ดึงคลิปเข้าคิวไม่ได้ — ${err.message}`))
       await pull().catch((err) => log(`โพสต์อัตโนมัติ: ดึงคลิปจากคลังไม่ได้ — ${err.message}`))
       repairMissingTargets()
@@ -498,6 +532,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
 
   // ── มุมมองให้แผงข้าง ──
   async function view() {
+    collectTikTokConnection()
     await enroll({ force: true }).catch(() => {})
     repairMissingTargets()
     collectChecks()
@@ -514,7 +549,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     const library = videos
       .map((v) => ({ slug: v.slug, title: v.title, thumb: v.thumb, file: v.files.find((f) => f.main)?.name ?? v.files[0]?.name, updatedAt: v.updatedAt }))
       .filter((v) => v.file && !inQueue.has(`${v.slug}/${v.file}`))
-    return { ...publicAccounts(), queue, library, statusLabels: STATUS, categories: CATEGORIES, uploading, redirectUri, nextSlot: nextFreeSlot(loadAccounts().settings.slots, queue.filter((q) => q.status === 'scheduled').map((q) => q.scheduleAt)) }
+    return { ...publicAccounts(), tiktokConnection, queue, library, statusLabels: STATUS, categories: CATEGORIES, uploading, redirectUri, nextSlot: nextFreeSlot(loadAccounts().settings.slots, queue.filter((q) => q.status === 'scheduled').map((q) => q.scheduleAt)) }
   }
 
   function oauthPage(res, ok, message) {
@@ -571,6 +606,13 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     if (!localHost || req.headers['x-bridge-token'] !== token) return json(res, 401, { error: 'token ไม่ถูกต้อง' }), true
 
     try {
+      if (req.method === 'GET' && path === '/api/posting/tiktok/job') {
+        const id = url.searchParams.get('id')
+        const job = jobs.get(id)
+        const item = loadQueue().find(q => q.status === 'posting' && q.tiktokJobId === id)
+        if (!item || !job || job.agent !== 'tiktok' || job.kind !== 'tiktok-post' || job.status !== 'running' || job.cancelled) return json(res, 409, { error: 'งาน TikTok นี้ไม่ได้กำลังโพสต์แล้ว' }), true
+        return json(res, 200, { file: videoPath(item), username: job.payload.username }), true
+      }
       if (req.method === 'GET' && path === '/api/posting') return json(res, 200, await view()), true
       // เบาๆ สำหรับแจ้งเตือน (background ถามทุกนาที) + บรรทัด "โพสต์ล่าสุด" — ไม่ดึงคลัง/ไม่ไล่คิวแบบ view()
       if (req.method === 'GET' && path === '/api/posting/recent') {
@@ -627,16 +669,32 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         log(`โพสต์อัตโนมัติ: เพิ่มเพจ "${name}"`)
         return json(res, 200, await view()), true
       }
-      if (path === '/api/posting/facebook/remove' || path === '/api/posting/youtube/remove') {
-        const kind = path.includes('facebook') ? 'facebook' : 'youtube'
+      if (path === '/api/posting/tiktok/connect') {
+        if (tiktokConnection?.status === 'running') return json(res, 200, await view()), true
+        const job = enqueue('tiktok', 'tiktok-account', { label: 'ตรวจบัญชี TikTok' })
+        tiktokConnection = { status: 'running', jobId: job.id, startedAt: Date.now() }
+        return json(res, 200, await view()), true
+      }
+      if (path === '/api/posting/tiktok/update') {
+        if (!['public', 'friends', 'private'].includes(body.privacy)) return json(res, 400, { error: 'เลือกการมองเห็น TikTok ก่อน' }), true
+        let found = false
+        updateAccounts(data => {
+          const account = data.tiktok.find(a => a.id === body.id)
+          if (account) { found = true; account.privacy = body.privacy; if (typeof body.aigc === 'boolean') account.aigc = body.aigc }
+        })
+        if (!found) return json(res, 404, { error: 'ไม่พบบัญชี TikTok นี้' }), true
+        return json(res, 200, await view()), true
+      }
+      if (path === '/api/posting/facebook/remove' || path === '/api/posting/youtube/remove' || path === '/api/posting/tiktok/remove') {
+        const kind = path.includes('facebook') ? 'facebook' : path.includes('tiktok') ? 'tiktok' : 'youtube'
         updateAccounts((data) => { data[kind] = data[kind].filter((a) => a.id !== body.id) })
-        const key = `${kind === 'facebook' ? 'fb' : 'yt'}:${body.id}`
+        const key = `${{ facebook: 'fb', youtube: 'yt', tiktok: 'tk' }[kind]}:${body.id}`
         saveQueue(loadQueue().map((q) => (q.status === 'posted' ? q : { ...q, targets: (q.targets ?? []).filter((k) => k !== key) })))
         return json(res, 200, await view()), true
       }
       // หมวดที่เพจ/ช่องนี้รับ — ว่าง = รับทุกหมวด
       if (path === '/api/posting/account/categories') {
-        const kind = body.kind === 'youtube' ? 'youtube' : 'facebook'
+        const kind = body.kind === 'youtube' ? 'youtube' : body.kind === 'tiktok' ? 'tiktok' : 'facebook'
         let found = false
         updateAccounts((data) => {
           const a = data[kind].find((x) => x.id === body.id)
@@ -772,8 +830,13 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         return json(res, 200, await view()), true
       }
       if (path === '/api/posting/retry') {
+        const pending = loadQueue().find(q => q.id === body.id)
+        if (pending?.status === 'failed' && (pending.targets ?? []).some(k => k.startsWith('tk:') && pending.results?.[k]?.needsVerification) && body.confirmTikTokRetry !== true) {
+          return json(res, 409, { error: 'ยังไม่รู้ผล TikTok — ตรวจในบัญชีก่อนว่าคลิปขึ้นแล้วหรือยัง แล้วกดยืนยันลองใหม่' }), true
+        }
         mutateItem(body.id, (it) => {
           if (it.status !== 'failed') throw new Error('คลิปนี้ไม่ได้โพสต์พลาด')
+          if (body.confirmTikTokRetry === true) for (const [key, result] of Object.entries(it.results ?? {})) if (key.startsWith('tk:') && result.needsVerification) result.needsVerification = false
           it.status = 'scheduled'
           it.scheduleAt = Date.now()
           note(it, 'ลองโพสต์ใหม่ (เฉพาะที่พลาด)')

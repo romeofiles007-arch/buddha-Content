@@ -3385,7 +3385,7 @@ function renderProdQuota(pages, quota, count) {
   const per = Math.max(1, count || pages.length)
   box.textContent = ''
   pages.forEach((p, i) => {
-    const label = Object.assign(document.createElement('label'), { textContent: `${p.kind === 'youtube' ? '▶️ YouTube' : '📘 เพจ'} ${i + 1} · ${p.name}` })
+    const label = Object.assign(document.createElement('label'), { textContent: `${p.kind === 'tiktok' ? 'TikTok' : p.kind === 'youtube' ? '▶️ YouTube' : '📘 เพจ'} ${i + 1} · ${p.name}` })
     label.htmlFor = `prodQuota_${i}`
     const input = Object.assign(document.createElement('input'), { type: 'number', min: '0', max: '100', id: `prodQuota_${i}` })
     input.dataset.key = p.key

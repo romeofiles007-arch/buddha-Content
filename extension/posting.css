@@ -88,6 +88,7 @@
 #posting .kind { display: inline-block; font-size: 11px; line-height: 1.6; font-weight: 800; padding: 0 5px; border-radius: 4px; color: #fff; }
 #posting .kind.fb { background: #1b5bc9; }
 #posting .kind.yt { background: #c4302b; }
+#posting .kind.tk { background: #262b32; color: #fff; border: 1px solid #87949c; }
 #posting .kind.drive { background: #188038; }
 #posting a.pBadge { text-decoration: none; }
 
@@ -149,6 +150,8 @@
 .pAccounts li strong { flex: 1 1 120px; overflow-wrap: anywhere; }
 .pAccounts select { padding: 6px 8px; border: 1px solid var(--gull-line); border-radius: 8px; background: var(--gull-bg); color: var(--ink); font: inherit; font-size: 13px; }
 .pGrid2 { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.pTikTokAccount { display: grid; gap: 10px; padding-block: 12px; border-top: 1px solid var(--gull-line); }
+.pTikTokAccount strong { overflow-wrap: anywhere; }
 .pWarn { font-size: 12px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--warn); color: var(--ink); background: color-mix(in srgb, var(--warn) 10%, transparent); margin: 0; }
 
 /* หมวดที่เพจ/ช่องรับ */
