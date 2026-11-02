@@ -219,6 +219,7 @@ const posting = createPosting({
       return { id: pageId, name: 'เพจทดสอบ' }
     },
     facebookUpload: async (args) => {
+      assert.ok(existsSync(args.file), 'the staged video exists when uploading')
       uploads.push({ kind: 'fb', ...args })
       return { postId: '999', url: `https://www.facebook.com/${args.pageId}/videos/999` }
     },
@@ -234,7 +235,7 @@ const posting = createPosting({
     },
     youtubeUpload: async (args) => {
       uploads.push({ kind: 'yt', ...args })
-      if (youtubeFails) throw new Error('YouTube: quota exceeded')
+      if (youtubeFails) throw Object.assign(new Error('YouTube: quota exceeded before media upload'), { needsVerification: false })
       return { postId: 'vid1', url: 'https://www.youtube.com/watch?v=vid1' }
     },
   },
@@ -350,7 +351,7 @@ try {
     const fb = uploads.find((u) => u.kind === 'fb')
     assert.equal(fb.title, 'ชื่อใหม่')
     assert.equal(fb.description, 'บรรยายใหม่\n\n#a #b')
-    assert.ok(existsSync(fb.file))
+    assert.equal(existsSync(fb.file), false, 'the staged file is removed after the upload round')
     const yt = uploads.find((u) => u.kind === 'yt')
     assert.equal(yt.refreshToken, 'rt-abc', 'bridge ใช้ refresh token ตัวจริงตอนอัปโหลด')
     assert.equal(Object.values(item.results).filter((r) => r.ok).length, 1)

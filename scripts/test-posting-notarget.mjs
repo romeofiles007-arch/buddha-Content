@@ -48,7 +48,7 @@ try {
 
   await test('คลิปที่ปลายทางถูกล้าง (ลบเพจแล้วเพิ่มใหม่) → เลือกเพจใหม่ตามหมวดก่อนโพสต์ → ขึ้นเพจจริง', async () => {
     P.updateAccounts((d) => { d.facebook.push({ id: 'p2', name: 'เพจใหม่', pageId: '7654321', token: 'x'.repeat(30) }) })
-    P.saveQueue([due({ status: 'failed', results: { 'fb:old': { ok: false, error: 'โทเค็นหมดอายุ', name: 'เพจเก่า' } } })])
+    P.saveQueue([due({ status: 'failed', results: { 'fb:old': { ok: false, error: 'ยังไม่ได้ส่ง: โทเค็นหมดอายุ', name: 'เพจเก่า', needsVerification: false } } })])
     const queue = P.loadQueue()
     Object.assign(queue[0], { status: 'scheduled', scheduleAt: Date.now() - 1000 }) // เหมือนกด "ลองโพสต์ใหม่"
     P.saveQueue(queue)

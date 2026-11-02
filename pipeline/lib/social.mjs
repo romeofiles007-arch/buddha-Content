@@ -53,16 +53,20 @@ export async function facebookPageInfo({ pageId, token }, { fetchImpl = fetch } 
 
 /** อัปโหลดวิดีโอขึ้นเพจ (เผยแพร่ทันที — การตั้งเวลาทำฝั่งเราเอง) */
 export async function facebookUpload({ pageId, token, file, title, description }, { fetchImpl = fetch } = {}) {
-  const form = new FormData()
-  form.append('access_token', token)
-  form.append('title', String(title ?? '').slice(0, 255))
-  form.append('description', String(description ?? ''))
-  form.append('source', await openAsBlob(file, { type: 'video/mp4' }), 'video.mp4')
-  const res = await fetchImpl(`${GRAPH_VIDEO}/${encodeURIComponent(pageId)}/videos`, { method: 'POST', body: form })
-  if (!res.ok) throw await failure(res, 'facebook')
-  const data = await res.json()
-  if (!data.id) throw new Error('Facebook: อัปโหลดแล้วแต่ไม่ได้เลขวิดีโอกลับมา')
-  return { postId: String(data.id), url: `https://www.facebook.com/${pageId}/videos/${data.id}` }
+  let submitted = false
+  try {
+    const form = new FormData()
+    form.append('access_token', token)
+    form.append('title', String(title ?? '').slice(0, 255))
+    form.append('description', String(description ?? ''))
+    form.append('source', await openAsBlob(file, { type: 'video/mp4' }), 'video.mp4')
+    submitted = true
+    const res = await fetchImpl(`${GRAPH_VIDEO}/${encodeURIComponent(pageId)}/videos`, { method: 'POST', body: form })
+    if (!res.ok) throw await failure(res, 'facebook')
+    const data = await res.json()
+    if (!data.id) throw new Error('Facebook: อัปโหลดแล้วแต่ไม่ได้เลขวิดีโอกลับมา')
+    return { postId: String(data.id), url: `https://www.facebook.com/${pageId}/videos/${data.id}` }
+  } catch (error) { error.needsVerification = submitted; throw error }
 }
 
 // ── YouTube ───────────────────────────────────────────────────────
@@ -116,39 +120,44 @@ export const youtubeTitle = (title) => String(title ?? '').replace(/[<>]/g, '').
 
 /** อัปโหลดแบบ resumable (2 ขั้น: ขอ URL อัปโหลด → ส่งไฟล์) */
 export async function youtubeUpload({ clientId, clientSecret, refreshToken, file, title, description, tags = [], privacy = 'public', categoryId = '27' }, { fetchImpl = fetch } = {}) {
-  const accessToken = await youtubeAccessToken({ clientId, clientSecret, refreshToken }, { fetchImpl })
-  const size = statSync(file).size
-  const meta = {
-    snippet: {
-      title: youtubeTitle(title) || 'วิดีโอใหม่',
-      description: String(description ?? '').replace(/[<>]/g, '').slice(0, 5000),
-      tags: tags.map((t) => String(t).replace(/^#/, '')).filter(Boolean).slice(0, 30),
-      categoryId, // 27 = Education
-    },
-    status: { privacyStatus: privacy, selfDeclaredMadeForKids: false },
-  }
-  const start = await fetchImpl(`${YT_UPLOAD}?uploadType=resumable&part=snippet,status`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      'content-type': 'application/json; charset=UTF-8',
-      'x-upload-content-type': 'video/mp4',
-      'x-upload-content-length': String(size),
-    },
-    body: JSON.stringify(meta),
-  })
-  if (!start.ok) throw await failure(start, 'youtube')
-  const location = start.headers.get('location')
-  if (!location) throw new Error('YouTube: ไม่ได้ URL สำหรับอัปโหลดกลับมา')
-  const put = await fetchImpl(location, {
-    method: 'PUT',
-    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'video/mp4' },
-    body: await openAsBlob(file, { type: 'video/mp4' }),
-  })
-  if (!put.ok) throw await failure(put, 'youtube')
-  const data = await put.json()
-  if (!data.id) throw new Error('YouTube: อัปโหลดแล้วแต่ไม่ได้เลขวิดีโอกลับมา')
-  return { postId: data.id, url: `https://www.youtube.com/watch?v=${data.id}`, privacy: data.status?.privacyStatus ?? privacy }
+  let submitted = false
+  try {
+    const accessToken = await youtubeAccessToken({ clientId, clientSecret, refreshToken }, { fetchImpl })
+    const size = statSync(file).size
+    const meta = {
+      snippet: {
+        title: youtubeTitle(title) || 'วิดีโอใหม่',
+        description: String(description ?? '').replace(/[<>]/g, '').slice(0, 5000),
+        tags: tags.map((t) => String(t).replace(/^#/, '')).filter(Boolean).slice(0, 30),
+        categoryId, // 27 = Education
+      },
+      status: { privacyStatus: privacy, selfDeclaredMadeForKids: false },
+    }
+    const start = await fetchImpl(`${YT_UPLOAD}?uploadType=resumable&part=snippet,status`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json; charset=UTF-8',
+        'x-upload-content-type': 'video/mp4',
+        'x-upload-content-length': String(size),
+      },
+      body: JSON.stringify(meta),
+    })
+    if (!start.ok) throw await failure(start, 'youtube')
+    const location = start.headers.get('location')
+    if (!location) throw new Error('YouTube: ไม่ได้ URL สำหรับอัปโหลดกลับมา')
+    const source = await openAsBlob(file, { type: 'video/mp4' })
+    submitted = true
+    const put = await fetchImpl(location, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'video/mp4' },
+      body: source,
+    })
+    if (!put.ok) throw await failure(put, 'youtube')
+    const data = await put.json()
+    if (!data.id) throw new Error('YouTube: อัปโหลดแล้วแต่ไม่ได้เลขวิดีโอกลับมา')
+    return { postId: data.id, url: `https://www.youtube.com/watch?v=${data.id}`, privacy: data.status?.privacyStatus ?? privacy }
+  } catch (error) { error.needsVerification = submitted; throw error }
 }
 
 // ── Google Drive (ที่พักคลิประหว่างรอโพสต์) ─────────────────────────

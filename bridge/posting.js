@@ -8,7 +8,7 @@
  * bridge ต้องเปิดอยู่ตอนถึงเวลาโพสต์ (คนโพสต์คือเครื่องนี้)
  */
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, sep, basename } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { ROOT } from '../pipeline/lib/config.mjs'
 import { run } from '../pipeline/lib/ffmpeg.mjs'
@@ -20,7 +20,8 @@ import {
 } from '../pipeline/lib/posting.mjs'
 import { facebookPageInfo, facebookUpload, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
 import { listVideos } from './videos.js'
-import { runTikTokJob, tiktokUsername, tiktokFailure } from '../pipeline/lib/tiktok-browser.mjs'
+import { runTikTokJob, tiktokUsername } from '../pipeline/lib/tiktok-browser.mjs'
+import { createDeliveryLedger, stageDelivery, deliveryDestination, importDeliveryHistory } from '../pipeline/lib/delivery-ledger.mjs'
 
 const PROJECTS = join(ROOT, 'projects')
 const TICK_MS = 30_000
@@ -39,6 +40,8 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   let ticking = false
   let lastEnroll = 0
   let tiktokConnection = null
+  const deliveries = createDeliveryLedger(POSTING_DIR)
+  let historySeeded = null
 
   // โปรแกรมถูกปิดกลางการโพสต์ → ไม่รู้ว่าขึ้นไปแล้วหรือยัง ห้ามโพสต์ซ้ำเอง ให้คนดูในเพจก่อนกดลองใหม่
   {
@@ -50,6 +53,10 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         if (interrupted) Object.assign(interrupted, { cancelled: true, status: 'error', error: 'โปรแกรมถูกปิดระหว่างโพสต์ TikTok — ตรวจในบัญชีก่อนลองใหม่' })
         q.status = 'failed'
         q.error = 'โปรแกรมถูกปิดระหว่างโพสต์ — ดูในเพจ/ช่องก่อนว่าขึ้นไปแล้วหรือยัง แล้วค่อยกดลองใหม่'
+        q.results ??= {}
+        for (const key of q.targets ?? []) if (!q.results[key]?.ok && q.results[key]?.needsVerification !== false) {
+          q.results[key] = { ...q.results[key], ok: false, needsVerification: true, error: 'โปรแกรมหยุดระหว่างส่ง — ระงับปลายทางนี้เพื่อป้องกันโพสต์ซ้ำ', at: Date.now() }
+        }
         changed = true
       }
       // รุ่นก่อน 1.0.11: คลิปที่ไม่มีปลายทางถูกนับว่า "โพสต์แล้ว" ทั้งที่ไม่ได้ขึ้นที่ไหน → คืนเป็นพลาด ให้กดลองใหม่ได้
@@ -77,6 +84,12 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   }
 
   const videoPath = (item) => join(PROJECTS, item.slug, '06_render', item.file)
+
+  async function seedDeliveryHistory() {
+    if (!historySeeded) historySeeded = importDeliveryHistory(deliveries, loadQueue(), loadAccounts(), videoPath)
+      .catch(error => { historySeeded = null; throw error })
+    return historySeeded
+  }
 
   /** เพจ/ช่องที่เพิ่งเพิ่ม → ติ๊กให้คลิปที่ยังรอตรวจทุกคลิป (ค่าเริ่มต้น "ลงทุกที่") */
   /**
@@ -398,10 +411,14 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   // ── โพสต์ ──
   async function postItem(id) {
     const accounts = loadAccounts()
+    try { await seedDeliveryHistory() } catch (error) {
+      return mutateItem(id, it => { it.status = 'failed'; it.error = error.message; it.finishedAt = Date.now(); it.results ??= {}; for (const key of it.targets ?? []) if (!it.results[key]?.ok) it.results[key] = { ok: false, error: error.message, needsVerification: true, at: Date.now() } })
+    }
     let item = mutateItem(id, (it) => {
       fillTargets(it, accounts)
       it.status = 'posting'
       it.error = null
+      it.results ??= {}
       note(it, 'เริ่มโพสต์')
     })
     // ไม่มีที่ให้โพสต์ = พลาด — เคยนับเป็น "โพสต์แล้ว" เพราะไม่มีปลายทางไหนพลาด ทั้งที่ไม่ได้ขึ้นที่ไหนเลย
@@ -414,37 +431,73 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         log(`โพสต์อัตโนมัติ: "${it.title}" ไม่มีเพจหรือช่องปลายทาง — ไม่ได้โพสต์`)
       })
     }
-    const file = videoPath(item)
+    let file = videoPath(item)
     const text = caption(item.post)
     const results = { ...item.results }
-    for (const key of item.targets ?? []) {
-      if (results[key]?.ok) continue // ขึ้นไปแล้ว (ลองใหม่เฉพาะที่พลาด)
+    let identity, staged
+    try {
+      staged = await stageDelivery(file, item, POSTING_DIR)
+      file = staged.file; identity = staged.identity
+      mutateItem(id, it => { it.deliverySnapshot = { file, sha256: identity.sha256 } })
+    } catch (error) {
+      if (staged) await staged.remove().catch(() => {})
+      return mutateItem(id, it => { it.status = 'failed'; it.error = error.message; it.finishedAt = Date.now(); for (const key of it.targets ?? []) if (!it.results[key]?.ok) it.results[key] = { ok: false, error: error.message, needsVerification: false, at: Date.now() } })
+    }
+    async function sendTarget(key) {
+      if (results[key]?.ok) return
       const { kind, account } = findTarget(accounts, key)
+      let ticket, started = false, destination
       try {
         if (!account) throw new Error('บัญชีนี้ถูกลบออกไปแล้ว')
         if (!existsSync(file)) throw new Error('ไม่พบไฟล์วิดีโอ')
+        if (kind === 'youtube' && !account.refreshToken) throw new Error('ช่องนี้ยังไม่ได้เชื่อมต่อ')
+        destination = deliveryDestination(kind, account)
+        const claim = deliveries.reserve({ identity, destination, itemId: id })
+        if (claim.status === 'done') {
+          results[key] = { ...claim.result, ok: true, destination, duplicateSkipped: true, name: account.name, at: Date.now() }
+          mutateItem(id, it => { it.results = { ...it.results, [key]: results[key] } })
+          return
+        }
+        if (claim.status === 'blocked' || results[key]?.needsVerification) throw Object.assign(new Error('ยังไม่รู้ผลการส่งครั้งก่อน — ระงับปลายทางนี้เพื่อป้องกันโพสต์ซ้ำ'), { needsVerification: true })
+        ticket = claim.ticket
+        results[key] = { ok: false, destination, needsVerification: true, error: 'กำลังส่ง — หากขาดการยืนยันจะไม่ส่งซ้ำ', name: account.name, at: Date.now() }
+        mutateItem(id, it => { it.results = { ...it.results, [key]: results[key] } })
         let out
+        started = true
         if (kind === 'facebook') {
           out = await fb.upload({ pageId: account.pageId, token: account.token, file, title: item.post.title, description: text })
         } else if (kind === 'tiktok') {
-          if (results[key]?.needsVerification) throw tiktokFailure('ตรวจใน TikTok ก่อนว่าคลิปขึ้นแล้วหรือยัง แล้วกดยืนยันลองใหม่')
-          results[key] = { ok: false, name: account.name, needsVerification: true, error: 'กำลังส่ง TikTok — ถ้าโปรแกรมหยุด ต้องตรวจในบัญชีก่อนลองใหม่', at: Date.now() }
-          mutateItem(id, it => { it.results = { ...results } })
           out = await runTikTokJob({ jobs, enqueue, payload: { username: account.username, privacy: account.privacy ?? 'private', aigc: account.aigc !== false, file, caption: text || item.post.title }, onStart: job => mutateItem(id, it => { it.tiktokJobId = job.id }) }, { timeoutMs: deps.tiktokTimeoutMs, pollMs: deps.tiktokPollMs })
         } else if (kind === 'youtube') {
           const { clientId, clientSecret } = accounts.settings.google
           if (!account.refreshToken) throw new Error('ช่องนี้ยังไม่ได้เชื่อมต่อ')
           out = await yt.upload({ clientId, clientSecret, refreshToken: account.refreshToken, file, title: item.post.title, description: text, tags: item.post.hashtags, privacy: account.privacy ?? 'public' })
         } else throw new Error('ไม่รู้จักปลายทางนี้')
-        results[key] = { ok: true, ...out, name: account.name, at: Date.now() }
+        if (kind !== 'tiktok' && !out?.postId) throw new Error('ปลายทางไม่ส่งเลขโพสต์กลับมา — หยุดเพื่อป้องกันโพสต์ซ้ำ')
+        deliveries.complete(ticket, { ...out, destination })
+        results[key] = { ok: true, ...out, destination, name: account.name, at: Date.now() }
         log(`โพสต์อัตโนมัติ: "${item.title}" ขึ้น ${account.name} แล้ว ${out.url}`)
       } catch (err) {
-        results[key] = { ok: false, error: err.message, name: account?.name ?? key, at: Date.now(), ...(kind === 'tiktok' ? { needsVerification: !!err.needsVerification } : {}) }
+        let needsVerification = started ? err.needsVerification !== false : err.needsVerification === true
+        if (ticket) try { deliveries.fail(ticket, { message: err.message, needsVerification }) } catch { needsVerification = true }
+        results[key] = { ok: false, error: err.message, destination, name: account?.name ?? key, at: Date.now(), needsVerification }
         log(`โพสต์อัตโนมัติ: "${item.title}" ขึ้น ${account?.name ?? key} ไม่สำเร็จ — ${err.message}`)
       }
-      mutateItem(id, (it) => { it.results = { ...results }; it.tiktokJobId = null }) // บันทึกทีละปลายทาง — ปิดโปรแกรมกลางทางจะได้ไม่โพสต์ซ้ำที่สำเร็จแล้ว
+      mutateItem(id, (it) => { it.results = { ...it.results, [key]: results[key] }; if (kind === 'tiktok') it.tiktokJobId = null })
     }
-    return mutateItem(id, (it) => {
+    // Each platform has an independent connection. Keep a platform's own accounts
+    // serial, while a slow upload on one platform cannot hold the other two.
+    const groups = new Map()
+    for (const key of new Set(item.targets ?? [])) {
+      const platform = key.split(':')[0]
+      if (!groups.has(platform)) groups.set(platform, [])
+      groups.get(platform).push(key)
+    }
+    try {
+      const settled = await Promise.allSettled([...groups.values()].map(async keys => { for (const key of keys) await sendTarget(key) }))
+      const rejected = settled.find(result => result.status === 'rejected')
+      if (rejected) throw rejected.reason
+      return mutateItem(id, (it) => {
       const failed = (it.targets ?? []).filter((k) => !results[k]?.ok)
       it.results = results
       it.status = failed.length ? 'failed' : 'posted'
@@ -452,7 +505,11 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       it.finishedAt = Date.now() // ใช้แจ้งผู้ใช้ว่าโพสต์ไปไหนบ้าง (สำเร็จหรือพลาด) — postingEvents
       it.error = failed.length ? failed.map((k) => `${results[k]?.name ?? k}: ${results[k]?.error ?? 'ไม่สำเร็จ'}`).join(' · ') : null
       note(it, failed.length ? `โพสต์ไม่สำเร็จ ${failed.length} ที่` : 'โพสต์ครบทุกที่แล้ว')
-    })
+      })
+    } finally {
+      await staged.remove().catch(error => log(`เก็บไฟล์ส่งชั่วคราวไว้ก่อน: ${error.message}`))
+      mutateItem(id, it => { it.deliverySnapshot = null })
+    }
   }
 
   async function postDue() {
@@ -611,7 +668,9 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         const job = jobs.get(id)
         const item = loadQueue().find(q => q.status === 'posting' && q.tiktokJobId === id)
         if (!item || !job || job.agent !== 'tiktok' || job.kind !== 'tiktok-post' || job.status !== 'running' || job.cancelled) return json(res, 409, { error: 'งาน TikTok นี้ไม่ได้กำลังโพสต์แล้ว' }), true
-        return json(res, 200, { file: videoPath(item), username: job.payload.username }), true
+        const file = item.deliverySnapshot?.file ?? videoPath(item)
+        if (item.deliverySnapshot && (!resolve(file).startsWith(resolve(POSTING_DIR, 'staging') + sep) || !/^[a-f0-9-]{36}\.mp4$/.test(basename(file)))) return json(res, 409, { error: 'ไฟล์ส่ง TikTok ไม่ตรงกับงานนี้' }), true
+        return json(res, 200, { file, username: job.payload.username }), true
       }
       if (req.method === 'GET' && path === '/api/posting') return json(res, 200, await view()), true
       // เบาๆ สำหรับแจ้งเตือน (background ถามทุกนาที) + บรรทัด "โพสต์ล่าสุด" — ไม่ดึงคลัง/ไม่ไล่คิวแบบ view()
@@ -737,6 +796,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
 
       // ── คิว ──
       if (path === '/api/posting/add') {
+        await seedDeliveryHistory() // Preserve removed legacy successes before replacing their queue row.
         const slug = String(body.slug ?? '')
         const file = String(body.file ?? '')
         if (!/^[^\\/.][^\\/]*$/.test(slug) || !/^[^\\/]+\.mp4$/i.test(file) || !existsSync(join(PROJECTS, slug, '06_render', file))) return json(res, 400, { error: 'ไม่พบคลิปนี้' }), true
@@ -831,12 +891,11 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       }
       if (path === '/api/posting/retry') {
         const pending = loadQueue().find(q => q.id === body.id)
-        if (pending?.status === 'failed' && (pending.targets ?? []).some(k => k.startsWith('tk:') && pending.results?.[k]?.needsVerification) && body.confirmTikTokRetry !== true) {
-          return json(res, 409, { error: 'ยังไม่รู้ผล TikTok — ตรวจในบัญชีก่อนว่าคลิปขึ้นแล้วหรือยัง แล้วกดยืนยันลองใหม่' }), true
+        if (pending?.status === 'failed' && !(pending.targets ?? []).some(k => !pending.results?.[k]?.ok && !pending.results?.[k]?.needsVerification)) {
+          return json(res, 409, { error: 'ไม่มีปลายทางที่ส่งซ้ำได้อย่างปลอดภัย — ผลที่ยังไม่ชัดเจนถูกระงับเพื่อป้องกันโพสต์ซ้ำ' }), true
         }
         mutateItem(body.id, (it) => {
           if (it.status !== 'failed') throw new Error('คลิปนี้ไม่ได้โพสต์พลาด')
-          if (body.confirmTikTokRetry === true) for (const [key, result] of Object.entries(it.results ?? {})) if (key.startsWith('tk:') && result.needsVerification) result.needsVerification = false
           it.status = 'scheduled'
           it.scheduleAt = Date.now()
           note(it, 'ลองโพสต์ใหม่ (เฉพาะที่พลาด)')

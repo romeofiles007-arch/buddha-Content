@@ -464,11 +464,10 @@ export function initPosting({ api, localApp }) {
         // บอกเหตุผลเมื่อไม่มีปลายทางไหนแสดงผล (เช่น ไม่มีเพจ/ช่องเลย หรือผลเก่าเป็นของเพจที่ลบไปแล้ว)
         fail && q.error && !(q.targets ?? []).some((k) => q.results?.[k]) ? el('p', { className: 'status err' }, q.error) : null,
         el('div', { className: 'pActions' },
-          fail ? el('button', { type: 'button', className: 'primary', on: { click: () => {
-            const uncertain = (q.targets ?? []).some(k => k.startsWith('tk:') && q.results?.[k]?.needsVerification)
-            if (uncertain && !confirm('ยังไม่รู้ผล TikTok — เปิด TikTok ตรวจแล้วว่าคลิปนี้ยังไม่ขึ้นใช่ไหม? กดยืนยันเพื่อส่งใหม่ ซึ่งอาจซ้ำได้ถ้าคลิปขึ้นไปแล้ว')) return
-            call('/api/posting/retry', { id: q.id, ...(uncertain ? { confirmTikTokRetry: true } : {}) }, 'กำลังลองโพสต์ใหม่ (เฉพาะที่พลาด)…').catch(() => {})
-          } } }, '↻ ลองโพสต์ใหม่เฉพาะที่พลาด') : null,
+          fail && (q.targets ?? []).some(k => !q.results?.[k]?.ok && !q.results?.[k]?.needsVerification) ? el('button', { type: 'button', className: 'primary', on: { click: () => {
+            call('/api/posting/retry', { id: q.id }, 'กำลังส่งเฉพาะปลายทางที่ยังไม่ถูกส่ง…').catch(() => {})
+          } } }, '↻ ลองเฉพาะปลายทางที่ยังไม่ถูกส่ง') : null,
+          fail && (q.targets ?? []).some(k => q.results?.[k]?.needsVerification) ? el('p', { className: 'status err' }, 'ปลายทางที่ยังไม่รู้ผลถูกระงับการส่งซ้ำ กรุณาตรวจในเพจ/ช่องโดยตรง') : null,
           el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/remove', { id: q.id }, 'เอาออกจากรายการแล้ว').catch(() => {}) } }, 'เอาออกจากรายการ'),
         ),
       )

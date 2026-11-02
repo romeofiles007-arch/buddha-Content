@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join, basename, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
-import { test, after } from 'node:test'
+import { test, after, beforeEach } from 'node:test'
 
 const temp = mkdtempSync(join(tmpdir(), 'tiktok-posting-'))
 process.env.POSTING_DIR = temp
@@ -14,6 +14,9 @@ const project = mkdtempSync(join(ROOT, 'projects', '_tiktoktest-'))
 const slug = basename(project)
 mkdirSync(join(project, '06_render'))
 writeFileSync(join(project, '06_render', `${slug}.mp4`), 'fixture')
+beforeEach(() => {
+  for (const file of ['deliveries.json', 'deliveries.lock', 'deliveries.initialized']) rmSync(join(temp, file), { force: true })
+})
 after(() => {
   assert.ok(resolve(project).startsWith(resolve(ROOT, 'projects') + sep))
   assert.ok(resolve(temp).startsWith(resolve(tmpdir()) + sep))
@@ -108,7 +111,7 @@ test('scheduled TikTok posts run a non-retryable browser job and require a publi
   await h.posting.tick(); assert.equal(h.calls.length, 1)
 })
 
-test('an upload-only response is uncertain, never posted, and retry requires user acknowledgement', async () => {
+test('an upload-only response stays blocked, including the former user acknowledgement override', async () => {
   P.saveAccounts(accounts()); P.saveQueue([due()])
   const h = harness({ ok: true, uploaded: true, username: 'romeo' }); await h.posting.tick()
   const [q] = P.loadQueue()
@@ -116,8 +119,8 @@ test('an upload-only response is uncertain, never posted, and retry requires use
   assert.equal(q.results['tk:one'].needsVerification, true)
   assert.equal((await h.request('/api/posting/retry', { id: q.id })).code, 409)
   assert.equal(h.calls.length, 1)
-  assert.equal((await h.request('/api/posting/retry', { id: q.id, confirmTikTokRetry: true })).code, 200)
-  assert.equal(P.loadQueue()[0].results['tk:one'].needsVerification, false)
+  assert.equal((await h.request('/api/posting/retry', { id: q.id, confirmTikTokRetry: true })).code, 409)
+  assert.equal(P.loadQueue()[0].results['tk:one'].needsVerification, true)
 })
 
 test('failure before submission can retry; account mismatch cannot be accepted as success', async () => {
