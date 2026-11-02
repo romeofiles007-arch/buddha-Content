@@ -43,6 +43,13 @@ test('ตั้งค่า: ค่าเริ่มต้นเป็นทุ
   assert.notEqual(kept.pageQuota, s.pageQuota)
 })
 
+test('แบ่งปลายทาง TikTok ร่วมกับ Facebook ได้ และคงโควตาหลังอ่านค่ากลับ', () => {
+  const settings = cleanSettings({ postPages: 'split', pageQuota: { 'tk:account-1': 2, 'fb:page-1': 1, 'xx:unknown': 3 } })
+  assert.deepEqual(settings.pageQuota, { 'tk:account-1': 2, 'fb:page-1': 1 })
+  assert.deepEqual(cleanSettings({}, settings).pageQuota, settings.pageQuota)
+  assert.deepEqual(pageSequence(settings.pageQuota, ['tk:account-1', 'fb:page-1']), ['tk:account-1', 'fb:page-1', 'tk:account-1'])
+})
+
 test('หมวดของคลิปอ่านจากโปรไฟล์ → เพจที่ตั้งหมวดไว้รับคลิปจากผลิตต่อเนื่องได้ (เดิมค้างในคิว)', () => {
   const root = mkdtempSync(join(tmpdir(), 'dhamma-pages-'))
   try {

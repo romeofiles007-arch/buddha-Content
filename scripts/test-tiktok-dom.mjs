@@ -47,3 +47,14 @@ test('an attempt guard persists the publishing phase and blocks duplicate delive
   assert.throws(() => D.claimAttempt(storage, 'job1'), /ซ้ำ/)
   assert.equal(JSON.parse(values.get('dhamma-tiktok-job1')).phase, 'publishing')
 })
+
+test('read-only Studio diagnostics expose control attributes, never typed values or passwords', () => {
+  const D = api()
+  const field = { tagName: 'INPUT', value: 'private-value', type: 'text', getAttribute: key => ({ type: 'text', placeholder: 'Caption' })[key] ?? null, getClientRects: () => [{}] }
+  const password = { ...field, type: 'password', value: 'private-password', getAttribute: key => key === 'type' ? 'password' : null }
+  const doc = document(); doc.querySelectorAll = selector => selector.startsWith('a[') ? [] : [field, password]
+  const result = D.inspectStudio(doc)
+  assert.equal(result.controls.length, 1)
+  assert.equal(result.controls[0].placeholder, 'Caption')
+  assert.ok(!JSON.stringify(result).includes('private-'))
+})

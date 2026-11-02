@@ -41,7 +41,7 @@ export const DEFAULT_SETTINGS = {
 }
 const AUTO_POST = ['off', 'ai', 'now']
 const POST_PAGES = ['all', 'split']
-const TARGET_KEY = /^(fb|yt):[\w.-]{1,64}$/
+const TARGET_KEY = /^(fb|yt|tk):[\w.-]{1,64}$/
 
 const blankState = () => ({ active: false, pageIndex: 0, made: 0, failed: 0, failsInRow: 0, nextAt: null, run: null, batch: 0, message: '', history: [] })
 

@@ -29,6 +29,7 @@
       return fn()
     }, { timeout, interval: 400, label })
     try {
+      if (job.kind === 'tiktok-inspect') return { ok: true, url: location.href, ...D.inspectStudio(document) }
       if (job.kind === 'tiktok-account') return { ok: true, ...await readAccount() }
       if (job.kind !== 'tiktok-post') throw new Error('ไม่รู้จักงาน TikTok นี้')
       attempt = D.claimAttempt(sessionStorage, job.id)
