@@ -420,8 +420,12 @@ const agentBusy = () => !!byAria(L.stop).find(visible)
 // grid เป็น virtual scroll (แสดงเฉพาะที่อยู่บนจอ) → จำภาพทุกใบที่เคยโผล่ด้วย MutationObserver
 // ชื่อภาพ = aria-label ของ tile ซึ่ง agent เปลี่ยนเป็น "00_00_00.png SHOT 01" ได้ตามที่สั่ง
 const tiles = new Map() // mediaId → { name, src }
+let tilesProject = null
 
 function collectTiles() {
+  const project = /\/project\//.test(location.pathname) ? location.href : null
+  if (project !== tilesProject) { tiles.clear(); tilesProject = project }
+  if (!project) return tiles
   for (const tile of $$('flow-grid-tile-container')) {
     const img = tile.querySelector('img[data-media-id]')
     if (!img) continue
@@ -655,7 +659,8 @@ async function runImageJob(job) {
   const wanted = new Set(shots.map((s) => s.filename))
   await openProject()
   await renameProject(projectTitle).catch(() => {})
-  await toBridge('PROGRESS', { id: job.id, progress: { done: 0, total: expected, stage: 'project', projectUrl: location.href.split('?')[0] } })
+  tiles.clear() // A reused content-script world must not retain a previous project's tiles.
+  await toBridge('PROGRESS', { id: job.id, progress: { done: 0, total: expected, stage: 'project', projectUrl: location.href } })
   const credits = await verifyFreeSettings(model, aspect)
   if (credits !== 0) throw new Error(`ชุด ${model} · x1 ใช้ ${Number.isFinite(credits) ? credits : '?'} credits ไม่ใช่ 0 — หยุดไว้ก่อน ไม่ได้สั่ง agent`)
   await configureAgent(model, { dryRun: false, ratio: aspect })
@@ -848,6 +853,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const aspect = msg.aspect ?? '16:9'
     try {
       await openProject()
+      tiles.clear()
       const credits = await verifyFreeSettings(model, aspect)
       if (credits !== 0) {
         throw new Error(`ชุด ${model} · x1 ใช้ ${Number.isFinite(credits) ? credits : '?'} credits ไม่ใช่ 0 — หยุดไว้ก่อน ไม่ได้สั่ง agent`)

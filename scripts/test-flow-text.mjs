@@ -230,4 +230,19 @@ test('โหลดตัวขับ Flow ทั้งไฟล์ได้ (ต
   assert.equal(res.translated, false)
 })
 
+test('Flow tile cache cannot carry images across account/project SPA navigation', () => {
+  let listener, shown = [{ querySelector: () => ({ dataset: { mediaId: 'old' }, src: 'old.png' }), getAttribute: () => '00_00_00.png SHOT 01' }]
+  const location = { pathname: '/project/old', href: 'https://flow.google.com/project/old' }
+  const document = { documentElement: {}, querySelectorAll: selector => selector === 'flow-grid-tile-container' ? shown : [], querySelector: () => null }
+  const c = vm.createContext({ document, location, MutationObserver: class { observe() {} }, chrome: { runtime: { getManifest: () => ({ version: manifest.version }), onMessage: { addListener: fn => { listener = fn } } } } })
+  vm.runInContext(src('flow-text.js'), c); vm.runInContext(src('content-flow-agent.js'), c)
+  const status = () => { let result; listener({ type: 'FLOW_AGENT_STATUS' }, {}, r => { result = r }); return result }
+  assert.equal(status().images, 1)
+  location.pathname = '/'; location.href = 'https://flow.google.com/?authuser=1'
+  assert.equal(status().images, 0, 'home page is not a generated-image project')
+  location.pathname = '/project/new'; location.href = 'https://flow.google.com/project/new?authuser=1'
+  shown = [{ querySelector: () => ({ dataset: { mediaId: 'new' }, src: 'new.png' }), getAttribute: () => '00_00_00.png SHOT 01' }]
+  assert.equal(status().images, 1, 'old project image must be forgotten')
+})
+
 console.log(`\nผ่าน ${passed} ข้อ`)

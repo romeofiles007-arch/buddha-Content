@@ -7,6 +7,7 @@
  */
 
 const NATIVE_HOST = 'com.dhamma_auto.bridge'
+import { preferredFlowTab, flowHomeUrl, flowJobNavigation } from './flow-navigation.js'
 
 const AGENTS = {
   chatgpt: { match: 'https://chatgpt.com/', pattern: ['https://chatgpt.com/*', 'https://chat.openai.com/*'], key: 'chatTabId' },
@@ -66,13 +67,15 @@ async function ensureTab(agent) {
   const tabs = await chrome.tabs.query({ url: pattern })
   const { [key]: savedId } = await chrome.storage.session.get(key)
   // TikTok uses its own tab so navigating for a job never discards a user's upload draft.
-  const existing = tabs.find((t) => t.id === savedId) ?? (agent === 'tiktok' ? null : tabs.find((t) => !t.discarded) ?? tabs[0])
+  const existing = agent === 'flow' ? preferredFlowTab(tabs, savedId) : tabs.find((t) => t.id === savedId) ?? (agent === 'tiktok' ? null : tabs.find((t) => !t.discarded) ?? tabs[0])
   if (existing) {
     if (existing.id !== savedId) await chrome.storage.session.set({ [key]: existing.id })
+    if (agent === 'flow') await chrome.storage.local.set({ flowAccountHome: flowHomeUrl(existing.url) })
     return existing
   }
   if (opening[agent]) return opening[agent]
-  opening[agent] = openTab(match, key).finally(() => delete opening[agent])
+  const home = agent === 'flow' ? flowHomeUrl((await chrome.storage.local.get('flowAccountHome')).flowAccountHome) : match
+  opening[agent] = openTab(home, key).finally(() => delete opening[agent])
   return opening[agent]
 }
 
@@ -136,20 +139,14 @@ async function loadInTab(tabId, url, settleMs) {
  * Chrome แปลหน้าไปแล้ว (คลาส translated-ltr/rtl ที่ <html>) — ชื่อปุ่ม/รุ่น/ไอคอนเปลี่ยนทั้งหน้า ตัวขับหาปุ่มไม่เจอ
  * no-translate.js กันไว้ตั้งแต่เริ่มโหลดแล้ว ถ้ายังหลุด → โหลดใหม่หนึ่งครั้งก่อนส่งงาน (ยังแปลอยู่ ตัวขับบอกสาเหตุใน error เอง)
  */
-async function reloadIfTranslated(tabId, url, settleMs) {
+async function reloadIfTranslated(tabId, url, settleMs, { preserveContext = false } = {}) {
   const [probe] = await chrome.scripting
     .executeScript({ target: { tabId }, func: () => /\btranslated-(ltr|rtl)\b/.test(document.documentElement.className || '') })
     .catch(() => [])
   if (!probe?.result) return
+  if (preserveContext) throw new Error('หน้า Flow ถูก Chrome แปลอยู่ — ปิดการแปลบนแท็บบัญชีที่เลือกแล้วกดทำต่อ ระบบจะไม่โหลดลิงก์เก่าทับบัญชีนี้')
   console.warn('หน้าเว็บถูก Chrome แปลอยู่ — โหลดใหม่หนึ่งครั้ง', url)
   await loadInTab(tabId, url, settleMs)
-}
-
-/** เปิด Flow เป็นภาษาอังกฤษ — ตัวขับอ่านข้อความบนปุ่มภาษาอังกฤษ */
-function withEnglish(url) {
-  const u = new URL(url)
-  u.searchParams.set('hl', 'en')
-  return u.toString()
 }
 
 async function handleJob(job) {
@@ -172,11 +169,13 @@ async function handleJob(job) {
 
   // Flow: เริ่มจากหน้าแรกทุกครั้ง → content script กด New project ได้ project ใหม่ต่อคลิป
   if (agent === 'flow' && job.kind === 'generate-images') {
-    // คลิปนี้เคยมี project ใน Flow แล้ว → กลับไป project เดิม (ตัวละครเดิม ไม่เปิด project ใหม่ทุกครั้งที่ลองซ้ำ)
-    const url = /^https:\/\/flow\.google\.com\/project\//.test(job.payload.projectUrl ?? '') ? withEnglish(job.payload.projectUrl) : AGENTS.flow.match
+    const navigation = flowJobNavigation(tab.url, job.payload)
+    if (navigation.error) throw new Error(navigation.error)
     await keepFlowInTab(tab) // เป็นแท็บ ไม่ใช่หน้าต่างใหม่ · แผงข้างหลบบนแท็บนี้ หน้า Flow จึงกว้างพอมีปุ่ม Agent
-    await loadInTab(tab.id, url, 3000)
-    await reloadIfTranslated(tab.id, url, 3000)
+    if (navigation.navigate) {
+      await loadInTab(tab.id, navigation.url, 3000)
+    } else await chrome.tabs.update(tab.id, { active: true })
+    await reloadIfTranslated(tab.id, navigation.url, 3000, { preserveContext: !navigation.navigate })
   }
 
   // ChatGPT: แชตใหม่ = โหลดหน้าแรกใหม่ (แบบเดียวกับแผงข้าง) — กดปุ่ม New chat จาก content script ไม่ได้ผลกับหน้ารุ่นใหม่ (ต.ค. 2026)

@@ -11,6 +11,7 @@ import { initIcons, setIconLabel } from './icons.js'
 import { portrait, DEPARTMENTS, HANDOFF, AGENT_WORD, elapsed, SEA_ASSETS } from './agents.js'
 import { initPosting } from './posting.js'
 import { applyCategoryTheme, categoryGenre } from './category-themes.js'
+import { preferredFlowTab, flowHomeUrl } from './flow-navigation.js'
 
 /** พระของฉัน (โหมดพระสอนธรรม) — ประกาศไว้บนสุด เพราะ render() ช่วงโหลดแรกอ่านค่านี้ */
 let selfMonk = null
@@ -73,6 +74,11 @@ function waitTabLoaded(tabId) {
  */
 async function reuseTab(key, patterns) {
   const { [key]: savedId } = await chrome.storage.session.get(key)
+  if (key === 'flowTabId') {
+    const tab = preferredFlowTab(await chrome.tabs.query({ url: patterns }), savedId)
+    if (tab) await chrome.storage.session.set({ [key]: tab.id })
+    return tab
+  }
   const saved = savedId ? await chrome.tabs.get(savedId).catch(() => null) : null
   if (saved) return saved
   const tabs = await chrome.tabs.query({ url: patterns })
@@ -524,7 +530,6 @@ async function loadShots(app) {
 }
 
 // ── 5 สร้างภาพใน Google Flow (Agent) ──
-const FLOW_HOME = 'https://flow.google.com/?hl=en' // บังคับภาษาอังกฤษ — บัญชีที่ตั้งภาษาไทยจะได้ปุ่มภาษาไทยที่ตัวขับหาไม่เจอ
 const FLOW_MODEL = 'Nano Banana 2 Lite'
 let flowRunning = false
 let flowTimer = null
@@ -532,12 +537,16 @@ let flowTimer = null
 /** แท็บ Flow ของแผงนี้ — เปิดหน้าแรกทุกครั้ง เพื่อให้ได้ project ใหม่ต่อคลิป */
 async function flowHomeTab() {
   let tab = await reuseTab('flowTabId', ['https://flow.google.com/*'])
-  if (tab) await chrome.tabs.update(tab.id, { url: FLOW_HOME, active: true })
+  const saved = await chrome.storage.local.get('flowAccountHome')
+  const home = flowHomeUrl(tab?.url ?? saved.flowAccountHome)
+  const navigating = !tab || /\/project\//.test(new URL(tab.url).pathname)
+  await chrome.storage.local.set({ flowAccountHome: home })
+  if (tab) await chrome.tabs.update(tab.id, navigating ? { url: home, active: true } : { active: true })
   else {
-    tab = await chrome.tabs.create({ url: FLOW_HOME, active: true })
+    tab = await chrome.tabs.create({ url: home, active: true })
     await chrome.storage.session.set({ flowTabId: tab.id })
   }
-  await waitTabLoaded(tab.id)
+  if (navigating) await waitTabLoaded(tab.id)
   await new Promise((r) => setTimeout(r, 3000)) // หน้าแรกของ Flow ขึ้น "Loading..." ก่อนมีปุ่ม New project
   return tab.id
 }

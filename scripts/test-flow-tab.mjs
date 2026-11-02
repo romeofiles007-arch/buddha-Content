@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
+import * as flowNavigation from '../extension/flow-navigation.js'
 
 const EXT = join(fileURLToPath(new URL('..', import.meta.url)), 'extension')
 const bgSource = readFileSync(join(EXT, 'background.js'), 'utf8')
@@ -19,7 +20,7 @@ const test = async (name, fn) => {
 }
 
 /** chrome จำลอง: tabs = [{ id, windowId, url, incognito }] · windows = [{ id, incognito }] · focused = id หน้าต่างล่าสุด */
-function makeChrome({ tabs, windows, focused }) {
+function makeChrome({ tabs, windows, focused, session = {}, translated = false }) {
   const calls = []
   const rec = (name, value) => (...args) => {
     calls.push([name, ...args])
@@ -36,7 +37,7 @@ function makeChrome({ tabs, windows, focused }) {
     notifications: { onClicked: event() },
     storage: {
       local: { get: async () => ({}), set: rec('storage.local.set') },
-      session: { get: async () => ({}), set: rec('storage.session.set') },
+      session: { get: async () => ({ ...session }), set: rec('storage.session.set') },
     },
     sidePanel: { setPanelBehavior: async () => {}, setOptions: rec('sidePanel.setOptions'), open: async () => {} },
     tabs: {
@@ -53,15 +54,15 @@ function makeChrome({ tabs, windows, focused }) {
       getLastFocused: rec('windows.getLastFocused', () => windows.find((w) => w.id === focused) ?? null),
       get: rec('windows.get', (id) => windows.find((w) => w.id === id)),
     },
-    scripting: { executeScript: rec('scripting.executeScript', [{ result: false }]) },
+    scripting: { executeScript: rec('scripting.executeScript', [{ result: translated }]) },
   }
   return { chrome, calls }
 }
 
 function loadBackground(env) {
   const { chrome, calls } = makeChrome(env)
-  const ctx = vm.createContext({ chrome, console: { log() {}, warn() {} }, setTimeout, clearTimeout, queueMicrotask, URL, fetch: async () => ({ ok: false, status: 500 }) })
-  vm.runInContext(bgSource, ctx)
+  const ctx = vm.createContext({ ...flowNavigation, chrome, console: { log() {}, warn() {} }, setTimeout, clearTimeout, queueMicrotask, URL, fetch: async () => ({ ok: false, status: 500 }) })
+  vm.runInContext(bgSource.replace(/^import \{[^\n]+\} from '\.\/flow-navigation\.js'\r?\n/m, ''), ctx)
   return { ctx, calls }
 }
 const names = (calls) => calls.map((c) => c[0])
@@ -117,7 +118,7 @@ await test('ไม่ย้ายข้ามหน้าต่างไม่�
   assert.ok(!names(calls).includes('tabs.move'))
 })
 
-await test('งานสร้างภาพ: ปิดแผงข้างบนแท็บ Flow ก่อนโหลดหน้า แล้วส่งงานในแท็บเดิม — ไม่มีหน้าต่างใหม่', async () => {
+await test('งานสร้างภาพ: ปิดแผงข้างก่อนใช้แท็บ Flow เดิม โดยไม่โหลดหน้าแรกทับบัญชีที่เลือก', async () => {
   const tabs = [
     { id: 7, windowId: 1, url: 'https://flow.google.com/' },
     { id: 3, windowId: 1, url: 'https://github.com/' },
@@ -129,8 +130,27 @@ await test('งานสร้างภาพ: ปิดแผงข้างบ
   const panelOff = order.indexOf('sidePanel.setOptions')
   const load = order.indexOf('tabs.update')
   assert.ok(panelOff >= 0 && load > panelOff, 'ต้องปิดแผงข้างก่อนโหลดหน้า Flow')
-  assert.deepEqual(JSON.parse(JSON.stringify(calls[load].slice(1))), [7, { url: 'https://flow.google.com/?hl=en', active: true }])
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[load].slice(1))), [7, { active: true }])
   assert.equal(calls.find((c) => c[0] === 'tabs.sendMessage')[1], 7)
+})
+
+await test('ทำต่อ: ใช้แท็บบัญชีใหม่ที่เลือก ไม่กลับแท็บหรือโปรเจกต์ของบัญชีเก่า', async () => {
+  const tabs = [
+    { id: 7, windowId: 1, url: 'https://flow.google.com/project/old?authuser=0', lastAccessed: 10 },
+    { id: 8, windowId: 1, url: 'https://flow.google.com/?authuser=1', active: true, lastAccessed: 20 },
+  ]
+  const { ctx, calls } = loadBackground({ tabs, windows: [{ id: 1 }], focused: 1, session: { flowTabId: 7 } })
+  await ctx.handleJob({ id: 'resume', agent: 'flow', kind: 'generate-images', payload: { projectUrl: tabs[0].url } })
+  assert.equal(calls.find(c => c[0] === 'tabs.sendMessage')[1], 8)
+  assert.ok(!calls.some(c => c[0] === 'tabs.update' && c[2]?.url))
+  assert.ok(calls.some(c => c[0] === 'storage.session.set' && c[1]?.flowTabId === 8))
+})
+await test('ทำต่อบนหน้าที่แปลอยู่: หยุดพร้อมเหตุผลแทนโหลดบัญชีเก่ากลับมาหรือสั่งสร้างภาพ', async () => {
+  const tabs = [{ id: 7, windowId: 1, url: 'https://flow.google.com/?authuser=1', active: true }]
+  const { ctx, calls } = loadBackground({ tabs, windows: [{ id: 1 }], focused: 1, translated: true })
+  await assert.rejects(ctx.handleJob({ id: 'resume-translated', agent: 'flow', kind: 'generate-images', payload: { projectUrl: 'https://flow.google.com/project/old' } }), /ปิดการแปล/)
+  assert.ok(!calls.some(c => c[0] === 'tabs.update' && c[2]?.url))
+  assert.ok(!calls.some(c => c[0] === 'tabs.sendMessage'))
 })
 
 await test('โค้ดไม่มีการเปิดหน้าต่างใหม่แล้ว · ไม่ขอสิทธิ์อ่านจอ (system.display) ที่ไม่ใช้แล้ว', () => {
