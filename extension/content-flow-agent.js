@@ -66,6 +66,7 @@ async function waitBeforeNextPrompt() {
 async function waitFor(fn, { timeout = 20_000, interval = 250, label = 'หน้าเว็บ' } = {}) {
   const deadline = Date.now() + timeout
   for (;;) {
+    if (jobCancelled) throw new JobCancelled() // กดหยุดแล้ว — เลิกทันทีแม้อยู่ระหว่างรอนาน
     if (running && expectedAccount) checkAccountQuota()
     const value = fn()
     if (value) return value
@@ -453,11 +454,13 @@ const agentBusy = () => !!byAria(L.stop).find(visible)
 // grid เป็น virtual scroll (แสดงเฉพาะที่อยู่บนจอ) → จำภาพทุกใบที่เคยโผล่ด้วย MutationObserver
 // ชื่อภาพ = aria-label ของ tile ซึ่ง agent เปลี่ยนเป็น "00_00_00.png SHOT 01" ได้ตามที่สั่ง
 const tiles = new Map() // mediaId → { name, src }
+const tilePrompts = new Map() // mediaId → prompt ที่ใช้สร้างภาพ (อ่านจากหน้าแก้ภาพของ Flow)
 let tilesProject = null
 
 function collectTiles() {
-  const project = /\/project\//.test(location.pathname) ? location.href : null
-  if (project !== tilesProject) { tiles.clear(); tilesProject = project }
+  // จำตาม id ของ project ไม่ใช่ URL เต็ม — เปิดหน้าแก้ภาพ (/edit/…) หรือ ?hl=en เปลี่ยน ต้องไม่ล้างรายการภาพ
+  const project = /\/project\/([^/?#]+)/.exec(location.pathname)?.[1] ?? null
+  if (project !== tilesProject) { tiles.clear(); tilePrompts.clear(); tilesProject = project }
   if (!project) return tiles
   for (const tile of $$('flow-grid-tile-container')) {
     const img = tile.querySelector('img[data-media-id]')
@@ -552,6 +555,8 @@ async function imageAsPngBase64(src) {
 }
 
 let running = false
+let currentJobId = null
+let jobCancelled = false
 // ── งานจากโปรแกรมในเครื่อง (pipeline/5_images.mjs ผ่าน bridge) — ทำครบทั้งเส้นในแท็บนี้ ──
 
 /** ส่งถึง bridge ผ่าน service worker — ลองใหม่ถ้า worker กำลังถูกปลุก; RESULT/PARTIAL ต้องได้ ok จริง */
@@ -678,6 +683,142 @@ function namedPicks(wanted) {
 }
 
 /**
+ * พ.ย. 2026: Flow ตั้งชื่อภาพเองเป็นคำบรรยายภาษาอังกฤษ ("Man walking on garden pathway") ไม่ใช้ชื่อที่ Agent ตั้ง
+ * → ชื่อ timecode หาไม่เจอเลย (ได้ 0/23 ทั้งที่ Agent สร้างภาพครบ) · แต่ prompt ของแต่ละภาพยังมี "SHOT 14" / cover อยู่
+ * เปิดภาพในหน้าแก้ภาพ (คลิก tile → /edit/…) อ่าน prompt แล้วกดกลับ — อ่านอย่างเดียว ไม่แก้ภาพ
+ */
+const shotNo = (s) => Number((/\bSHOT\s*0*(\d+)/i.exec(s ?? '') ?? [])[1]) || null
+const isCoverPrompt = (s) => !shotNo(s) && /\bcover\b|thumbnail|ภาพปก/i.test(s ?? '')
+const tileImg = (id) => document.querySelector(`flow-grid-tile-container img[data-media-id="${CSS.escape(id)}"]`)
+const inEditor = () => /\/edit\//.test(location.pathname)
+
+async function backToGrid() {
+  if (inEditor()) history.back()
+  await waitFor(() => !inEditor() && document.querySelector('flow-grid-tile-container img[data-media-id]'), { timeout: 15_000, label: 'กลับหน้า project' })
+  await sleep(400)
+}
+
+async function readTilePrompt(id) {
+  if (tilePrompts.has(id)) return tilePrompts.get(id)
+  // รูปที่อัปโหลดเองชื่อเป็นชื่อไฟล์ (เช่น buddha_1.jpg) ไม่มี prompt — ไม่ต้องเปิด
+  const name = tiles.get(id)?.name ?? ''
+  if (/\.(jpe?g|png|webp|gif)$/i.test(name) && !TIMECODE_NAME.test(name)) { tilePrompts.set(id, ''); return '' }
+  const img = tileImg(id)
+  if (!img) return null // ยังไม่ถูกวาดใน grid — รอบหน้าค่อยอ่าน
+  let prompt = ''
+  try {
+    img.click()
+    let shownAt = 0
+    const box = await waitFor(() => {
+      if (!inEditor()) return null
+      // ต้องเป็นหน้าแก้ของภาพนี้จริง ไม่ใช่ภาพก่อนหน้าที่ยังค้าง
+      const same = [...document.querySelectorAll('flow-image-editor img')].some((i) => (i.currentSrc || i.src).includes(id) || i.dataset.mediaId === id)
+      if (!same) return null
+      const el = document.querySelector('flow-expandable-prompt')
+      if (el && text(el)) return el
+      // ภาพที่อัปโหลดเอง (รูปตัวละครอ้างอิง) ไม่มี prompt — เปิดภาพแล้ว 3 วิยังไม่มีช่อง prompt = ไม่มี ไม่ต้องรอ 15 วิ
+      shownAt ||= Date.now()
+      return Date.now() - shownAt > 3000 ? 'none' : null
+    }, { timeout: 15_000, label: 'prompt ของภาพ' })
+    prompt = box === 'none' ? '' : text(box)
+  } catch (err) {
+    // อ่านไม่ทัน (หน้าช้า/แท็บอยู่เบื้องหลัง) ≠ ไม่มี prompt — ลองใหม่รอบหน้า ยอมแพ้หลังพลาด 3 ครั้ง
+    console.warn('[cartoon-auto] อ่าน prompt ของภาพไม่ได้', id, err.message)
+    const fails = (tileReadFails.get(id) ?? 0) + 1
+    tileReadFails.set(id, fails)
+    promptStats.failed++
+    await backToGrid().catch(() => {})
+    if (fails < 3) return null
+    tilePrompts.set(id, '')
+    return ''
+  }
+  await backToGrid().catch(() => {})
+  tilePrompts.set(id, prompt) // ภาพตัวละครที่แนบไปไม่มี prompt — จำไว้ ไม่เปิดซ้ำ
+  return prompt
+}
+const tileReadFails = new Map()
+/** สรุปการจับคู่รอบล่าสุด — ใส่ในข้อความ error ให้รู้ว่าติดตรงไหน */
+const promptStats = { tiles: 0, skipped: 0, read: 0, withShot: 0, failed: 0 }
+
+/** เพิ่มภาพที่จับคู่ช็อตได้จาก prompt (ต่อจากภาพที่ตั้งชื่อ timecode แล้ว) — เรียกตอน Agent ว่างเท่านั้น */
+async function promptPicks(wanted, shots, { skip = new Set(), beat = async () => {} } = {}) {
+  // skip = ภาพที่มีอยู่ก่อนเริ่มงานนี้ — project เดิมอาจมีภาพของ shot list ชุดก่อน เลข SHOT ซ้ำแต่คนละฉาก ห้ามจับคู่
+  const picks = namedPicks(wanted)
+  const byNo = new Map()
+  let cover = null
+  for (const s of shots) {
+    if (!wanted.has(s.filename) || picks.has(s.filename)) continue
+    const n = shotNo(s.prompt) ?? shotNo(s.shot)
+    if (n) byNo.set(n, s.filename)
+    else if (/cover/i.test(s.filename)) cover = s.filename
+  }
+  if (!byNo.size && !cover) return picks
+  const taken = new Set([...picks.values()])
+  const match = (id) => {
+    if (skip.has(id)) return
+    const t = tiles.get(id)
+    const p = tilePrompts.get(id)
+    if (!t?.src || !p || taken.has(t.src)) return
+    const n = shotNo(p)
+    const filename = n ? byNo.get(n) : isCoverPrompt(p) ? cover : null
+    if (!filename || picks.has(filename)) return
+    picks.set(filename, t.src)
+    taken.add(t.src)
+    if (n) byNo.delete(n)
+    else cover = null
+  }
+  for (const id of tiles.keys()) match(id)
+  // ย่อหน้าจอชั่วคราวให้ grid วาด tile ครบทุกใบ (แบบเดียวกับ scanAllTiles) แล้วไล่อ่าน prompt ใบที่ยังไม่รู้
+  const html = document.documentElement
+  const oldZoom = html.style.zoom
+  html.style.zoom = '0.06'
+  window.dispatchEvent(new Event('resize'))
+  await sleep(1200)
+  try {
+    collectTiles()
+    let n = 0
+    for (const id of [...tiles.keys()]) {
+      if (!byNo.size && !cover) break
+      if (skip.has(id) || tilePrompts.has(id) || picks.size >= wanted.size) continue
+      await readTilePrompt(id)
+      collectTiles()
+      match(id)
+      if (++n % 5 === 0) await beat() // heartbeat กัน bridge คิดว่างานเงียบ
+    }
+  } finally {
+    html.style.zoom = oldZoom
+    window.dispatchEvent(new Event('resize'))
+    await sleep(400)
+  }
+  Object.assign(promptStats, {
+    tiles: tiles.size,
+    skipped: [...tiles.keys()].filter((id) => skip.has(id)).length,
+    read: [...tilePrompts.keys()].filter((id) => !skip.has(id)).length,
+    withShot: [...tilePrompts.entries()].filter(([id, p]) => !skip.has(id) && shotNo(p)).length,
+  })
+  return picks
+}
+
+/**
+ * หน้าต่างที่ Flow เด้งทับหน้าเว็บ:
+ *   ข่าวรุ่นใหม่ (เช่น "Nano Banana 2.1 · Get started") → ปิดให้เอง ไม่มีผลกับบัญชี
+ *   หน้ารับเงื่อนไขครั้งแรกของบัญชี ("Experience and shape AI tools… Next / Sign out") → ไม่กดแทน ให้เจ้าของบัญชียอมรับเอง
+ */
+async function clearFlowDialogs() {
+  for (let i = 0; i < 4; i++) {
+    const dialogs = $$('mat-dialog-container').filter(visible)
+    if (!dialogs.length) return
+    const terms = dialogs.find((d) => $$('button', d).some((b) => /^(sign out|ออกจากระบบ)$/i.test(text(b))))
+    if (terms) throw new Error('บัญชี Google นี้ยังไม่ได้ยอมรับเงื่อนไขการใช้ Google Flow ครั้งแรก — เปิดแท็บ Flow ของบัญชีนี้ อ่านแล้วกด Next ให้ครบเอง แล้วกดทำคลิปอีกครั้ง')
+    const top = dialogs.at(-1)
+    const close = $$('button', top).find((b) => /^(get started|got it|close|dismiss|เริ่มต้นใช้งาน|รับทราบ|ปิด)$/i.test(text(b)) || L.close.includes(b.getAttribute('aria-label')))
+    if (!close) return // ไม่รู้จักหน้าต่างนี้ — ไม่กดมั่ว ปล่อยให้ขั้นถัดไปแจ้งว่าหาปุ่มไม่เจอ
+    realClick(close)
+    await sleep(800)
+  }
+}
+
+/**
  * ตั้งชื่อ project ใน Flow เป็นชื่อเรื่อง — ชื่อเริ่มต้นของ Flow เป็นวันที่ ("Sep 17 - 18:54") หาในรายการ project ยาก
  * ช่องชื่ออยู่หัวหน้า project: input.editable-text-input (aria-label "Editable text") ตรวจกับหน้าเว็บจริงแล้ว (ก.ย. 2026)
  * ตั้งไม่สำเร็จไม่ถือว่างานพัง — แค่ชื่อไม่เปลี่ยน
@@ -724,17 +865,30 @@ async function runImageJob(job) {
       }
     }
 
+    currentJobId = job.id
+    jobCancelled = false
+    // heartbeat ทุก 20 วิตลอดงาน — บางช่วง (รอ Agent ว่าง 10 นาที · เว้นระยะ prompt 2 นาที · อ่าน prompt ภาพ) ไม่ได้ส่ง progress
+    // bridge เงียบเกิน 6 นาทีจะส่งงานซ้ำ · ถ้าตอบว่ายกเลิกแล้ว → ตั้งธงให้ waitFor หยุดงาน
+    const pulse = setInterval(() => {
+      toBridge('PROGRESS', { id: job.id }, { tries: 1 }).catch((err) => { if (err instanceof JobCancelled) jobCancelled = true })
+    }, 20_000)
     try {
     const { flowAccountLimits = {} } = await chrome.storage.local.get('flowAccountLimits')
     if (flowAccountLimits[email]?.retryAt > Date.now()) throw new FlowQuotaError({ ...flowAccountLimits[email], email })
     checkAccountQuota()
+    await clearFlowDialogs()
     await openProject()
+    await clearFlowDialogs()
     await renameProject(projectTitle).catch(() => {})
     tiles.clear() // A reused content-script world must not retain a previous project's tiles.
     await toBridge('PROGRESS', { id: job.id, progress: { done: 0, total: expected, stage: 'project', projectUrl: location.href } })
     await scanAllTiles()
     const before = collectTiles().size
-    await saveNew(namedPicks(wanted)) // Keep already named images when resuming this account's project.
+    // ภาพเก่าใน project: เก็บเฉพาะที่ตั้งชื่อไฟล์ตรงแล้ว · ไม่จับคู่จากเลข SHOT เพราะอาจเป็น shot list ชุดก่อน (คนละฉาก)
+    const oldTiles = new Set(tiles.keys())
+    Object.assign(promptStats, { tiles: 0, skipped: 0, read: 0, withShot: 0, failed: 0 })
+    const pick = () => promptPicks(wanted, shots, { skip: oldTiles, beat: () => toBridge('PROGRESS', { id: job.id }) })
+    await saveNew(namedPicks(wanted))
     if (saved.size) {
       // The pipeline owns the complete style/cover prompt. Let it rebuild only missing shots.
       await toBridge('RESULT', { id: job.id, files: [], meta: { recovered: true, projectUrl: location.href, expected, named: saved.size } })
@@ -759,7 +913,8 @@ async function runImageJob(job) {
       await waitAgentIdle(job, { before, expected, stage: 'generate', onTick: () => saveNew(namedPicks(wanted)) })
       const newThisRound = collectTiles().size - beforeRound
       await scanAllTiles()
-      let picks = namedPicks(wanted)
+      if (agentBusy()) await waitFor(() => !agentBusy(), { timeout: 10 * 60_000, interval: 2000, label: 'Agent ว่าง' }).catch(() => null)
+      let picks = agentBusy() ? namedPicks(wanted) : await pick()
 
       // ยังไม่มีภาพใหม่เลย = agent หยุดถามยืนยัน/สรุปแผน → สั่งให้เริ่มสร้าง (ห้ามสั่งเปลี่ยนชื่อ เพราะไม่มีภาพให้เปลี่ยน)
       if (collectTiles().size - base <= 0 && !picks.size && nudges < 3) {
@@ -769,15 +924,16 @@ async function runImageJob(job) {
         continue
       }
 
-      // มีภาพใหม่ที่ยังไม่ได้ตั้งชื่อ timecode → ให้ agent ตั้งชื่อก่อน
+      // มีภาพใหม่แต่จับคู่ช็อตไม่ได้เลยทั้งจากชื่อและ prompt → ทางสุดท้าย: ให้ agent ตั้งชื่อ
+      // (Flow รุ่น พ.ย. 2026 ตั้งชื่อภาพเอง ชื่อที่ agent ตั้งมักไม่ติด จึงไม่สั่งถ้าจับคู่จาก prompt ได้แล้ว)
       const unnamed = collectTiles().size - base - picks.size
-      if (unnamed > 0 && picks.size < expected) {
+      if (unnamed > 0 && !picks.size) {
         await toBridge('PROGRESS', { id: job.id, progress: { done: picks.size, total: expected, stage: 'rename' } })
         await sendPrompt(renameInstruction(shots.filter((s) => !picks.has(s.filename))))
         await sleep(3000)
         await waitAgentIdle(job, { before, expected, stage: 'rename' })
         await scanAllTiles()
-        picks = namedPicks(wanted)
+        picks = await pick()
       }
       await saveNew(picks)
 
@@ -821,9 +977,19 @@ async function runImageJob(job) {
       await sendPrompt(continueInstruction(batch, { remaining: missing.length, safer: useSafer }))
     }
 
-    if (!saved.size) throw new Error(`Flow ยังไม่ส่งไฟล์ภาพตามรายการชุดนี้กลับมา (0/${expected}) แม้ Agent อาจตอบว่าสร้างแล้ว — ตรวจภาพจริงและชื่อ timecode ในแท็บ Flow`)
+    if (!saved.size) {
+      // บอกสิ่งที่เห็นจริง: มีภาพใหม่ไหม อ่าน prompt ได้กี่ใบ แท็บถูกซ่อนไหม Agent ตอบอะไรล่าสุด
+      const s = promptStats
+      const lastReply = text([...document.querySelectorAll('flow-chat-bubble')].at(-1)).slice(0, 160)
+      throw new Error(`Flow ยังไม่ส่งไฟล์ภาพตามรายการชุดนี้กลับมา (0/${expected}) — ภาพทั้งหมด ${collectTiles().size} ใบ (เก่า ${oldTiles.size}) · อ่าน prompt ภาพใหม่ได้ ${s.read} ใบ มีเลข SHOT ${s.withShot} · อ่านไม่ทัน ${s.failed} ครั้ง · แท็บ${document.hidden ? 'ถูกซ่อนอยู่ (เปิดแท็บ Flow ไว้ด้านหน้า)' : 'เปิดอยู่'} · Agent ตอบล่าสุด: "${lastReply}"`)
+    }
     await toBridge('RESULT', { id: job.id, files: [], meta: { generated: saved.size, expected, named: saved.size, projectUrl: location.href } })
   } catch (error) {
+    // กดหยุดงาน → กด Stop ของ Flow Agent ด้วย ไม่งั้น Agent ฝั่ง Google วาดต่อเองจนครบ (เปลืองโควต้า)
+    if (error instanceof JobCancelled || jobCancelled) {
+      const stop = byAria(L.stop).find(visible)
+      if (stop) realClick(stop)
+    }
     if (error instanceof FlowQuotaError) {
       if (/\/project\//.test(location.pathname)) {
         await scanAllTiles()
@@ -831,7 +997,11 @@ async function runImageJob(job) {
       }
     }
     throw error
-  } finally { expectedAccount = '' }
+  } finally {
+    clearInterval(pulse)
+    expectedAccount = ''
+    currentJobId = null
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -843,6 +1013,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return
   }
   if (msg.type === 'RUN_JOB' && msg.job?.kind === 'generate-images') {
+    // bridge ส่งงานเดิมซ้ำ (คิดว่าเงียบหาย) ขณะที่แท็บนี้ยังทำงานนั้นอยู่ → ไม่เริ่มใหม่
+    // เดิมเริ่มใหม่แล้ววาง shot list ทั้งชุดให้ Agent ซ้ำ → Agent สร้างภาพไม่หยุดจนเกือบ 100 ภาพ
+    if (running && msg.job.id === currentJobId) {
+      toBridge('PROGRESS', { id: msg.job.id }, { tries: 1 }).catch(() => {})
+      sendResponse({ ok: true, duplicate: true })
+      return
+    }
     // งานเก่ายังวิ่งอยู่ (เช่นกดเริ่มใหม่) → bridge ยกเลิกงานเก่าให้ภายใน ~2 นาที มันจะหยุดเองที่ heartbeat ถัดไป รอก่อนแทนการปัดตก
     const start = running ? waitFor(() => !running, { timeout: 3 * 60_000, interval: 2000, label: 'งาน Flow ก่อนหน้าหยุด' }) : Promise.resolve()
     // ผลและ error ส่งผ่าน toBridge เอง — service worker อาจถูกปิดระหว่างงาน 30 นาที ทำให้ sendResponse หาย
