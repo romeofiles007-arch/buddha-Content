@@ -68,13 +68,11 @@
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(editor, job.payload.caption)
         editor.dispatchEvent(new Event('input', { bubbles: true }))
       } else {
-        const selection = window.getSelection(), range = document.createRange()
-        range.selectNodeContents(editor); selection.removeAllRanges(); selection.addRange(range)
-        document.execCommand('insertText', false, job.payload.caption)
-        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: job.payload.caption }))
+        const inserted = await chrome.runtime.sendMessage({ type: 'TIKTOK_SET_CAPTION', jobId: job.id })
+        if (!inserted?.ok) throw new Error(inserted?.error ?? 'กรอกคำบรรยาย TikTok ไม่สำเร็จ')
       }
       const captionText = (node = editor) => String(node?.value ?? node?.innerText ?? node?.textContent ?? '').replace(/\s+/g, ' ').trim()
-      if (captionText() !== String(job.payload.caption).replace(/\s+/g, ' ').trim()) throw new Error('ข้อความคำบรรยาย TikTok ไม่ตรง — ตรวจในหน้าอัปโหลดแล้วลองใหม่')
+      await wait(() => captionText() === String(job.payload.caption).replace(/\s+/g, ' ').trim(), 'ยืนยันคำบรรยาย TikTok', 5000)
       phase = 'settings'
       const labels = D.privacyLabels[job.payload.privacy]
       if (!labels) throw new Error('ยังไม่ได้เลือกการมองเห็นของคลิป TikTok')

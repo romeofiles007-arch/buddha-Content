@@ -162,10 +162,11 @@ test('file injection endpoint only exposes the active posting item, not arbitrar
   P.saveAccounts(accounts()); P.saveQueue([])
   const h = harness()
   P.saveQueue([due({ status: 'posting', tiktokJobId: 'file-job' })])
-  h.jobs.set('file-job', { id: 'file-job', agent: 'tiktok', kind: 'tiktok-post', status: 'running', payload: { file: 'C:/sensitive.txt' } })
+  h.jobs.set('file-job', { id: 'file-job', agent: 'tiktok', kind: 'tiktok-post', status: 'running', payload: { file: 'C:/sensitive.txt',caption:'คำบรรยายของงานนี้เท่านั้น' } })
   const result = await h.request('/api/posting/tiktok/job?id=file-job')
   assert.equal(result.code, 200)
   assert.equal(result.data.file, join(project, '06_render', `${slug}.mp4`))
+  assert.equal(result.data.caption,'คำบรรยายของงานนี้เท่านั้น')
   h.jobs.get('file-job').cancelled = true
   assert.equal((await h.request('/api/posting/tiktok/job?id=file-job')).code, 409)
 })

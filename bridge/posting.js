@@ -670,7 +670,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         if (!item || !job || job.agent !== 'tiktok' || job.kind !== 'tiktok-post' || job.status !== 'running' || job.cancelled) return json(res, 409, { error: 'งาน TikTok นี้ไม่ได้กำลังโพสต์แล้ว' }), true
         const file = item.deliverySnapshot?.file ?? videoPath(item)
         if (item.deliverySnapshot && (!resolve(file).startsWith(resolve(POSTING_DIR, 'staging') + sep) || !/^[a-f0-9-]{36}\.mp4$/.test(basename(file)))) return json(res, 409, { error: 'ไฟล์ส่ง TikTok ไม่ตรงกับงานนี้' }), true
-        return json(res, 200, { file, username: job.payload.username }), true
+        return json(res, 200, { file, username: job.payload.username, caption: job.payload.caption }), true
       }
       if (req.method === 'GET' && path === '/api/posting') return json(res, 200, await view()), true
       // เบาๆ สำหรับแจ้งเตือน (background ถามทุกนาที) + บรรทัด "โพสต์ล่าสุด" — ไม่ดึงคลัง/ไม่ไล่คิวแบบ view()

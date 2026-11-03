@@ -9,6 +9,7 @@
 const NATIVE_HOST = 'com.dhamma_auto.bridge'
 import { preferredFlowTab, flowHomeUrl, flowJobNavigation } from './flow-navigation.js'
 import { switchFlowAccount, inspectFlowAccounts, flowIdentity } from './flow-account-switch.js'
+import { insertTikTokCaption } from './tiktok-caption.js'
 
 const AGENTS = {
   chatgpt: { match: 'https://chatgpt.com/', pattern: ['https://chatgpt.com/*', 'https://chat.openai.com/*'], key: 'chatTabId' },
@@ -434,7 +435,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     flowIdentity(chrome, _sender.tab.id).then(email => sendResponse({ ok: !!email, email })).catch(error => sendResponse({ ok: false, error: error.message }))
     return true
   }
-  if (msg.type === 'TIKTOK_SET_FILE') {
+  if (msg.type === 'TIKTOK_SET_FILE' || msg.type === 'TIKTOK_SET_CAPTION') {
     ;(async () => {
       const tabId = _sender.tab?.id
       const { tiktokTabId } = await chrome.storage.session.get('tiktokTabId')
@@ -449,6 +450,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       try {
         await new Promise((resolve, reject) => chrome.debugger.attach(target, '1.3', () => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve()))
         attached = true
+        if (msg.type === 'TIKTOK_SET_CAPTION') {
+          if (typeof info.caption !== 'string') throw new Error('ไม่พบคำบรรยายที่ผูกกับงาน TikTok นี้')
+          await insertTikTokCaption(command, info.caption)
+          return { ok: true }
+        }
         const { root } = await command('DOM.getDocument', { depth: -1, pierce: true })
         const inputs = []
         const walk = node => {
