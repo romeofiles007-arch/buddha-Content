@@ -18,6 +18,7 @@
     const reason = String(value ?? '').replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim()
     // Only error/status text supplied by the caller, never the user's conversation/prompt.
     if (/your prompt|prompt mentions|example|e\.g\./i.test(reason)) return null
+    if (/batch limit|per (?:request|command|batch)|ต่อ(?:คำสั่ง|ครั้ง|ชุด)/i.test(reason) && !/daily|account|รายวัน/i.test(reason)) return null
     const limited = /(?:you(?:'ve| have)?|your account has)\s+(?:reached|exceeded|hit)\s+(?:your |the |its )?(?:(?:daily|free|image|generation|video|usage|account)\s+){0,4}(?:limit|quota)(?:\b|s\b)/i.test(reason)
       || /you (?:have no more|have used (?:up )?all (?:of )?your) (?:free |daily )?(?:image |video )?generations?(?: today)?/i.test(reason)
       || /^(?:daily |free |image |video |generation |usage )*(?:generation )?limit (?:has been )?(?:reached|exceeded)\b/i.test(reason)

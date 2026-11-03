@@ -595,8 +595,11 @@ ${example}
 /** agent หยุดกลางทาง (high demand / agent failed / ทำไม่ครบ) → สั่งต่อเฉพาะช็อตที่ขาด ใน project เดิม ตัวละครจึงยังเหมือนเดิม */
 /** agent ตอบกลับเป็นแผน/คำถาม ("ต้องการให้เริ่มสร้างภาพไหม") แทนที่จะสร้างภาพ → สั่งให้เริ่มเลย */
 function goInstruction(shots) {
-  return `เริ่มสร้างภาพได้เลยทุกช็อตตาม shot list ที่ส่งไป ไม่ต้องถามยืนยันและไม่ต้องสรุปแผนอีก ใช้ Style Bible และ Character Bible เดิม (lock ตัวละคร)
-ตั้งชื่อแต่ละภาพเป็นชื่อไฟล์หน้าบรรทัดเป๊ะๆ เช่น "${shots[0].filename} SHOT" (ชื่อภาพเท่านั้น ห้ามเขียนลงในภาพ)`
+  return `ยังไม่มีไฟล์ภาพตามรายการนี้ที่โปรแกรมเก็บกลับมาได้ กรุณาใช้เครื่องมือสร้างภาพจริง ไม่ใช่เพียงตอบว่าสร้างแล้ว
+สร้างเฉพาะ ${shots.length} ภาพในชุดนี้ ไม่ต้องถามยืนยันและไม่ต้องสรุปแผนอีก ใช้ Style Bible และ Character Bible เดิม (lock ตัวละคร)
+ตั้งชื่อแต่ละภาพเป็นชื่อไฟล์หน้าบรรทัดเป๊ะๆ เช่น "${shots[0].filename} SHOT" (ชื่อภาพเท่านั้น ห้ามเขียนลงในภาพ)
+
+${shots.map(shotLine).join('\n\n')}`
 }
 
 function continueInstruction(batch, { remaining, safer }) {
@@ -630,6 +633,7 @@ function failureCounts() {
 /** รอ agent ทำงานจนนิ่ง — คืนจำนวนภาพใหม่ของรอบนี้ */
 async function waitAgentIdle(job, { before, expected, stage, onTick }) {
   const started = Date.now()
+  const requested = new Set(job.payload.shots.map(s => s.filename))
   let last = -1
   let idleSince = null
   for (let tick = 1; ; tick++) {
@@ -640,7 +644,7 @@ async function waitAgentIdle(job, { before, expected, stage, onTick }) {
     const made = collectTiles().size - before
     if (made !== last) {
       last = made
-      await toBridge('PROGRESS', { id: job.id, progress: { done: made, total: expected, stage } })
+      await toBridge('PROGRESS', { id: job.id, progress: { done: namedPicks(requested).size, total: expected, stage } })
     } else {
       await toBridge('PROGRESS', { id: job.id }) // heartbeat
     }
@@ -808,8 +812,8 @@ async function runImageJob(job) {
       await sendPrompt(continueInstruction(batch, { remaining: missing.length, safer: useSafer }))
     }
 
-    if (!saved.size) throw new Error('Agent ไม่ได้สร้างภาพที่ตั้งชื่อเป็น timecode เลย — ดูในแท็บ Flow')
-    await toBridge('RESULT', { id: job.id, files: [], meta: { generated: collectTiles().size - before, expected, named: saved.size } })
+    if (!saved.size) throw new Error(`Flow ยังไม่ส่งไฟล์ภาพตามรายการชุดนี้กลับมา (0/${expected}) แม้ Agent อาจตอบว่าสร้างแล้ว — ตรวจภาพจริงและชื่อ timecode ในแท็บ Flow`)
+    await toBridge('RESULT', { id: job.id, files: [], meta: { generated: saved.size, expected, named: saved.size, projectUrl: location.href } })
   } catch (error) {
     if (error instanceof FlowQuotaError) {
       if (/\/project\//.test(location.pathname)) {

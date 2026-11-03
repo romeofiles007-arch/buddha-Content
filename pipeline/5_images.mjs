@@ -96,6 +96,7 @@ const result = await generateWithFailover({
   runJob,
   promptFor: remaining => flowPrompt([
     briefHead,
+    `คำสั่งรอบนี้สร้างเฉพาะ ${remaining.length} ภาพตามรายชื่อไฟล์ใน SHOT LIST/COVER ด้านล่าง ไม่สร้างช็อตอื่นจากข้อความก่อนหน้า และใช้เครื่องมือสร้างภาพจริงก่อนตอบว่าสร้างแล้ว`,
     '=== SHOT LIST ===',
     ...remaining.filter(s => s.filename !== COVER_NAME).map(s => `${s.filename} ${s.prompt}`),
     ...remaining.filter(s => s.filename === COVER_NAME).flatMap(s => coverBriefLines(untag(shots.find(original => original.filename === s.filename)), aspect === '9:16')),

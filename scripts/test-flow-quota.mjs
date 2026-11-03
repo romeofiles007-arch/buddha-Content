@@ -11,7 +11,7 @@ try {
 const api = () => { assert.ok(Q, 'Flow quota policy is missing'); return Q }
 test('confirmed generation quota is distinct from demand, safety and generic errors', () => {
   for (const text of ["You've reached your daily image generation limit. Try again in 2 hours.", 'You have reached the limit for image generation', 'You’ve reached your daily limit', 'Daily limit reached', 'You have no more free generations today', 'คุณใช้โควต้าสร้างภาพครบแล้ว ลองอีกครั้งพรุ่งนี้', 'คุณสร้างภาพถึงขีดจำกัดรายวันแล้ว']) assert.ok(api().quotaNotice(text, 1000), text)
-  for (const text of ['The agent is experiencing high demand. Please try again later.', 'The agent failed', 'Too many requests', 'Rate limit exceeded', 'Generate up to 100 images daily', 'Sorry, this image failed to generate', 'Your prompt mentions: you have reached your daily image generation limit']) assert.equal(api().quotaNotice(text, 1000), null, text)
+  for (const text of ['The agent is experiencing high demand. Please try again later.', 'The agent failed', 'Too many requests', 'Rate limit exceeded', "You've reached the limit of 24 images per request", 'Generate up to 100 images daily', 'Sorry, this image failed to generate', 'Your prompt mentions: you have reached your daily image generation limit']) assert.equal(api().quotaNotice(text, 1000), null, text)
 })
 test('retry windows are bounded and unknown resets do not invite immediate ping-pong', () => {
   assert.equal(api().quotaNotice("You've reached your image generation limit. Try again in 2 hours.", 1000).retryAt, 1000 + 7200000)
