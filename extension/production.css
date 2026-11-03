@@ -1,0 +1,40 @@
+/* A compact task form, using the selected category's existing theme. */
+#prodBox { background: var(--panel); border-style: solid; padding: 12px; }
+#prodBox [hidden] { display: none !important; }
+#prodBox > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+#prodBox > summary::before { content: '▸'; color: var(--muted); }
+#prodBox[open] > summary::before { content: '▾'; }
+#prodBox > summary .blockTitle { font-size: 16px; }
+#prodBox .prodIntro { margin: 8px 0 0; }
+#prodBox .prodSection { display: grid; gap: 8px; margin: 0; padding: 16px 0; border-bottom: 1px solid var(--line); }
+#prodBox .prodLabel { color: var(--ink); font-size: 14px; font-weight: 600; }
+#prodBox input, #prodBox select { font-variant-numeric: tabular-nums; }
+#prodBox input[type="number"], #prodBox input[type="time"], #prodBox select { min-width: 0; min-height: 44px; }
+#prodBox .prodInline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+#prodBox .prodInline input { width: 88px; }
+#prodBox #prodTime { width: 144px; }
+#prodBox .prodCheck { display: flex; align-items: center; gap: 8px; margin: 0; min-height: 32px; font-weight: 400; color: var(--ink); font-size: 13px; }
+#prodBox .prodCheck input, #prodBox #prodLangs input { width: 17px; height: 17px; min-height: 0; margin: 0; flex: none; accent-color: var(--accent); }
+#prodBox #prodLangs { display: flex; gap: 12px; flex-wrap: wrap; }
+#prodBox #prodLangs label { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; }
+#prodBox .prodRestRange { display: flex; gap: 12px; }
+#prodBox .prodRestRange label { flex: 1; min-width: 0; }
+#prodBox .hint { margin: 0; line-height: 1.6; }
+#prodBox .prodOptions { border: 0; border-bottom: 1px solid var(--line); padding: 14px 0; margin: 0; }
+#prodBox .prodOptions > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink); }
+#prodBox .prodOptions .pick { gap: 8px; margin: 16px 0 0; }
+#prodBox .seg { display: flex; width: 100%; }
+#prodBox .seg button { flex: 1; padding: 8px 4px; min-width: 0; min-height: 44px; }
+#prodBox .prodPlan { padding: 16px 0 12px; }
+#prodBox #prodPlanTitle { display: block; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+#prodBox #prodSaveState { min-height: 20px; margin-top: 8px; }
+#prodBox #prodSaveState.error { color: var(--danger); }
+#prodBox .run { flex-wrap: wrap; margin-top: 8px; }
+#prodBox .run button { min-height: 44px; padding: 10px; }
+#prodBox .run .primary { flex: 1 1 160px; }
+#prodBox #prodStatus { margin: 12px 0 0; }
+#prodBox #prodStatus:empty { display: none; }
+#prodBox .prodHistoryBox { border: 0; padding: 12px 0 0; margin: 12px 0 0; border-top: 1px solid var(--line); }
+#prodBox .prodHistoryBox summary { cursor: pointer; font-size: 13px; }
+#prodBox #prodHistory { margin: 8px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
+#prodBox #prodHistory li + li { margin-top: 8px; }

@@ -226,6 +226,7 @@
 </style>
 <link rel="stylesheet" href="temple.css" />
 <link rel="stylesheet" href="category-themes.css" />
+<link rel="stylesheet" href="production.css" />
 
 <main>
   <h1 class="brand-lockup"><img class="brand-icon" src="icons/cartoon-auto.svg" alt="" width="42" height="42" />ธรรมะ Auto</h1>
@@ -343,33 +344,38 @@
     </div>
     <!-- 🏭 ผลิตต่อเนื่อง: สั่งทำคลิปอัตโนมัติทีละคลิปเองตามเวลา (bridge/production.js) -->
     <details class="clipSettings prodBox" id="prodBox" style="margin-top:12px">
-      <summary><span class="blockTitle">🏭 ผลิตต่อเนื่อง</span> <span class="hint" id="prodBadge" style="margin:0"></span></summary>
-      <div class="pick" style="margin-top:10px">จำนวนคลิป
-        <div class="controls" style="margin:0">
-          <label class="field"><input type="number" id="prodCount" min="0" max="100" value="5" style="width:64px" /> คลิป</label>
-          <span class="hint" style="margin:0">0 = ไม่จำกัด จนกว่าจะกดหยุด</span>
-        </div>
+      <summary><span class="blockTitle">ตั้งเวลาผลิต</span> <span class="hint" id="prodBadge"></span></summary>
+      <p class="hint prodIntro">ทำคลิปอัตโนมัติทีละคลิป ตามเวลาที่เลือก</p>
+      <div class="pick prodSection">
+        <label class="prodLabel" for="prodStart">เริ่มผลิตเมื่อไร</label>
+        <select id="prodStart">
+          <option value="now">เริ่มตอนนี้</option>
+          <option value="at">ตั้งเวลาเริ่มครั้งเดียว</option>
+          <option value="daily">เริ่มเวลาเดิมทุกวัน</option>
+        </select>
+        <label class="prodInline" id="prodTimeRow" hidden>เวลาเริ่ม <input type="time" id="prodTime" value="22:00" /></label>
+        <p class="hint" id="prodFirstStart"></p>
       </div>
-      <div class="pick">เริ่มเมื่อไร
-        <div class="seg" id="prodStart" role="group" aria-label="เวลาเริ่มผลิต">
-          <button type="button" data-value="now">เริ่มทันที</button>
-          <button type="button" data-value="at">เริ่มตอน</button>
-          <button type="button" data-value="daily">ทุกวันตอน</button>
-        </div>
-        <label class="field" id="prodTimeRow" style="margin-top:6px">เวลา <input type="time" id="prodTime" value="22:00" /></label>
+      <div class="pick prodSection">
+        <label class="prodLabel" id="prodCountLabel" for="prodCount">จำนวนคลิปต่อรอบ</label>
+        <div class="prodInline"><input type="number" id="prodCount" min="1" max="100" value="5" /> <span>คลิป</span></div>
+        <label class="prodCheck"><input type="checkbox" id="prodUnlimited" /> ทำต่อเนื่องจนกดหยุด</label>
       </div>
-      <div class="pick">พักระหว่างคลิป (สุ่มในช่วงนี้)
-        <div class="controls" style="margin:0">
-          <label class="field"><input type="number" id="prodDelayMin" min="0" max="720" value="20" style="width:56px" /></label>–
-          <label class="field"><input type="number" id="prodDelayMax" min="0" max="720" value="40" style="width:56px" /> นาที</label>
+      <div class="pick prodSection">
+        <label class="prodLabel" for="prodPauseMode">พักหลังแต่ละคลิป</label>
+        <select id="prodPauseMode">
+          <option value="none">ไม่พัก — ทำคลิปถัดไปต่อเลย</option>
+          <option value="fixed">พักเท่ากันทุกรอบ</option>
+          <option value="random">สุ่มเวลาพักในช่วงที่เลือก</option>
+        </select>
+        <div class="prodRestRange" id="prodDelayRow" hidden>
+          <label><span id="prodDelayMinLabel">ตั้งแต่ (นาที)</span><input type="number" id="prodDelayMin" min="0" max="720" value="20" /></label>
+          <label id="prodDelayMaxRow">ถึง (นาที)<input type="number" id="prodDelayMax" min="0" max="720" value="40" /></label>
         </div>
+        <p class="hint">เริ่มนับเวลาพักเมื่อคลิปก่อนหน้าผลิตเสร็จ</p>
       </div>
-      <style>
-        #prodBox .prodCheck { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-weight: 400; }
-        #prodBox .prodCheck input, #prodLangs input { width: auto; height: auto; margin: 0; flex: none; }
-        #prodLangs { display: inline-flex; gap: 10px; flex-wrap: wrap; }
-        #prodLangs label { display: inline-flex; align-items: center; gap: 4px; }
-      </style>
+      <details class="prodOptions">
+      <summary>ตัวเลือกเพิ่มเติม · สุ่มเนื้อหาและการโพสต์</summary>
       <div class="pick">สุ่มอะไรบ้าง <span class="hint" style="margin:0">(ไม่ติ๊ก = ใช้ค่าที่ตั้งไว้)</span>
         <label class="prodCheck"><input type="checkbox" id="prodRandGenre" /> หมวดและหัวข้อ</label>
         <p class="hint" id="prodGenreLock" style="margin:0 0 6px 26px" hidden>🙏 โหมดพระสอนธรรมเลือกไว้ — ทุกคลิปเป็นท่านสอนธรรม ไม่สุ่มหมวด (สุ่มหัวข้อในโหมดนี้)</p>
@@ -383,11 +389,11 @@
           </span>
         </div>
       </div>
-      <div class="pick">ผลิตเสร็จแล้ว → 📣 โพสต์อัตโนมัติ
+      <div class="pick">เมื่อผลิตเสร็จ
         <div class="seg" id="prodAutoPost" role="group" aria-label="ส่งเข้าคิวโพสต์">
-          <button type="button" data-value="off">ไม่โพสต์</button>
-          <button type="button" data-value="ai">AI ตรวจแล้วตั้งเวลา</button>
-          <button type="button" data-value="now">ตั้งเวลาทันที</button>
+          <button type="button" data-value="off">เก็บในคลัง</button>
+          <button type="button" data-value="ai">ให้ AI ตรวจ</button>
+          <button type="button" data-value="now">เข้าคิวโพสต์</button>
         </div>
         <span class="hint" id="prodPostHint" style="margin:2px 0 0">คลิปเข้าคิวทันทีที่เสร็จ แล้วลงช่องเวลาโพสต์ถัดไปตามที่ตั้งในหน้า 📣</span>
       </div>
@@ -399,17 +405,27 @@
         <div id="prodQuota" style="display:none;grid-template-columns:1fr 72px;gap:6px 8px;align-items:center;margin-top:6px"></div>
         <span class="hint" id="prodPagesHint" style="margin:2px 0 0"></span>
       </div>
+      <p class="hint" style="margin-top:12px">เวลาเริ่มผลิตกับเวลาโพสต์แยกกัน ตั้งเวลาโพสต์ในหน้า “โพสต์อัตโนมัติ”</p>
+      </details>
+      <div class="prodPlan" aria-live="polite">
+        <strong id="prodPlanTitle"></strong>
+        <p class="hint" id="prodPlanDetail"></p>
+      </div>
+      <div class="run">
+        <button class="primary" id="prodGo" disabled>เริ่มผลิต</button>
+        <button class="stop" id="prodStop" disabled>หยุดผลิต</button>
+      </div>
+      <p class="hint" id="prodSaveState" role="status">บันทึกค่าที่เลือกให้อัตโนมัติ</p>
       <div class="status" id="prodStatus" role="status" aria-live="polite" style="margin-top:8px"></div>
+      <details class="prodHistoryBox" id="prodHistoryBox" hidden>
+      <summary>คลิปที่ผลิตแล้ว</summary>
       <div class="controls" id="prodReady" style="display:none;margin:8px 0 0;gap:6px;flex-wrap:wrap">
         <span id="prodReadyText"></span>
         <button type="button" class="ghost" id="prodReadyPlay" title="เปิดคลิปแรกของชุดเต็มจอด้วยโปรแกรมดูวิดีโอของ Windows">▶ ดูเต็มจอ</button>
         <button type="button" class="ghost" id="prodReadyFolder" title="เปิดโฟลเดอร์ที่รวมคลิปทั้งชุดไว้ เรียงตามลำดับ">📂 เปิดโฟลเดอร์</button>
       </div>
       <ol class="hint" id="prodHistory" style="margin:4px 0 0;padding-left:18px"></ol>
-      <div class="run">
-        <button class="primary" id="prodGo">▶ เริ่มผลิต</button>
-        <button class="stop" id="prodStop" disabled>■ หยุด</button>
-      </div>
+      </details>
     </details>
     </div>
     <div class="agentBlock agentSetting" id="autoTopicBlock" data-agent="chatgpt" data-agent-label="ChatGPT">

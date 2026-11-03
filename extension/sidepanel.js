@@ -12,6 +12,7 @@ import { portrait, DEPARTMENTS, HANDOFF, AGENT_WORD, elapsed, SEA_ASSETS } from 
 import { initPosting } from './posting.js'
 import { applyCategoryTheme, categoryGenre } from './category-themes.js'
 import { preferredFlowTab, flowHomeUrl } from './flow-navigation.js'
+import { scheduleFromFields, scheduleFields, scheduleCopy } from './production-schedule.js'
 
 /** พระของฉัน (โหมดพระสอนธรรม) — ประกาศไว้บนสุด เพราะ render() ช่วงโหลดแรกอ่านค่านี้ */
 let selfMonk = null
@@ -3365,18 +3366,36 @@ let prodFilled = false
 const PROD_LANG = { th: 'ไทย', zh: 'จีน', en: 'อังกฤษ' }
 const prodTime = (t) => new Date(t).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: new Date(t).toDateString() === new Date().toDateString() ? undefined : 'numeric', month: new Date(t).toDateString() === new Date().toDateString() ? undefined : 'short' })
 
-function prodForm() {
+function prodOptions() {
   return {
-    count: Number($('prodCount').value),
-    start: $('prodStart').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'now',
-    time: $('prodTime').value,
-    delayMin: Number($('prodDelayMin').value),
-    delayMax: Number($('prodDelayMax').value),
+    count: $('prodUnlimited').checked ? 0 : Number($('prodCount').value),
     random: { genre: $('prodRandGenre').checked, art: $('prodRandArt').checked, narration: $('prodRandNarration').checked, language: $('prodRandLang').checked },
     languages: [...$('prodLangs').querySelectorAll('input:checked')].map((i) => i.value),
     autoPost: $('prodAutoPost').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'ai',
     postPages: $('prodPages').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'all',
     pageQuota: Object.fromEntries([...$('prodQuota').querySelectorAll('input[data-key]')].map((i) => [i.dataset.key, Math.max(0, Math.round(Number(i.value) || 0))])),
+  }
+}
+
+function prodForm() {
+  const s = scheduleFromFields({ start: $('prodStart').value, time: $('prodTime').value,
+    count: $('prodCount').value, unlimited: $('prodUnlimited').checked,
+    pause: $('prodPauseMode').value, min: $('prodDelayMin').value, max: $('prodDelayMax').value })
+  const f = { ...prodOptions(), ...s }
+  if (f.random.language && !f.languages.length) throw Object.assign(new Error('เลือกภาษาที่จะสุ่มอย่างน้อย 1 ภาษา'), { field: 'prodRandLang' })
+  return f
+}
+
+function prodValidation(err, focus = false) {
+  $('prodSaveState').textContent = err.message
+  $('prodSaveState').classList.add('error')
+  if (err.field) {
+    $(err.field).setAttribute('aria-invalid', 'true')
+    if (focus) {
+      const disclosure = $(err.field).closest('.prodOptions')
+      if (disclosure) disclosure.open = true
+      $(err.field).focus()
+    }
   }
 }
 
@@ -3414,19 +3433,19 @@ function renderProdGenre() {
 
 function renderProdPages(s) {
   const pages = prod.postPages ?? []
-  const form = prodForm()
+  const form = prodOptions()
   $('prodPagesRow').style.display = form.autoPost === 'off' || !pages.length ? 'none' : ''
   if (!pages.length) return
-  renderProdQuota(pages, s.pageQuota, Number($('prodCount').value))
+  renderProdQuota(pages, s.pageQuota, form.count)
   const split = form.postPages === 'split'
   $('prodQuota').style.display = split ? 'grid' : 'none'
   if (!split) {
     $('prodPagesHint').textContent = `ทุกคลิปลงทุกเพจ/ช่องที่รับหมวดของคลิป (${pages.length} ปลายทาง)`
     return
   }
-  const quota = prodForm().pageQuota
+  const quota = prodOptions().pageQuota
   const total = Object.values(quota).reduce((a, b) => a + b, 0)
-  const count = Number($('prodCount').value)
+  const count = form.count
   const parts = pages.filter((p) => quota[p.key] > 0).map((p) => `${p.name} ${quota[p.key]}`)
   $('prodPagesHint').textContent = !total
     ? '⚠️ ใส่จำนวนคลิปอย่างน้อยหนึ่งเพจ — ถ้าเป็น 0 หมด ระบบลงทุกเพจแทน'
@@ -3439,10 +3458,14 @@ function renderProd() {
   const { settings: s, state: st } = prod
   if (!prodFilled) {
     prodFilled = true
-    $('prodCount').value = s.count
-    $('prodTime').value = s.time
-    $('prodDelayMin').value = s.delayMin
-    $('prodDelayMax').value = s.delayMax
+    const f = scheduleFields(s)
+    $('prodCount').value = f.count
+    $('prodUnlimited').checked = f.unlimited
+    $('prodStart').value = f.start
+    $('prodTime').value = f.time
+    $('prodPauseMode').value = f.pause
+    $('prodDelayMin').value = f.min
+    $('prodDelayMax').value = f.max
     $('prodRandGenre').checked = s.random.genre
     $('prodRandArt').checked = s.random.art
     $('prodRandNarration').checked = s.random.narration
@@ -3450,26 +3473,42 @@ function renderProd() {
     for (const i of $('prodLangs').querySelectorAll('input')) i.checked = s.languages.includes(i.value)
     for (const b of $('prodAutoPost').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === s.autoPost))
     for (const b of $('prodPages').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === (s.postPages ?? 'all')))
-    for (const b of $('prodStart').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === s.start))
   }
   renderProdPages(s)
   renderProdGenre()
-  const postMode = prodForm().autoPost
+  const postMode = prodOptions().autoPost
   $('prodPostHint').textContent = postMode === 'off'
     ? 'คลิปที่เสร็จอยู่ในคลังวิดีโอ ไม่เข้าคิวโพสต์'
     : !prod.postTargets
-      ? '⚠️ ยังไม่ได้เชื่อมเพจ/ช่อง — คลิปจะรอในคิว กด 📣 โพสต์อัตโนมัติ (แถวบนสุด) เพื่อเชื่อม Facebook Page / YouTube'
+      ? 'ยังไม่ได้เชื่อมเพจ/ช่อง — คลิปจะรอในคิว เปิดหน้า “โพสต์อัตโนมัติ” เพื่อเชื่อมช่องทาง'
       : postMode === 'now'
         ? 'คลิปเข้าคิวทันทีที่เสร็จ แล้วลงช่องเวลาโพสต์ถัดไปเลย (ไม่ตรวจ)'
         : 'คลิปเข้าคิวทันทีที่เสร็จ → AI ตรวจ → ผ่านแล้วลงช่องเวลาโพสต์ถัดไปเอง (ไม่ผ่าน = รอคุณตรวจในหน้า 📣)'
-  $('prodTimeRow').style.display = prodForm().start === 'now' ? 'none' : '' // .field ตั้ง display เอง — hidden ไม่มีผล
-  $('prodLangs').style.opacity = $('prodRandLang').checked ? '1' : '.45'
+  $('prodTimeRow').hidden = $('prodStart').value === 'now'
+  $('prodCount').disabled = $('prodUnlimited').checked
+  $('prodCountLabel').textContent = $('prodStart').value === 'daily' ? 'จำนวนคลิปต่อวัน' : 'จำนวนคลิปต่อรอบ'
+  $('prodDelayRow').hidden = $('prodPauseMode').value === 'none'
+  $('prodDelayMaxRow').hidden = $('prodPauseMode').value !== 'random'
+  $('prodDelayMinLabel').textContent = $('prodPauseMode').value === 'fixed' ? 'พักครั้งละ (นาที)' : 'ตั้งแต่ (นาที)'
+  try {
+    const copy = scheduleCopy(prodForm())
+    $('prodPlanTitle').textContent = copy.headline
+    $('prodPlanDetail').textContent = copy.detail
+    $('prodFirstStart').textContent = copy.firstStart
+    $('prodGo').textContent = copy.action
+  } catch {
+    $('prodPlanTitle').textContent = 'กรอกค่าที่เลือกให้ครบก่อนเริ่มผลิต'
+    $('prodPlanDetail').textContent = ''
+    $('prodFirstStart').textContent = ''
+    $('prodGo').textContent = 'เริ่มผลิต'
+  }
+  for (const input of $('prodLangs').querySelectorAll('input')) input.disabled = !$('prodRandLang').checked
   const total = s.count ? `/${s.count}` : ''
-  const waiting = st.active && !st.run && st.nextAt
+  const waiting = st.active && !st.run && st.nextAt > Date.now()
   $('prodStatus').textContent = st.active
-    ? `${st.run ? `▶ กำลังทำคลิป ${st.made + 1}${total}` : waiting ? `⏳ คลิปถัดไป ${prodTime(st.nextAt)}` : ''} · ได้แล้ว ${st.made}${total}${st.failed ? ` · ล้ม ${st.failed}` : ''}${st.message ? ` — ${st.message}` : ''}`
-    : st.message || 'ยังไม่ได้เริ่ม'
-  $('prodBadge').textContent = st.active ? (st.run ? `กำลังผลิต ${st.made + 1}${total}` : `รอ ${prodTime(st.nextAt)}`) : ''
+    ? `${st.run ? `กำลังทำคลิป ${st.made + 1}${total}` : waiting ? `คลิปถัดไป ${prodTime(st.nextAt)}` : 'รอเริ่มคลิปถัดไป'} · เสร็จแล้ว ${st.made}${total}${st.failed ? ` · ไม่สำเร็จ ${st.failed}` : ''}${st.message ? ` — ${st.message}` : ''}`
+    : st.message || 'ยังไม่ได้เปิดผลิตอัตโนมัติ'
+  $('prodBadge').textContent = st.active ? (st.run ? `กำลังผลิต ${st.made + 1}${total}` : waiting ? `รอ ${prodTime(st.nextAt)}` : 'รอเริ่มผลิต') : ''
   const list = $('prodHistory')
   list.textContent = ''
   for (const h of st.history ?? []) {
@@ -3494,35 +3533,56 @@ function renderProd() {
     list.append(li)
   }
   $('prodReady').style.display = st.ready ? '' : 'none' // .controls ตั้ง display เอง — hidden ไม่มีผล
+  $('prodHistoryBox').hidden = !st.ready && !st.history?.length
   if (st.ready) $('prodReadyText').textContent = `🎬 ชุดล่าสุด ${st.ready.files.length} คลิป พร้อมดู`
-  $('prodGo').disabled = st.active
-  $('prodStop').disabled = !st.active
+  $('prodGo').disabled = st.active || prodCommandBusy
+  $('prodStop').disabled = !st.active || prodCommandBusy
+  if (st.active) $('prodGo').textContent = st.run ? 'กำลังผลิต' : 'ตั้งเวลาไว้แล้ว'
 }
 
+let prodRequest = 0, prodAppliedRequest = 0
 async function prodCall(path, body) {
+  if (path === '/api/production' && prodCommandBusy) return false
+  const request = ++prodRequest
   try {
-    prod = await api(await localApp(), path, body)
-    renderProd()
+    const result = await api(await localApp(), path, body)
+    if (request >= prodAppliedRequest) {
+      prodAppliedRequest = request
+      prod = result
+      renderProd()
+    }
+    return true
   } catch (err) {
-    $('prodStatus').textContent = err.message
+    if (path === '/api/production/settings') prodValidation(new Error(`บันทึกไม่สำเร็จ: ${err.message} — ลองเปลี่ยนค่าอีกครั้ง`))
+    else $('prodStatus').textContent = err.message
+    return false
   }
 }
 
 let prodSaveTimer = null
+let prodSaveRevision = 0
+let prodSettingsWrites = Promise.resolve()
+let prodCommandBusy = false
 function prodSave() {
-  renderProd()
   clearTimeout(prodSaveTimer)
-  prodSaveTimer = setTimeout(() => prodCall('/api/production/settings', prodForm()), 500)
+  const revision = ++prodSaveRevision
+  for (const el of $('prodBox').querySelectorAll('[aria-invalid]')) el.removeAttribute('aria-invalid')
+  renderProd()
+  let f
+  try { f = prodForm() } catch (err) { prodValidation(err); return }
+  $('prodSaveState').classList.remove('error')
+  $('prodSaveState').textContent = 'กำลังบันทึก…'
+  prodSaveTimer = setTimeout(() => {
+    prodSettingsWrites = prodSettingsWrites.then(async () => {
+      if (revision !== prodSaveRevision) return
+      const ok = await prodCall('/api/production/settings', f)
+      if (ok && revision === prodSaveRevision) $('prodSaveState').textContent = 'บันทึกค่าที่เลือกแล้ว'
+    })
+  }, 500)
 }
 
 $('prodBox').addEventListener('toggle', () => {
   if ($('prodBox').open) prodCall('/api/production')
-})
-$('prodStart').addEventListener('click', (e) => {
-  const b = e.target.closest('button')
-  if (!b) return
-  for (const x of $('prodStart').querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b))
-  prodSave()
 })
 $('prodAutoPost').addEventListener('click', (e) => {
   const b = e.target.closest('button')
@@ -3536,17 +3596,36 @@ $('prodPages').addEventListener('click', (e) => {
   for (const x of $('prodPages').querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b))
   prodSave()
 })
-for (const id of ['prodCount', 'prodTime', 'prodDelayMin', 'prodDelayMax', 'prodRandGenre', 'prodRandArt', 'prodRandNarration', 'prodRandLang']) {
+for (const id of ['prodStart', 'prodUnlimited', 'prodPauseMode', 'prodRandGenre', 'prodRandArt', 'prodRandNarration', 'prodRandLang']) {
   $(id).addEventListener('change', prodSave)
 }
+for (const id of ['prodCount', 'prodTime', 'prodDelayMin', 'prodDelayMax']) $(id).addEventListener('input', prodSave)
 $('prodLangs').addEventListener('change', prodSave)
-$('prodGo').addEventListener('click', () => {
-  const f = prodForm()
-  if (f.random.language && !f.languages.length) return ($('prodStatus').textContent = 'เลือกภาษาที่จะสุ่มอย่างน้อย 1 ภาษา')
-  $('prodGo').disabled = true
-  prodCall('/api/production/start', { settings: f })
+$('prodGo').addEventListener('click', async () => {
+  let f
+  try { f = prodForm() } catch (err) { prodValidation(err, true); return }
+  await prodCommand('/api/production/start', { settings: f })
 })
-$('prodStop').addEventListener('click', () => prodCall('/api/production/stop', {}))
+$('prodStop').addEventListener('click', () => prodCommand('/api/production/stop', {}))
+async function prodCommand(path, body) {
+  if (prodCommandBusy) return
+  if (path.endsWith('/start')) {
+    clearTimeout(prodSaveTimer)
+    ++prodSaveRevision
+  }
+  prodCommandBusy = true
+  renderProd()
+  try {
+    // Serialize mutations, including a debounce that fires while Stop is in flight.
+    const operation = prodSettingsWrites.then(() => prodCall(path, body))
+    prodSettingsWrites = operation
+    const ok = await operation
+    if (ok && path.endsWith('/start')) {
+      $('prodSaveState').classList.remove('error')
+      $('prodSaveState').textContent = 'บันทึกและเปิดผลิตแล้ว'
+    }
+  } finally { prodCommandBusy = false; renderProd() }
+}
 $('prodReadyPlay').addEventListener('click', () => prodCall('/api/production/open', { what: 'play', index: 0 }))
 $('prodReadyFolder').addEventListener('click', () => prodCall('/api/production/open', { what: 'folder' }))
 
