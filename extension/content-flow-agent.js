@@ -526,7 +526,16 @@ const TIMECODE_NAME = /(\d{2}_\d{2}_\d{2}(?:_\d)?\.png|cover\.png)/i
  * src ของ tile เป็นภาพย่อ (…/asb/…=s512-rw → 286×512) — ขอภาพเต็มด้วย =s0 (768×1376)
  * ภาพย่อทำให้คลิปเบลอ และ Kie/Seedance ปฏิเสธภาพกว้างไม่ถึง 300px (ตรวจกับหน้าเว็บจริง ก.ย. 2026)
  */
-const fullSize = (src) => (/^https:\/\/[^/]*(?:flow\.google\.com|googleusercontent\.com)\//.test(src) ? src.replace(/=[swh]\d+[^/=]*$/, '') + '=s0' : src)
+function fullSize(src) {
+  try {
+    const url = new URL(src)
+    if (url.protocol !== 'https:' || !(url.hostname === 'flow.google.com' || url.hostname === 'googleusercontent.com' || url.hostname.endsWith('.googleusercontent.com'))) return src
+    // authuser selects the signed-in Google account. A resize suffix belongs
+    // to the path, never to that query value (authuser=1=s0 returns 403).
+    url.pathname = url.pathname.replace(/=[swh]\d+[^/=]*$/, '') + '=s0'
+    return url.href
+  } catch { return src }
+}
 
 async function imageAsPngBase64(src) {
   const blob = await fetch(fullSize(src)).then((r) => {
