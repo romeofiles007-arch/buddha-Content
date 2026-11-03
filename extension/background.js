@@ -168,6 +168,10 @@ async function handleJob(job) {
   // A failed Studio draft can still trigger beforeunload. Never navigate it for a new publish attempt.
   const freshTikTokPost = agent === 'tiktok' && job.kind === 'tiktok-post'
   const tab = freshTikTokPost ? await openTab(AGENTS.tiktok.match, AGENTS.tiktok.key) : await ensureTab(agent)
+  if (freshTikTokPost) {
+    const { freshTikTokTabs = [] } = await chrome.storage.session.get('freshTikTokTabs')
+    await chrome.storage.session.set({ freshTikTokTabs: [...freshTikTokTabs, tab.id].slice(-20) })
+  }
 
   if (agent === 'flow' && ['flow-switch-account', 'flow-account-inspect'].includes(job.kind)) {
     const action = job.kind === 'flow-account-inspect' ? inspectFlowAccounts : switchFlowAccount
@@ -540,7 +544,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === 'PARTIAL' || msg.type === 'RESULT' || msg.type === 'ERROR') {
     const path = { PARTIAL: '/partial', RESULT: '/result', ERROR: '/error' }[msg.type]
-    postReliable(path, msg.body).then(sendResponse)
+    postReliable(path, msg.body).then(async (result) => {
+      sendResponse(result)
+      // แท็บ TikTok ที่เปิดใหม่ให้โพสต์นี้ → โพสต์สำเร็จแล้วปิดทิ้ง ไม่ให้แท็บค้างเพิ่มทุกคลิป
+      // โพสต์พลาดเปิดค้างไว้ให้ดูสาเหตุ
+      const tabId = _sender.tab?.id
+      if (!tabId || msg.type !== 'RESULT' || !result?.ok || msg.body?.meta?.ok === false || msg.body?.meta?.error) return
+      const { freshTikTokTabs = [] } = await chrome.storage.session.get('freshTikTokTabs')
+      if (!freshTikTokTabs.includes(tabId)) return
+      await chrome.storage.session.set({ freshTikTokTabs: freshTikTokTabs.filter((id) => id !== tabId) })
+      setTimeout(() => chrome.tabs.remove(tabId).catch(() => {}), 3000)
+    })
     return true
   }
   // PROGRESS ทุก 20 วิ = heartbeat ด้วย — ปลุก service worker และบอก bridge ว่างานยังไม่หลุด

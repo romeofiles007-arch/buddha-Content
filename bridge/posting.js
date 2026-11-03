@@ -25,6 +25,16 @@ import { createDeliveryLedger, stageDelivery, deliveryDestination, importDeliver
 
 const PROJECTS = join(ROOT, 'projects')
 const TICK_MS = 30_000
+const MIN_POST_GAP_MS = 30 * 60_000
+/** เวลาที่โพสต์สำเร็จล่าสุด (ทุกปลายทาง) — ใช้เว้นระยะไม่ให้โพสต์รัว */
+function lastPostAt(queue) {
+  let last = 0
+  for (const q of queue) {
+    for (const r of Object.values(q.results ?? {})) if (r?.ok && Number(r.at) > last) last = Number(r.at)
+    if (Number(q.postedAt) > last) last = Number(q.postedAt)
+  }
+  return last
+}
 const ENROLL_EVERY_MS = 2 * 60_000
 const OAUTH_TTL_MS = 15 * 60_000
 
@@ -514,7 +524,11 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
 
   async function postDue() {
     if (uploading) return
-    const [item] = dueItems(loadQueue())
+    const queue = loadQueue()
+    // เว้นอย่างน้อย 30 นาทีระหว่างโพสต์อัตโนมัติ — 3 พ.ย. 2026 กด "ลองโพสต์ใหม่" ทีละคลิป (scheduleAt = ตอนนี้)
+    // ทำให้ TikTok ได้ 5 คลิปใน 5 นาที · คลิปที่ค้างหลังเปิดเครื่องก็ทยอยออกทีละคลิปเช่นกัน
+    if (Date.now() - lastPostAt(queue) < MIN_POST_GAP_MS) return
+    const [item] = dueItems(queue)
     if (!item) return
     uploading = true
     try {
