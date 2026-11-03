@@ -30,14 +30,22 @@ test('account identity must match the intended email and cannot silently return 
   assert.equal(api().sameAccount('', ''), false)
 })
 
+test('Flow account profile can live on a role button inside a component shadow root', () => {
+  const profile={getAttribute:name=>name==='aria-label'?'Google Account: B (b@x.com)':null}
+  const shadow={querySelectorAll:selector=>selector==='[aria-label], [title]'?[profile]:[]}
+  const root={querySelectorAll:selector=>selector==='*'?[{shadowRoot:shadow}]:[]}
+  assert.equal(api().profileLabel(root),'Google Account: B (b@x.com)')
+})
+
 test('a limited content job reports structured quota without a terminal error or a generation request', async () => {
   let listener
+  let identityReads=0
   const sent=[]
   const account={getAttribute:()=> 'Google Account: A (a@x.com)'}
   const alert={innerText:"You've reached your daily image generation limit",getBoundingClientRect:()=>({width:100})}
   const document={documentElement:{className:''},querySelector:()=>null,querySelectorAll:selector=>selector==='button[aria-label], a[aria-label]'?[account]:selector.startsWith('[role="alert"]')?[alert]:[]}
-  const ctx=vm.createContext({document,Date,location:{pathname:'/',href:'https://flow.google.com/'},MutationObserver:class{observe(){}},chrome:{
-    runtime:{getManifest:()=>({version:'1.0.21'}),onMessage:{addListener:fn=>listener=fn},sendMessage:async msg=>{sent.push(msg);return {ok:true}}},
+  const ctx=vm.createContext({document,Date,setTimeout:fn=>queueMicrotask(fn),location:{pathname:'/',href:'https://flow.google.com/'},MutationObserver:class{observe(){}},chrome:{
+    runtime:{getManifest:()=>({version:'1.0.22'}),onMessage:{addListener:fn=>listener=fn},sendMessage:async msg=>{if(msg.type==='FLOW_ACCOUNT_IDENTITY')return ++identityReads===1?{ok:false,email:''}:{ok:true,email:'a@x.com'};sent.push(msg);return {ok:true}}},
     storage:{local:{get:async()=>({}),set:async()=>{}}},
   }})
   for(const file of ['flow-text.js','flow-quota.js','content-flow-agent.js']) vm.runInContext(readFileSync(new URL('../extension/'+file,import.meta.url),'utf8'),ctx)
@@ -45,6 +53,7 @@ test('a limited content job reports structured quota without a terminal error or
   assert.equal(sent.length,1)
   assert.equal(sent[0].type,'RESULT')
   assert.equal(sent[0].body.meta.flowQuota.email,'a@x.com')
+  assert.equal(identityReads,2,'a loading profile must be retried before stopping production')
 })
 
 test('initial project quota saves recoverable named images before reporting the account limit', async () => {
@@ -57,7 +66,7 @@ test('initial project quota saves recoverable named images before reporting the 
   const ctx=vm.createContext({document,Date,console,Event:class{},window:{dispatchEvent(){}},setTimeout:fn=>{queueMicrotask(fn)},btoa:value=>Buffer.from(value,'binary').toString('base64'),
     fetch:async()=>({ok:true,blob:async()=>({})}),createImageBitmap:async()=>({width:1,height:1}),OffscreenCanvas:class{getContext(){return {drawImage(){}}}async convertToBlob(){return {arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer}}},
     location:{pathname:'/project/a',href:'https://flow.google.com/project/a'},MutationObserver:class{observe(){}},chrome:{
-      runtime:{getManifest:()=>({version:'1.0.21'}),onMessage:{addListener:fn=>listener=fn},sendMessage:async msg=>{sent.push(msg);return {ok:true}}},
+      runtime:{getManifest:()=>({version:'1.0.21'}),onMessage:{addListener:fn=>listener=fn},sendMessage:async msg=>{if(msg.type==='FLOW_ACCOUNT_IDENTITY')return {ok:true,email:'a@x.com'};sent.push(msg);return {ok:true}}},
       storage:{local:{get:async()=>({}),set:async()=>{}}},
     }})
   for(const file of ['flow-text.js','flow-quota.js','content-flow-agent.js']) vm.runInContext(readFileSync(new URL('../extension/'+file,import.meta.url),'utf8'),ctx)

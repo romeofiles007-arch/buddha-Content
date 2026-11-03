@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { rotateAccount } from '../extension/flow-account-switch.js'
+import { rotateAccount, flowIdentity } from '../extension/flow-account-switch.js'
 
 function fixture({ current='a@x.com', accounts=[{email:'a@x.com'},{email:'b@x.com'}], limits={}, actual='b@x.com' }={}) {
   const selected=[]
@@ -32,4 +32,12 @@ test('manual account changes and signed-out rows are never silently overridden',
   const g=fixture({accounts:[{email:'a@x.com'},{email:'b@x.com',signedOut:true}]})
   assert.equal((await rotateAccount(g.io)).exhausted,true)
   assert.deepEqual(g.selected,[])
+})
+
+test('a closed profile component is read through its real accessible Google account button', async()=>{
+  const chrome={runtime:{},tabs:{get:async()=>({url:'https://flow.google.com/u/1/'})},scripting:{executeScript:async()=>[{result:''}]},debugger:{attach:(_t,_v,cb)=>cb(),detach:(_t,cb)=>cb(),sendCommand:(_t,method,_p,cb)=>{
+    assert.equal(method,'Accessibility.getFullAXTree')
+    cb({nodes:[{role:{value:'StaticText'},name:{value:'Prompt about a@x.com'}},{role:{value:'button'},name:{value:'Google Account: B (b@x.com)'}}]})
+  }}}
+  assert.equal(await flowIdentity(chrome,7),'b@x.com')
 })

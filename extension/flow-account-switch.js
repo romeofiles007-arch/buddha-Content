@@ -31,11 +31,14 @@ export async function rotateAccount({ currentEmail, payload, store, list, select
 export async function flowIdentity(chrome, tabId) {
   const tab = await chrome.tabs.get(tabId)
   if (!isFlow(tab.url)) return ''
-  const [r] = await chrome.scripting.executeScript({ target: { tabId }, func: () => {
-    const labels = [...document.querySelectorAll('button[aria-label], a[aria-label]')].map(el => el.getAttribute('aria-label'))
-    return labels.find(s => /(?:Google Account|บัญชี Google).*@/i.test(s)) ?? ''
-  } })
-  return Q.emailOf(r?.result)
+  const [r] = await chrome.scripting.executeScript({ target: { tabId }, func: Q.profileLabel })
+  if (Q.emailOf(r?.result)) return Q.emailOf(r.result)
+  // Google renders the profile within a component; closed roots remain visible to accessibility.
+  return withDebugger(chrome, tabId, async command => {
+    const { nodes } = await command('Accessibility.getFullAXTree')
+    const labels = nodes.filter(n => !n.ignored && ['button', 'link'].includes(n.role?.value)).map(n => n.name?.value ?? '')
+    return Q.emailOf(labels.find(label => /(?:Google Account|บัญชี Google).*@/i.test(label)))
+  })
 }
 
 async function withDebugger(chrome, tabId, fn) {

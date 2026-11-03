@@ -8,7 +8,7 @@
 
 const NATIVE_HOST = 'com.dhamma_auto.bridge'
 import { preferredFlowTab, flowHomeUrl, flowJobNavigation } from './flow-navigation.js'
-import { switchFlowAccount, inspectFlowAccounts } from './flow-account-switch.js'
+import { switchFlowAccount, inspectFlowAccounts, flowIdentity } from './flow-account-switch.js'
 
 const AGENTS = {
   chatgpt: { match: 'https://chatgpt.com/', pattern: ['https://chatgpt.com/*', 'https://chat.openai.com/*'], key: 'chatTabId' },
@@ -423,6 +423,14 @@ async function checkExtensionUpdate() {
   chrome.runtime.reload()
 }
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === 'FLOW_ACCOUNT_IDENTITY') {
+    if (!_sender.tab?.id || !/^https:\/\/flow\.google\.com\//.test(_sender.tab.url ?? '')) {
+      sendResponse({ ok: false, error: 'คำขอไม่ได้มาจากแท็บ Google Flow' })
+      return
+    }
+    flowIdentity(chrome, _sender.tab.id).then(email => sendResponse({ ok: !!email, email })).catch(error => sendResponse({ ok: false, error: error.message }))
+    return true
+  }
   if (msg.type === 'TIKTOK_SET_FILE') {
     ;(async () => {
       const tabId = _sender.tab?.id

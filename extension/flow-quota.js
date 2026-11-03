@@ -1,6 +1,19 @@
 // Shared by the content script, worker and offline regressions. No browser side effects.
 ;(() => {
   const emailOf = value => String(value ?? '').match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0]?.toLowerCase() ?? ''
+  // Self-contained so Chrome can serialize this function into the page's isolated world.
+  function profileLabel(root = document) {
+    for (const el of root.querySelectorAll('[aria-label], [title]')) {
+      for (const attr of ['aria-label', 'title']) {
+        const label = el.getAttribute(attr) ?? ''
+        if (/(?:Google Account|บัญชี Google).*@/i.test(label)) return label
+      }
+    }
+    for (const el of root.querySelectorAll('*')) {
+      if (el.shadowRoot) { const label = profileLabel(el.shadowRoot); if (label) return label }
+    }
+    return ''
+  }
   function quotaNotice(value, now = Date.now()) {
     const reason = String(value ?? '').replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim()
     // Only error/status text supplied by the caller, never the user's conversation/prompt.
@@ -27,5 +40,5 @@
     }
     return null
   }
-  globalThis.DhammaFlowQuota = { emailOf, quotaNotice, nextAccount, sameAccount: (label, email) => !!emailOf(email) && emailOf(label) === emailOf(email) }
+  globalThis.DhammaFlowQuota = { emailOf, profileLabel, quotaNotice, nextAccount, sameAccount: (label, email) => !!emailOf(email) && emailOf(label) === emailOf(email) }
 })()

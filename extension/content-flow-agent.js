@@ -28,12 +28,21 @@ const FLOW_PROMPT_GAP_MS = 2 * 60_000 // เว้นอย่างน้อย
 const FLOW_LAST_PROMPT_KEY = 'flowLastPromptAt'
 const Q = globalThis.DhammaFlowQuota
 let expectedAccount = ''
-const accountEmail = () => Q.emailOf($$('button[aria-label], a[aria-label]').map(el => el.getAttribute('aria-label')).find(s => /(?:Google Account|บัญชี Google).*@/i.test(s)))
+const accountEmail = () => Q.emailOf(Q.profileLabel(document))
+async function verifiedAccountEmail() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const result = await chrome.runtime.sendMessage({ type: 'FLOW_ACCOUNT_IDENTITY' })
+    if (result?.ok && result.email) return result.email
+    if (result?.error) break
+    await sleep(1000)
+  }
+  throw new Error('FLOW_ACCOUNTS_EXHAUSTED: อ่านบัญชี Google Flow ปัจจุบันไม่ได้ — หยุดก่อนสร้างภาพ')
+}
 class FlowQuotaError extends Error {
   constructor(quota) { super(quota.reason); this.quota = quota }
 }
 function checkAccountQuota() {
-  const email = accountEmail()
+  const email = accountEmail() || expectedAccount
   if (expectedAccount && !Q.sameAccount(email, expectedAccount)) throw new Error('FLOW_ACCOUNTS_EXHAUSTED: บัญชี Flow เปลี่ยนระหว่างทำงาน — หยุดก่อนส่งคำสั่งสร้างภาพ')
   const lines = [
     ...$$('[role="alert"], flow-error-tile, mat-snack-bar-container').filter(visible).map(el => el.innerText ?? ''),
@@ -401,8 +410,10 @@ async function attachImages(editor, attachments) {
 }
 
 async function sendPrompt(prompt, attachments) {
+  if (expectedAccount && !Q.sameAccount(await verifiedAccountEmail(), expectedAccount)) throw new Error('FLOW_ACCOUNTS_EXHAUSTED: บัญชี Flow เปลี่ยนระหว่างทำงาน')
   checkAccountQuota()
   await waitBeforeNextPrompt()
+  if (expectedAccount && !Q.sameAccount(await verifiedAccountEmail(), expectedAccount)) throw new Error('FLOW_ACCOUNTS_EXHAUSTED: บัญชี Flow เปลี่ยนระหว่างทำงาน')
   checkAccountQuota()
   await attachImages(await waitFor(SEL.editor, { label: 'ช่องพิมพ์' }), attachments)
   // แนบรูปแล้ว Flow วาดช่องพิมพ์ใหม่ (element เดิมหลุดจากหน้า — ตรวจกับหน้าจริงแล้ว) → ต้องหาช่องพิมพ์ใหม่ทุกครั้ง
@@ -678,7 +689,7 @@ async function renameProject(title) {
 
 async function runImageJob(job) {
   const { prompt, shots, model = 'Nano Banana 2 Lite', aspect = '16:9', attachments = [], projectTitle } = job.payload
-  const email = await waitFor(accountEmail, { timeout: 15000, label: 'บัญชี Google Flow' })
+  const email = await verifiedAccountEmail()
   expectedAccount = job.payload.expectedAccount || email
   const expected = shots.length
   const wanted = new Set(shots.map((s) => s.filename))

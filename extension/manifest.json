@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ธรรมะ Auto Bridge",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "description": "ขับ ChatGPT และ Google Flow พร้อม Kie API ในเครื่องเพื่อทำคลิปการ์ตูนธรรมะอัตโนมัติ",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3znS01R+XVB5+uB5TRaudUkWEvvyP+A/jYwaQ+UyaTeMRvpFCML1wlB4kl5T3u6GUIb5BCDLOJurjqdGuj8ldfF05fH5ZFBx2Z0hszSgMplnhU+CxeZG2RL5SRDeViBUb8aakblt3l3tah8dUf0JpGqtkn2FTw+t4KbvMIqaAWZJ9GsqGkC5msMGoWFcoj/G5EUgg7ZJujxBjSrn3OnnE187uwpTJAO47vGKcZCw0vZU4iUqzntlRDPzT414ClPQFzRKVfuLTTUTCGxJn7MUePNjJLYKNfDoGqJC5exILMFn5CxD8JPivtpbromGrtSELQnKezMSY18f+OZGaliwuQIDAQAB",
   "permissions": [
