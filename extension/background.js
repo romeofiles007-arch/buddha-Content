@@ -161,10 +161,12 @@ async function handleJob(job) {
       const [snapshot] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ url: location.href, ...globalThis.DhammaTikTokDom.inspectStudio(document) }) })
       snapshots.push({ tabId: tab.id, ...snapshot?.result })
     }
-    await postReliable('/result', { id: job.id, meta: { ok: true, tabs: snapshots } })
+    await postReliable('/result', { id: job.id, meta: { ok: true, runtimeVersion: chrome.runtime.getManifest().version, tabs: snapshots } })
     return
   }
-  const tab = await ensureTab(agent)
+  // A failed Studio draft can still trigger beforeunload. Never navigate it for a new publish attempt.
+  const freshTikTokPost = agent === 'tiktok' && job.kind === 'tiktok-post'
+  const tab = freshTikTokPost ? await openTab(AGENTS.tiktok.match, AGENTS.tiktok.key) : await ensureTab(agent)
 
   if (agent === 'flow' && ['flow-switch-account', 'flow-account-inspect'].includes(job.kind)) {
     const action = job.kind === 'flow-account-inspect' ? inspectFlowAccounts : switchFlowAccount
@@ -179,7 +181,8 @@ async function handleJob(job) {
     return
   }
 
-  if (agent === 'tiktok') await loadInTab(tab.id, AGENTS.tiktok.match, 1500)
+  if (freshTikTokPost) await chrome.tabs.update(tab.id, { active: true })
+  else if (agent === 'tiktok') await loadInTab(tab.id, AGENTS.tiktok.match, 1500)
 
   // Flow: เริ่มจากหน้าแรกทุกครั้ง → content script กด New project ได้ project ใหม่ต่อคลิป
   if (agent === 'flow' && job.kind === 'generate-images') {

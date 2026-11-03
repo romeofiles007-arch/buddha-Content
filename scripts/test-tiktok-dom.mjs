@@ -22,6 +22,12 @@ test('login and CAPTCHA stop the attempt with recovery text', () => {
   const doc = document(); doc.querySelector = selector => selector.includes('captcha') ? {} : null
   assert.throws(() => D.checkPage(doc, 'https://www.tiktok.com/tiktokstudio/upload'), /CAPTCHA/)
 })
+
+test('the observed full-page Studio error stops immediately instead of reporting a missing AI switch', () => {
+  const D=api()
+  assert.throws(()=>D.checkPage(document([], 'เกิดข้อผิดพลาด โปรดลองอีกครั้ง ลองใหม่ โปรไฟล์ การตั้งค่า ออกจากระบบ'),'https://www.tiktok.com/tiktokstudio/upload'), /TikTok.*เกิดข้อผิดพลาด/)
+  assert.doesNotThrow(()=>D.checkPage(document([], 'Description เกิดข้อผิดพลาด โปรดลองอีกครั้ง ลองใหม่ Post Discard'),'https://www.tiktok.com/tiktokstudio/upload'))
+})
 test('Studio Show more uses its observed collapse control without a button role', () => {
   const more = { innerText: 'Show more', getClientRects: () => [{}] }
   const doc = document(); doc.querySelectorAll = selector => selector.includes('.more-collapse') ? [more] : []

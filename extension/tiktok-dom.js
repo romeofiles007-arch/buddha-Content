@@ -9,6 +9,8 @@
   function checkPage(doc, url) {
     if (/\/login(?:[/?]|$)/.test(url) || /Log in to TikTok|เข้าสู่ระบบ TikTok/.test(doc.body?.innerText ?? '')) throw new Error('กรุณาล็อกอิน TikTok Studio ใน Chrome แล้วเชื่อมต่ออีกครั้ง')
     if (doc.querySelector('iframe[src*="captcha"], [id*="captcha-verify"], [class*="captcha_verify"], [data-e2e="captcha"]')) throw new Error('พบ CAPTCHA — เปิดแท็บ TikTok และยืนยันด้วยตัวเอง แล้วลองใหม่')
+    const page = text(doc.body)
+    if (/^เกิดข้อผิดพลาด\s+โปรดลองอีกครั้ง\s+ลองใหม่(?:\s+(?:โปรไฟล์|การตั้งค่า|ออกจากระบบ))*$/.test(page) || /^Something went wrong[.!]?\s+Please try again[.!]?\s+Try again(?:\s+(?:Profile|Settings|Log out))*$/i.test(page)) throw new Error('TikTok แสดงหน้าเกิดข้อผิดพลาด — กรุณาตรวจแท็บ TikTok และการเชื่อมต่อก่อนลองใหม่')
   }
   function account(doc, { fromAvatar = false } = {}) {
     const links = [...doc.querySelectorAll('a[href*="/@"]')].filter(visible).filter(link => {
@@ -80,7 +82,7 @@
     return [...doc.querySelectorAll('label, [role="switch"], [role="checkbox"], input[type="checkbox"]')].find(node => {
       if (!visible(node)) return false
       const label = text(node) || node.getAttribute('aria-label') || text(node.closest('label'))
-      return /AI.generated content|เนื้อหาที่สร้าง(?:ขึ้น)?ด้วย AI/i.test(label)
+      return /AI.generated content|เนื้อหาที่สร้าง(?:ขึ้น)?(?:ด้วย|โดย) AI/i.test(label)
     })
   }
   const checked = node => node.checked === true || node.getAttribute('aria-checked') === 'true'
@@ -100,7 +102,7 @@
       return { ...describe(node), ...(src && /^https:/.test(src) ? { imagePath: new URL(src).pathname } : {}), parent: describe(node.parentElement), grandparent: describe(node.parentElement?.parentElement) }
     })
     const navigation = [...doc.querySelectorAll('a[href]')].filter(visible).map(node => ({ path: new URL(node.getAttribute('href'), 'https://www.tiktok.com').pathname, text: text(node).slice(0, 100), e2e: node.getAttribute('data-e2e'), className: node.getAttribute('class') })).filter(link => /^\/(?:tiktokstudio|@|creator)/.test(link.path)).slice(0, 40)
-    const settingRows = [...doc.querySelectorAll('div, span')].filter(visible).filter(node => node.children?.length === 0 && /^AI.generated content$/i.test(text(node))).slice(0, 2).map(node => {
+    const settingRows = [...doc.querySelectorAll('div, span')].filter(visible).filter(node => node.children?.length === 0 && /^(?:AI.generated content|เนื้อหาที่สร้าง(?:ขึ้น)?(?:ด้วย|โดย) AI)$/i.test(text(node))).slice(0, 2).map(node => {
       const row = node.closest('[data-e2e="aigc_container"]') ?? node.parentElement?.parentElement
       return { label: describe(node), parent: describe(node.parentElement), row: describe(row), children: [...(row?.querySelectorAll('*') ?? [])].slice(0, 30).map(child => ({ ...describe(child), checked: child.checked, ariaChecked: child.getAttribute('aria-checked'), dataState: child.getAttribute('data-state') })) }
     })

@@ -5,12 +5,13 @@ import { runInNewContext } from 'node:vm'
 import { test } from 'node:test'
 const domSource = readFileSync(new URL('../extension/tiktok-dom.js', import.meta.url), 'utf8')
 const driverSource = readFileSync(new URL('../extension/content-tiktok.js', import.meta.url), 'utf8')
-function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, delayedStudio = false, cdnAvatar = false, studioSwitch = false, ambiguousSwitch = false, aiConsent = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
+function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, delayedStudio = false, cdnAvatar = false, studioSwitch = false, ambiguousSwitch = false, aiConsent = false, replacePost = false, processing = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
   let listener, uploads = 0, clicks = 0, progress = 0, accountReads = 0, menuOpen = false, onCancel, rerendered = false, readyChecks = 0
   const results = [], memory = new Map()
   const node = (extra = {}) => ({ textContent: '', getClientRects: () => [{}], getAttribute: () => null, matches: () => false, focus() {}, click() {}, dispatchEvent() {}, ...extra })
   class Textarea { constructor() { this._value = '' } get value() { return this._value } set value(v) { this._value = v } }
-  const editor = Object.assign(new Textarea(), node({ tagName: 'TEXTAREA' }))
+  let processingReady = !processing, processingChecks = 0
+  const editor = Object.assign(new Textarea(), node({ tagName: 'TEXTAREA', focus(){ if(!processingReady) throw new Error('caption edited before upload processing finished') } }))
   const replacement = Object.assign(new Textarea(), node({ tagName: 'TEXTAREA' })); replacement.value = 'different caption'
   const options = ['Everyone', 'Friends', 'Only you'].map((textContent, i) => node({ textContent, value: ['public', 'friends', 'private'][i] }))
   const privacy = node({ tagName: 'SELECT', value: 'public', options, getAttribute: n => n === 'aria-label' ? 'Who can watch this video' : null })
@@ -22,22 +23,28 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   const aiRow = node({ textContent: 'AI-generated content', querySelectorAll: () => ambiguousSwitch ? [ai, node()] : [ai] })
   const alerts = [], body = { innerText: '' }
   const post = node({ textContent: 'Post', disabled: false, click() { clicks++; if (confirm) { body.innerText = 'Video posted'; alerts.push(node({ innerText: 'Video posted' })) } } })
+  const newPost=node({textContent:'Post',disabled:false,click:()=>post.click()})
+  let postChanged=false
   let markedProfile = false
   const profile = node({ textContent: 'Profile', getAttribute: n => n === 'href' ? `/@${signedIn}` : null, matches: () => !cdnAvatar || markedProfile, closest: () => null, setAttribute: () => { markedProfile = true } })
-  const avatar = node({ click: () => { menuOpen = true } })
+  const avatar = node({ click: () => { menuOpen = !menuOpen } })
   const avatarImage = node({ getAttribute: n => n === 'src' ? 'https://p16.tiktokcdn.com/tos-alisg-avt-0068/account.jpeg' : null, closest: () => avatar })
   const document = {
     body,
     querySelector: selector => selector.includes('input[type="file"]') ? (++readyChecks >= (delayedStudio ? 2 : 1) ? node() : null) : studioSwitch && selector === '[data-e2e="aigc_container"]' ? aiRow : null,
     querySelectorAll: selector => {
-      if (selector === 'a[href*="/@"]') { accountReads++; return (cdnAvatar && !menuOpen) || (delayedStudio && readyChecks < 2) || (cancelDuringAccount && accountReads > 1 && !menuOpen) ? [] : [profile] }
+      if (selector === 'a[href*="/@"]') { accountReads++; if(replacePost && accountReads>1){post.isConnected=false;postChanged=true} return (cdnAvatar && !menuOpen) || (delayedStudio && readyChecks < 2) || (cancelDuringAccount && accountReads > 1 && !menuOpen) ? [] : [profile] }
       if (selector.startsWith('[data-e2e="profile-icon"]')) return cdnAvatar ? [] : [avatar]
       if (selector === 'img') return cdnAvatar ? [avatarImage] : []
       if (selector === '[contenteditable="true"], textarea') return [rerendered ? replacement : editor]
       if (selector === 'select, button, [role="combobox"]') return missingPrivacy ? [] : [privacy]
       if (selector.startsWith('label,')) return [ai]
-      if (selector.startsWith('button, [role="button"]')) return [post]
+      if (selector.startsWith('button, [role="button"]')) return [postChanged?newPost:post]
       if (selector === '[role="dialog"]') return consentOpen ? [consentDialog] : []
+      if (selector === '[role="progressbar"]' && processing) {
+        processingReady = ++processingChecks >= 2
+        return processingReady ? [] : [node({getAttribute:key=>key==='aria-valuenow'?'50':null})]
+      }
       if (selector.includes('[role="alert"]')) return alerts
       return []
     },
@@ -109,6 +116,18 @@ test('replacing the caption editor during upload cannot publish a stale caption'
   const f = fixture({ replaceCaption: true }); await f.invoke()
   assert.equal(f.state().clicks, 0)
   assert.equal(f.results[0].needsVerification, false)
+})
+
+test('a re-rendered publish button is reacquired after the final account check', async()=>{
+  const f=fixture({replacePost:true});await f.invoke()
+  assert.equal(f.results[0].ok,true)
+  assert.equal(f.state().clicks,1)
+})
+
+test('caption editing waits for upload processing before touching the editor', async()=>{
+  const f=fixture({processing:true});await f.invoke()
+  assert.equal(f.results[0].ok,true)
+  assert.equal(f.state().clicks,1)
 })
 test('account detection waits until TikTok Studio has finished rendering its uploader', async () => {
   const f = fixture({ delayedStudio: true }); await f.invoke()

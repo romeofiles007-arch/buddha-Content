@@ -4,21 +4,30 @@
   const D = globalThis.DhammaTikTokDom
   const H = globalThis.bridgeHelpers
   let active = null
+  let accountMenuOpened = false
+  function closeAccountMenu() {
+    if (!accountMenuOpened) return
+    accountMenuOpened = false
+    D.avatarTrigger(document)?.click()
+  }
 
-  async function readAccount() {
+  async function readAccount({ keepOpen = false } = {}) {
     D.checkPage(document, location.href)
     try { return D.account(document) } catch {
       const avatar = D.avatarTrigger(document)
       if (!avatar) throw new Error('ยังอ่านบัญชี TikTok ไม่ได้ — เปิดเมนูรูปโปรไฟล์แล้วเชื่อมต่อใหม่')
       avatar.click()
-      return H.waitFor(() => {
+      accountMenuOpened = true
+      try { return await H.waitFor(() => {
         try { return D.account(document, { fromAvatar: true }) } catch { return null }
-      }, { timeout: 5000, interval: 200, label: 'ชื่อบัญชี TikTok' })
+      }, { timeout: 5000, interval: 200, label: 'ชื่อบัญชี TikTok' }) }
+      finally { if (!keepOpen) closeAccountMenu() }
     }
   }
   async function run(job) {
     let attempt = null
     let cancelled = false
+    let phase = 'open'
     const stopBeat = H.heartbeat(job.id, () => { cancelled = true })
     const assertActive = async () => {
       if (cancelled) throw new Error('งาน TikTok ถูกยกเลิกแล้ว')
@@ -41,8 +50,18 @@
       D.assertAccount(await readAccount(), job.payload.username)
       // A fresh dedicated upload page is opened by the worker for every job.
       await wait(() => document.querySelector('input[type="file"]'), 'ช่องเลือกวิดีโอ TikTok')
+      phase = 'upload'
       const upload = await chrome.runtime.sendMessage({ type: 'TIKTOK_SET_FILE', jobId: job.id })
       if (!upload?.ok) throw new Error(upload?.error ?? 'ใส่ไฟล์วิดีโอใน TikTok ไม่สำเร็จ')
+      const publishReady = () => {
+        const error = [...document.querySelectorAll('[role="alert"]')].find(node => /upload failed|couldn.t upload|อัปโหลดไม่สำเร็จ/i.test(D.text(node)))
+        if (error) throw new Error(D.text(error))
+        const button = D.findButton(document, ['Post', 'Publish', 'โพสต์', 'เผยแพร่'])
+        const uploading = [...document.querySelectorAll('[role="progressbar"]')].some(node => D.visible(node) && Number(node.getAttribute('aria-valuenow') ?? 0) < 100)
+        return D.enabled(button) && !uploading ? button : null
+      }
+      await wait(publishReady, 'TikTok ประมวลผลวิดีโอพร้อมแก้ไข', 10 * 60_000)
+      phase = 'caption'
       const editor = await wait(() => [...document.querySelectorAll('[contenteditable="true"], textarea')].find(D.visible), 'ช่องคำบรรยาย TikTok', 10 * 60_000)
       editor.focus()
       if (editor.tagName === 'TEXTAREA') {
@@ -56,6 +75,7 @@
       }
       const captionText = (node = editor) => String(node?.value ?? node?.innerText ?? node?.textContent ?? '').replace(/\s+/g, ' ').trim()
       if (captionText() !== String(job.payload.caption).replace(/\s+/g, ' ').trim()) throw new Error('ข้อความคำบรรยาย TikTok ไม่ตรง — ตรวจในหน้าอัปโหลดแล้วลองใหม่')
+      phase = 'settings'
       const labels = D.privacyLabels[job.payload.privacy]
       if (!labels) throw new Error('ยังไม่ได้เลือกการมองเห็นของคลิป TikTok')
       const privacy = D.privacyControl(document)
@@ -92,22 +112,20 @@
         if (confirm && D.enabled(confirm)) { confirmedAi = true; confirm.click() }
         return false
       }, 'ยืนยันป้ายกำกับ AI ของ TikTok', 5000)
-      const post = await wait(() => {
-        const error = [...document.querySelectorAll('[role="alert"]')].find(node => /upload failed|couldn.t upload|อัปโหลดไม่สำเร็จ/i.test(D.text(node)))
-        if (error) throw new Error(D.text(error))
-        const button = D.findButton(document, ['Post', 'Publish', 'โพสต์', 'เผยแพร่'])
-        const uploading = [...document.querySelectorAll('[role="progressbar"]')].some(node => D.visible(node) && Number(node.getAttribute('aria-valuenow') ?? 0) < 100)
-        return D.enabled(button) && !uploading ? button : null
-      }, 'TikTok อัปโหลดเสร็จและพร้อมโพสต์', 10 * 60_000)
-      D.assertAccount(await readAccount(), job.payload.username)
+      await wait(publishReady, 'TikTok อัปโหลดเสร็จและพร้อมโพสต์', 10 * 60_000)
+      D.assertAccount(await readAccount({ keepOpen: true }), job.payload.username)
       await assertActive()
       if (cancelled) throw new Error('งาน TikTok ถูกยกเลิกแล้ว — หยุดก่อนโพสต์')
       D.assertAccount(D.account(document), job.payload.username)
+      closeAccountMenu()
       let finalAi = D.aiControl(document)
       if (finalAi?.matches('label')) finalAi = finalAi.querySelector('input, [role="switch"], [role="checkbox"]')
       const finalEditor = [...document.querySelectorAll('[contenteditable="true"], textarea')].find(D.visible)
-      if (!selectedPrivacy() || !finalAi || D.checked(finalAi) !== (job.payload.aigc === true) || !D.enabled(post) || post.isConnected === false || !finalEditor || finalEditor.isConnected === false || captionText(finalEditor) !== String(job.payload.caption).replace(/\s+/g, ' ').trim()) throw new Error('การตั้งค่า TikTok เปลี่ยนระหว่างอัปโหลด — หยุดก่อนโพสต์')
+      const post = publishReady()
+      const checks = { privacy: !!selectedPrivacy(), ai: !!finalAi && D.checked(finalAi) === (job.payload.aigc === true), publishButton: D.enabled(post) && post.isConnected !== false, caption: !!finalEditor && finalEditor.isConnected !== false && captionText(finalEditor) === String(job.payload.caption).replace(/\s+/g, ' ').trim() }
+      if (Object.values(checks).some(ok => !ok)) throw new Error(`การตั้งค่า TikTok เปลี่ยนระหว่างอัปโหลด (${Object.keys(checks).filter(key => !checks[key]).join(', ')}) — หยุดก่อนโพสต์`)
       const before = D.publicationSignals(document)
+      phase = 'publish'
       attempt.beforePublish()
       post.click() // Exactly one publish action. A missing result must not repeat it.
       const result = await wait(() => D.published(document, job.payload.username, location.href, before), 'TikTok ยืนยันว่าโพสต์สำเร็จ', 90_000)
@@ -118,8 +136,8 @@
       if (job.kind === 'tiktok-post' || job.payload?.inspect === true) {
         try { diagnostic = D.inspectStudio(document) } catch {}
       }
-      return { ok: false, error: String(error.message), needsVerification: error.needsVerification === true || attempt?.submitted === true, ...(diagnostic ? { diagnostic } : {}) }
-    } finally { stopBeat() }
+      return { ok: false, error: String(error.message), phase, needsVerification: error.needsVerification === true || attempt?.submitted === true, ...(diagnostic ? { diagnostic } : {}) }
+    } finally { closeAccountMenu(); stopBeat() }
   }
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     if (message.type === 'PING') { respond({ ok: true, url: location.href }); return }
