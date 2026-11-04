@@ -6,7 +6,7 @@ import { readProfile } from './clip_profile.mjs'
 
 import * as shared from '../../extension/prompts.js'
 
-export const { cleanScript, parseTopics, GENRES } = shared
+export const { cleanScript, parseTopics, GENRES, opensWithHaveYouEver } = shared
 
 /** Blueprint คือแหล่งความจริงเดียวของกติกาทั้งหมด — ส่งไปทั้งฉบับทุกครั้ง ไม่สรุปย่อ */
 export function blueprint(config) {

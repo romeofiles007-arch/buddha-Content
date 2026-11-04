@@ -418,6 +418,23 @@ ${shorter ? 'เก็บประโยคเปิด ใจความหล
 ห้ามใส่หัวข้อ (เช่น "บทพากย์ ${target} นาที — …") และห้ามบอกว่าแก้อะไรไป (เช่น "ตัดให้กระชับแล้ว", "ครบ ${target} นาที") — ทุกบรรทัดที่ตอบจะถูกอ่านออกเสียงในคลิป`
 }
 
+/**
+ * พ.ย. 2026 ผู้ใช้: บทเกือบทุกคลิปขึ้นต้น "คุณเคย…ไหม" (23 จาก 37 คลิป) — เชย น่าเบื่อ ให้เข้าเรื่องเลย
+ * กฎเดียวกันนี้อยู่ใน Blueprint (VDO Concept.txt) และ prompt ข้อความโพสต์ (pipeline/lib/post.mjs) ด้วย
+ */
+export const NO_HAVE_YOU_EVER = 'บรรทัดแรกเข้าเรื่องทันที (เหตุการณ์หรือภาพที่กำลังเกิดขึ้น) · ห้ามขึ้นต้นด้วยคำถามชวนนึก "คุณเคย…ไหม/มั้ย" หรือ "เคยไหม…" และห้ามใช้รูปประโยคนี้ตลอดทั้งบท (ภาษาอื่นก็ห้ามแบบเดียวกัน เช่น "Have you ever…", "你有没有…")'
+
+/**
+ * บทขึ้นต้นด้วย "คุณเคย…ไหม" — autopilot ใช้สั่งเขียนใหม่
+ * ดู 2 บรรทัดแรก (เผื่อมีบรรทัดหัวเรื่องนำ) · คำถามมักยาวข้ามบรรทัด ("คุณเคยโกรธใครบางคน... / จนหัวใจเต้นแรงไหม")
+ * จึงหา ไหม/มั้ย ในบรรทัดนั้นกับอีก 2 บรรทัดถัดไป
+ */
+export function opensWithHaveYouEver(script) {
+  const lines = String(script ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  return lines.slice(0, 2).some((l, i) =>
+    (/^(?:คุณ)?เคย/.test(l) && /ไหม|มั้ย|หรือเปล่า|รึเปล่า/.test(lines.slice(i, i + 3).join(' '))) || /^have you ever\b/i.test(l) || /^你(?:有没有|是否曾)/.test(l))
+}
+
 export function scriptPrompt(blueprint, title, { language = 'th', targetMinutes = 10, wordsPerMinute = 150, profile = null } = {}) {
   const vo = lang(language)
   return `${blueprint}
@@ -438,6 +455,7 @@ ${profile?.category === 'buddha' && language !== 'en' ? `\n${profile.narration =
 - ตอบเป็น narration ล้วนในแชตโดยตรง อย่าสร้างไฟล์ให้ดาวน์โหลด
 - ห้ามใส่ code block, markdown, หัวข้อ, bullet, visual cue, stage direction, วงเล็บกำกับ
 - ห้ามมีคำนำหรือคำปิดท้ายใดๆ นอกจากตัว narration
+- ${NO_HAVE_YOU_EVER}
 - 1 บรรทัด = 1 ช่วงลมหายใจ (ประโยคสั้น 6-14 คำ)
 - ใช้ ... แทนช่วงพักสั้น, เว้นบรรทัดว่างแทนการขึ้นบทใหม่
 - ห้ามใส่ [pause] marker ใดๆ

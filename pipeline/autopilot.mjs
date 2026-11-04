@@ -20,7 +20,7 @@ import { existsSync, readFileSync, writeFileSync, statSync, readdirSync, mkdirSy
 import { join, dirname } from 'node:path'
 import { loadConfig, projectDir, slugify, ROOT } from './lib/config.mjs'
 import { requireBridge, runJob } from './lib/bridge.mjs'
-import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics } from './lib/prompts.mjs'
+import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics, opensWithHaveYouEver } from './lib/prompts.mjs'
 import { saveScript, loadScript } from './lib/stage2.mjs'
 import { shotlistFiles, readRounds, resetRounds, mergeRounds, saveRound, nextRoundPrompt } from './lib/shotlist.mjs'
 import { collectImages } from './lib/shotfile.mjs'
@@ -303,6 +303,12 @@ async function scriptDepartment() {
     if (/[เแโใไ]\s*$/.test(text.trim()) && attempt < 3) {
       console.warn(`   บทที่ได้ขาดกลางคำ ("…${text.trim().slice(-12)}") — ขอเขียนใหม่`)
       feedback = '\n\n⚠️ คำตอบรอบก่อนขาดกลางคำตอนท้าย — เขียนบทใหม่ทั้งหมดให้จบประโยคสุดท้ายครบถ้วน'
+      continue
+    }
+    // ผู้ใช้ไม่เอาบทขึ้นต้น "คุณเคย…ไหม" (เชย ซ้ำทุกคลิป) → ขอใหม่ · รอบสุดท้ายยอมรับ ไม่ให้งานผลิตค้าง
+    if (opensWithHaveYouEver(text) && attempt < 3) {
+      console.warn(`   บทขึ้นต้นด้วย "คุณเคย…ไหม" ("${text.trim().split(/\r?\n/)[0].slice(0, 40)}") — ขอเขียนใหม่ให้เข้าเรื่องเลย`)
+      feedback = '\n\n⚠️ บทรอบก่อนขึ้นต้นด้วยคำถาม "คุณเคย…ไหม" ซึ่งห้ามใช้ — เขียนบทใหม่ทั้งหมด บรรทัดแรกเข้าเรื่องทันทีด้วยเหตุการณ์หรือภาพที่กำลังเกิดขึ้น และห้ามใช้รูปประโยค "คุณเคย…ไหม/เคยไหม" ตลอดทั้งบท'
       continue
     }
     const saved = saveScript(config, title, text)
