@@ -75,6 +75,34 @@ export async function facebookUpload({ pageId, token, file, title, description, 
   } catch (error) { error.needsVerification = submitted; throw error }
 }
 
+/**
+ * ลง Story ของเพจ 1 ตอน (Page Stories API: start → อัปไฟล์ไป rupload → finish)
+ * คลิปต้องแนวตั้ง 9:16 ไม่เกิน 60 วิ — ตัดเป็นตอนไว้ก่อนแล้ว (stageStoryParts) · ไฟล์ที่อัปแล้วใช้ซ้ำในโพสต์อื่นไม่ได้
+ */
+export async function facebookStory({ pageId, token, file, aiGenerated = true }, { fetchImpl = fetch } = {}) {
+  let submitted = false
+  const form = (params) => ({ method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ ...params, access_token: token }).toString() })
+  try {
+    const start = await fetchImpl(`${GRAPH}/${encodeURIComponent(pageId)}/video_stories`, form({ upload_phase: 'start' }))
+    if (!start.ok) throw await failure(start, 'facebook')
+    const { video_id: videoId, upload_url: uploadUrl } = await start.json()
+    if (!videoId || !uploadUrl) throw new Error('Facebook Story: ไม่ได้ URL อัปโหลดกลับมา')
+    if (new URL(uploadUrl).hostname !== 'rupload.facebook.com') throw new Error('Facebook Story: URL อัปโหลดไม่ใช่ของ Facebook — หยุดก่อนส่งไฟล์')
+    const up = await fetchImpl(uploadUrl, {
+      method: 'POST',
+      headers: { authorization: `OAuth ${token}`, offset: '0', file_size: String(statSync(file).size) },
+      body: await openAsBlob(file, { type: 'video/mp4' }),
+    })
+    if (!up.ok) throw await failure(up, 'facebook')
+    submitted = true // finish = เผยแพร่ ถ้าขาดคำตอบหลังจากนี้ อาจขึ้นไปแล้ว
+    const finish = await fetchImpl(`${GRAPH}/${encodeURIComponent(pageId)}/video_stories`, form({ upload_phase: 'finish', video_id: videoId, is_ai_generated: String(aiGenerated) }))
+    if (!finish.ok) throw await failure(finish, 'facebook')
+    const data = await finish.json()
+    if (data.success === false || !(data.post_id || data.success)) throw new Error('Facebook Story: เผยแพร่ไม่สำเร็จ')
+    return { postId: String(data.post_id ?? videoId) }
+  } catch (error) { error.needsVerification = submitted; throw error }
+}
+
 // ── YouTube ───────────────────────────────────────────────────────
 
 export function youtubeAuthUrl({ clientId, redirectUri, state, scopes = YOUTUBE_SCOPES }) {

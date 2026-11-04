@@ -4,7 +4,7 @@ import { createReadStream, existsSync, mkdirSync, openSync, closeSync, readFileS
 import { join } from 'node:path'
 import { copyFile, unlink } from 'node:fs/promises'
 import { findTarget } from './posting.mjs'
-import { run } from './ffmpeg.mjs'
+import { run, probeDuration } from './ffmpeg.mjs'
 
 const blocked = message => Object.assign(new Error(message), { needsVerification: true })
 const sources = identity => [identity.source, ...(identity.sources ?? [])].filter(Boolean)
@@ -71,6 +71,71 @@ export async function stageCover(source, dir, { convert = coverJpeg } = {}) {
     if (statSync(file).size > COVER_MAX_BYTES) throw new Error('ภาพปกใหญ่เกิน 2MB')
     return { file, remove: () => unlink(file) }
   } catch (error) { await unlink(file).catch(() => {}); throw error }
+}
+
+// ── Facebook Story: ตอนละไม่เกิน 60 วิ แนวตั้ง 9:16 → คลิปยาวกว่าตัดเป็นหลายตอน (Facebook เล่นต่อกันเอง) ──
+export const STORY_MAX_SEC = 59 // เพดาน 60 วิ เผื่อ 1 วิ
+const STORY_MIN_SEC = 3 // สั้นกว่านี้ Facebook ไม่รับ
+
+/**
+ * จุดตัดตอน [[เริ่ม, จบ], ...] — ตัดที่ช่วงเงียบ (จบประโยค) ที่ใกล้ 59 วิที่สุด ไม่มีก็ตัดที่ 59 วิ
+ * ตอนท้ายจะเหลือสั้นกว่า 3 วิ → แบ่งช่วงที่เหลือเป็นสองตอนเท่าๆ กันแทน
+ */
+export function storyCuts(duration, silences = []) {
+  if (duration <= STORY_MAX_SEC) return [[0, duration]]
+  const cuts = []
+  let start = 0
+  while (duration - start > STORY_MAX_SEC) {
+    const limit = start + STORY_MAX_SEC
+    const pause = silences.map((s) => (s.start + s.end) / 2).filter((m) => m > start + 30 && m <= limit && duration - m >= STORY_MIN_SEC).pop()
+    let end = pause ?? limit
+    if (duration - end < STORY_MIN_SEC) end = start + (duration - start) / 2
+    cuts.push([start, end])
+    start = end
+  }
+  cuts.push([start, duration])
+  return cuts
+}
+
+/** ช่วงเงียบในเสียง (วินาที) จาก ffmpeg silencedetect */
+async function silences(file) {
+  const out = await run('ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-vn', '-af', 'silencedetect=noise=-35dB:d=0.3', '-f', 'null', '-'])
+  const list = []
+  let from = null
+  for (const line of String(out).split(/\r?\n/)) {
+    const a = /silence_start: ([\d.]+)/.exec(line)
+    if (a) from = Number(a[1])
+    const b = /silence_end: ([\d.]+)/.exec(line)
+    if (b && from != null) { list.push({ start: from, end: Number(b[1]) }); from = null }
+  }
+  return list
+}
+
+/** เข้ารหัส 1 ตอนตามสเปก Story: 1080x1920 · 30fps คงที่ · H.264 GOP 2 วิ · AAC 48kHz สเตอริโอ */
+async function storyPart(source, out, start, length) {
+  await run('ffmpeg', ['-y', '-v', 'error', '-ss', start.toFixed(3), '-i', source, '-t', length.toFixed(3),
+    '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+    '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', out])
+}
+
+/** ไฟล์ Story ทุกตอนไว้ใน staging · คืน { files, cuts, remove } */
+export async function stageStoryParts(file, dir, { probe = probeDuration, detect = silences, encode = storyPart } = {}) {
+  const duration = await probe(file)
+  if (!(duration >= STORY_MIN_SEC)) throw new Error('คลิปสั้นเกินไปสำหรับ Story (ต้องยาวอย่างน้อย 3 วิ)')
+  const cuts = storyCuts(duration, duration > STORY_MAX_SEC ? await detect(file).catch(() => []) : [])
+  const staging = join(dir, 'staging'); mkdirSync(staging, { recursive: true })
+  const files = []
+  const remove = () => Promise.all(files.map((f) => unlink(f).catch(() => {})))
+  try {
+    for (const [start, end] of cuts) {
+      const out = join(staging, randomUUID() + '.mp4')
+      files.push(out)
+      await encode(file, out, start, end - start)
+      if (!existsSync(out)) throw new Error('ตัดคลิปสำหรับ Story ไม่สำเร็จ')
+    }
+    return { files, cuts, remove }
+  } catch (error) { await remove(); throw error }
 }
 
 export async function importDeliveryHistory(ledger, queue, accounts, pathOf) {

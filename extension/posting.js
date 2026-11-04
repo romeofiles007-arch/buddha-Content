@@ -583,6 +583,13 @@ export function initPosting({ api, localApp }) {
         ? el('ul', { className: 'pAccounts' }, data.facebook.map((a) => el('li', {},
           el('strong', {}, a.name), el('span', { className: 'pMeta' }, `ID ${a.pageId} · โทเค็น ${a.token}`),
           el('button', { type: 'button', className: 'ghost', on: { click: () => { if (confirm(`ลบเพจ "${a.name}" ออกจากโหมดโพสต์? (โทเค็นจะถูกลบจากเครื่องนี้)`)) call('/api/posting/facebook/remove', { id: a.id }, 'ลบเพจแล้ว').catch(() => {}) } } }, 'ลบ'),
+          // ลง Story ทุก N โพสต์ — คลิปยาวกว่า 60 วิ ตัดเป็น 2 ตอนต่อกัน
+          el('label', { className: 'pField' }, 'ลง Story ด้วย',
+            el('select', {
+              'aria-label': `รอบลง Story ของ ${a.name}`,
+              on: { change: (e) => call('/api/posting/facebook/update', { id: a.id, storyEvery: Number(e.target.value) }, Number(e.target.value) ? 'บันทึกแล้ว · เริ่มนับรอบ Story ใหม่' : 'ปิดการลง Story แล้ว').catch(() => {}) },
+            }, [[0, 'ปิด'], [5, 'ทุก 5 โพสต์'], [10, 'ทุก 10 โพสต์'], [20, 'ทุก 20 โพสต์']].map(([v, t]) => el('option', { value: String(v), selected: Number(a.storyEvery ?? 0) === v }, t)))),
+          a.storyIn ? el('span', { className: 'pMeta' }, a.storyIn === 1 ? 'โพสต์ถัดไปลง Story ด้วย' : `อีก ${a.storyIn} โพสต์ถึงรอบ Story · คลิปยาวกว่า 60 วิ แบ่งเป็น 2 ตอน`) : null,
           catPicker('facebook', a))))
         : el('p', { className: 'hint' }, 'ยังไม่มีเพจ'),
       el('div', { className: 'pGrid2' },

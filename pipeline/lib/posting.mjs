@@ -300,6 +300,23 @@ const postEvent = (item) => ({
 })
 
 /**
+ * Facebook Story ตามรอบ — ตั้งต่อเพจ: ลงหน้าเพจครบทุก N โพสต์ → โพสต์ที่ N ลง Story ด้วย (0 = ปิด)
+ * นับเฉพาะโพสต์หลังเปิดตั้งค่า (storySince) และหลัง Story ครั้งล่าสุด · Story ที่ไม่รู้ผล (needsVerification) นับเป็นลงแล้ว กันลงถี่
+ * Story พลาดแบบรู้ว่ายังไม่ขึ้น → ยังถึงรอบอยู่ โพสต์ถัดไปลองใหม่เอง
+ */
+export const STORY_EVERY = [0, 5, 10, 20]
+export function postsSinceStory(queue, key, since = 0, excludeId = null) {
+  let last = Number(since) || 0
+  for (const q of queue) {
+    const s = q.results?.[key]?.story
+    if (s && (s.ok || s.needsVerification) && Number(s.at) > last) last = Number(s.at)
+  }
+  return queue.filter((q) => q.id !== excludeId && q.results?.[key]?.ok && !q.results[key].duplicateSkipped && Number(q.results[key].at) > last).length
+}
+export const storyDue = (queue, key, account, excludeId = null) =>
+  Number(account?.storyEvery) > 0 && postsSinceStory(queue, key, account.storySince, excludeId) + 1 >= Number(account.storyEvery)
+
+/**
  * เหตุการณ์ที่เกิดหลังเวลา since — โพสต์เสร็จ (posted) / โพสต์พลาดบางที่ (failed) / AI ไม่ให้ผ่าน รอคนดู (held)
  * finishedAt = เวลาที่พยายามโพสต์รอบล่าสุดจบ (ทั้งสำเร็จและพลาด)
  */
