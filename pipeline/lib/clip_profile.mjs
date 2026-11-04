@@ -13,7 +13,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from
 import { join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { ROOT, loadConfig } from './config.mjs'
-import { categoryOf, monkInTitle, ART_STYLES, BUDDHA_NARRATIONS } from '../../extension/prompts.js'
+import { categoryOf, monkInTitle, ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS } from '../../extension/prompts.js'
 import { readSelfMonk, selfMonkReady, SELF_NOT_READY } from './self_monk.mjs'
 
 const UA = { 'user-agent': 'DhammaAuto/1.0 (personal Dhamma video tool; Wikimedia API)' }
@@ -26,7 +26,10 @@ const profileFile = (slug) => join(refDir(slug), 'profile.json')
 export function readProfile(slug) {
   if (!slug) return null
   try {
-    return existsSync(profileFile(slug)) ? JSON.parse(readFileSync(profileFile(slug), 'utf8')) : null
+    const profile = existsSync(profileFile(slug)) ? JSON.parse(readFileSync(profileFile(slug), 'utf8')) : null
+    // ลายเส้นที่เลิกใช้แล้ว (ภาพวาดจีน) → อ่านเป็นลายเส้นที่มาแทน ไม่แก้ไฟล์ของคลิป
+    if (profile && RETIRED_ART_STYLES[profile.artStyle]) profile.artStyle = RETIRED_ART_STYLES[profile.artStyle]
+    return profile
   } catch {
     return null
   }
@@ -54,7 +57,8 @@ function clipStyle(category, title) {
   // ผลิตต่อเนื่องส่ง CLIP_ART_STYLE / CLIP_NARRATION มาแทนตั้งค่าคลิป (สุ่มต่อคลิปโดยไม่แก้ค่าของผู้ใช้)
   // โหมดพระสอนธรรม: การ์ตูนหน้าเหมือนพระเสมอ (ลายเส้นภาพวาดเป็นสัดส่วนสมจริง ไม่ใช่การ์ตูน — ผู้ใช้เลือกการ์ตูน)
   if (category === 'self') return { artStyle: 'doodle' }
-  const art = process.env.CLIP_ART_STYLE || config.art?.style
+  const chosen = process.env.CLIP_ART_STYLE || config.art?.style
+  const art = RETIRED_ART_STYLES[chosen] ?? chosen
   const artStyle =ART_STYLES[art] && art !== 'random' ? art : art === 'random' ? pick(Object.keys(ART_STYLES).filter((k) => k !== 'random')) : 'doodle'
   if (category !== 'buddha') return { artStyle }
   const want = process.env.CLIP_NARRATION || config.script?.buddhaNarration

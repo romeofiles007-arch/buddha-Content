@@ -124,6 +124,7 @@ export function flowPrompt(agentBrief, config = loadConfig(), slug = null) {
 เริ่มสร้างภาพทุกช็อตทันทีจนครบ ไม่ต้องสรุปแผน Storyboard และไม่ต้องถามยืนยันก่อน
 ${bodyStyleFlowNote(character, readProfile(slug))}${shared.ART_STYLES[readProfile(slug)?.artStyle]?.flow ? `\n${shared.ART_STYLES[readProfile(slug).artStyle].flow}` : ''}${charNote ? `\n${charNote}` : ''}${portrait ? '\nทุกภาพเป็นแนวตั้ง 9:16 จัดองค์ประกอบแนวตั้ง ตัวละครอยู่กลางภาพ' : ''}
 ทุกภาพต้องเต็มเฟรม ฉากหลังยาวถึงขอบทุกด้าน ห้ามมีแถบว่าง ขอบขาว หรือพื้นที่เปล่าด้านบน/ล่าง
+${shared.FULL_BLEED_RULE}
 ทุกภาพลงสีเต็มทั้งภาพ สีสดอิ่ม ทั้งตัวละครและฉากหลัง — ห้ามภาพขาวดำ โทนเทา ซีเปีย สีซีด หรือลายเส้นไม่ลงสีเด็ดขาด
 ตั้งชื่อแต่ละภาพเป็นชื่อไฟล์ที่อยู่หน้าบรรทัดของ shot นั้นเป๊ะๆ เช่น "00_00_00.png SHOT 01"
 ชื่อไฟล์ เลข SHOT และ @TAG ใช้ตั้งชื่อภาพเท่านั้น ห้ามเขียนลงในภาพ

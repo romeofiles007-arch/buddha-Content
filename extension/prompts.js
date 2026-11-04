@@ -114,32 +114,26 @@ export const BUDDHA_NARRATIONS = {
  * ลายเส้นของภาพ (ตั้งค่าคลิป → "ลายเส้น") — random = สุ่มต่อคลิป บันทึกไว้ใน profile
  *   doodle     — การ์ตูน 2D doodle ตาม VISUAL STYLE DNA ของ Blueprint (เดิม)
  *   watercolor — ภาพวาดสีน้ำแบบจิตรกรรมไทยพุทธกาล (คลิปตัวอย่าง "ย้อนรอยพุทธกาล")
- *   chinese    — ภาพวาดหมึกจีนพุทธศิลป์ (shuimo + gongbi)
  *   body / bodyFlow = แบบตัวละครที่ใช้แทน FULL-BODY/STICK MODE (character.mjs)
+ * พ.ย. 2026 เอา "ภาพวาดจีน" ออก — ผู้ใช้: ไม่ได้รับความนิยม ดูล้าหลัง ภาพมีขอบขาวเหมือนภาพบนกระดาษ ไกลตัว
+ * (โปรไฟล์คลิปเก่าที่เป็น 'chinese' อ่านเป็น watercolor — ดู RETIRED_ART_STYLES)
  */
+export const RETIRED_ART_STYLES = { chinese: 'watercolor' }
+/** ห้ามภาพออกมาเป็น "ภาพวาดบนกระดาษ" ที่มีขอบขาว/กรอบ — ใช้กับทุกลายเส้น */
+export const FULL_BLEED_RULE = 'ภาพเต็มเฟรมจรดขอบทุกด้าน (full-bleed) — ห้ามวาดเป็นภาพบนแผ่นกระดาษ ภาพในกรอบ หรือภาพม้วน ห้ามขอบขาว ขอบกระดาษ กรอบรูป ขอบมน หรือขอบจางเป็นสีขาว'
 export const ART_STYLES = {
   doodle: { label: 'การ์ตูน doodle' },
   watercolor: {
     label: 'สีน้ำพุทธกาล',
     rule: `**ลายเส้นของคลิปนี้: สีน้ำพุทธกาล — ใช้แทน ART STYLE และ CHARACTERS ใน VISUAL STYLE DNA ของ Blueprint ทั้งคลิป (ห้าม doodle ห้ามตัวก้าง ห้ามการ์ตูนหัวโต)**
-- ART STYLE ใน Style Bible ให้เขียนว่า: Traditional Thai Buddhist watercolor illustration — soft ink linework with painterly watercolor washes and gentle paper texture, warm golden-saffron and amber palette with misty jade-green forests and soft blue moonlight, glowing golden light, detailed ancient Indian / Thai temple architecture and landscapes, cinematic wide compositions, reverent and serene mood
+- ART STYLE ใน Style Bible ให้เขียนว่า: Traditional Thai Buddhist watercolor illustration — soft ink linework with painterly watercolor washes painted edge to edge (full-bleed, no paper border, no white margin, no frame), warm golden-saffron and amber palette with misty jade-green forests and soft blue moonlight, glowing golden light, detailed ancient Indian / Thai temple architecture and landscapes, cinematic wide compositions, reverent and serene mood
 - ตัวละครวาดแบบภาพวาดสัดส่วนสมจริง (ไม่ใช่การ์ตูน): ใบหน้ามีรายละเอียด ผิวและผ้ามีแสงเงาแบบสีน้ำ · พระสงฆ์ห่มจีวรสีกรัก/เหลืองหม่น · พระพุทธเจ้าผิวทอง พระเกศาขมวด รัศมีเปลวไฟทรงไทยเรืองแสงทองรอบพระเศียร
 - ทุกช็อตเหมือนภาพจิตรกรรมหนึ่งภาพ: ฉากหลังละเอียด (ป่าใหญ่ ต้นสาละ หมอก แสงจันทร์ วิหาร เจดีย์ ทุ่งนา แม่น้ำ) แสงทองนุ่ม หมอกบาง ใบไม้/กลีบดอกลอย
+- ${FULL_BLEED_RULE}
 - ตัวอักษรบนภาพใช้น้อยที่สุด (ซับไตเติลใส่ตอนตัดต่อ)`,
-    flow: 'ลายเส้น: ภาพวาดสีน้ำแบบจิตรกรรมไทยพุทธกาล ลายเส้นหมึกนุ่ม ลงสีน้ำซึม โทนทองอำพันกับเขียวหยกและฟ้าจันทร์ แสงทองเรือง ฉากหลังละเอียด ตัวละครสัดส่วนสมจริงแบบภาพวาด — ไม่ใช่การ์ตูน doodle ไม่ใช่ตัวก้าง ใช้ลายเส้นนี้ทุกภาพ',
+    flow: 'ลายเส้น: ภาพวาดสีน้ำแบบจิตรกรรมไทยพุทธกาล ลายเส้นหมึกนุ่ม ลงสีน้ำซึมเต็มเฟรมถึงขอบ (ไม่ใช่ภาพบนกระดาษ ไม่มีขอบขาว) โทนทองอำพันกับเขียวหยกและฟ้าจันทร์ แสงทองเรือง ฉากหลังละเอียด ตัวละครสัดส่วนสมจริงแบบภาพวาด — ไม่ใช่การ์ตูน doodle ไม่ใช่ตัวก้าง ใช้ลายเส้นนี้ทุกภาพ',
     body: '- แบบตัวละคร: ภาพวาดสีน้ำสัดส่วนสมจริง (ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง ไม่ใช่หัวโต) ตามลายเส้นสีน้ำพุทธกาลด้านล่าง · เขียนแบบนี้ใน Character Bible ด้วย',
     bodyFlow: 'ตัวละครทุกตัววาดแบบภาพวาดสีน้ำสัดส่วนสมจริง ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง',
-  },
-  chinese: {
-    label: 'ภาพวาดจีน',
-    rule: `**ลายเส้นของคลิปนี้: ภาพวาดหมึกจีน — ใช้แทน ART STYLE และ CHARACTERS ใน VISUAL STYLE DNA ของ Blueprint ทั้งคลิป (ห้าม doodle ห้ามตัวก้าง ห้ามการ์ตูนหัวโต)**
-- ART STYLE ใน Style Bible ให้เขียนว่า: Traditional Chinese Buddhist ink-wash painting (shuimo) with fine gongbi detail on the figures — expressive black ink brushstrokes, fully colored with rich translucent watercolor washes (vermilion, ochre, jade green, indigo, touches of gold) — never monochrome, aged rice-paper / silk texture, generous empty space, misty layered mountains, pine and bamboo, lotus ponds, ancient temple pavilions with curved roofs, drifting clouds, serene Chan Buddhist mood, cinematic scroll-painting compositions
-- ตัวละครวาดแบบภาพวาดพู่กันจีนสัดส่วนสมจริง (ไม่ใช่การ์ตูน): เส้นพู่กันเรียวคม ใบหน้าสงบ ผ้าพลิ้วเป็นริ้ว · พระสงฆ์ห่มจีวร · พระพุทธเจ้าผิวทอง พระเกศาขมวด มีวงรัศมีทองกลมรอบพระเศียรแบบภาพพุทธศิลป์จีน
-- ทุกช็อตเหมือนภาพม้วนจิตรกรรมจีนหนึ่งภาพ: เว้นพื้นที่ว่างกว้าง หมอกลอยเป็นชั้น ภูเขาไกลจางเป็นหมึกอ่อน ดอกบัว กิ่งสน นกกระเรียน
-- ห้ามมีตัวอักษรจีน ตราประทับ หรือข้อความใดๆ บนภาพ (ซับไตเติลใส่ตอนตัดต่อ)`,
-    flow: 'ลายเส้น: ภาพวาดหมึกจีนพุทธศิลป์ พู่กันหมึกดำลงสีน้ำเต็มภาพ (ชาด เหลืองดิน เขียวหยก คราม แต้มทอง — ไม่ใช่หมึกขาวดำ) พื้นกระดาษสาเก่า เว้นที่ว่างกว้าง ภูเขาในหมอก สน ไผ่ บัว ศาลาหลังคางอน ตัวละครสัดส่วนสมจริงแบบภาพพู่กัน — ไม่ใช่การ์ตูน doodle ไม่ใช่ตัวก้าง ห้ามมีตัวอักษรจีนหรือตราประทับ ใช้ลายเส้นนี้ทุกภาพ',
-    body: '- แบบตัวละคร: ภาพวาดพู่กันจีนสัดส่วนสมจริง (ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง ไม่ใช่หัวโต) ตามลายเส้นภาพวาดหมึกจีนด้านล่าง · เขียนแบบนี้ใน Character Bible ด้วย',
-    bodyFlow: 'ตัวละครทุกตัววาดแบบภาพพู่กันจีนสัดส่วนสมจริง ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง',
   },
   random: { label: '🎲 สุ่ม' },
 }

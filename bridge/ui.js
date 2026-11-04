@@ -14,7 +14,7 @@ import { pipeline as pipeStreams } from 'node:stream/promises'
 import { join, resolve, sep, extname } from 'node:path'
 import { ROOT, loadConfig, updateConfig, slugify } from '../pipeline/lib/config.mjs'
 import { topicsPrompt, scriptPrompt, parseTopics, cleanScript, GENRES } from '../pipeline/lib/prompts.mjs'
-import { ART_STYLES, BUDDHA_NARRATIONS, categoryOf } from '../extension/prompts.js'
+import { ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS, categoryOf } from '../extension/prompts.js'
 import { createProduction } from './production.js'
 import { saveScript, loadScript } from '../pipeline/lib/stage2.mjs'
 import { createRunner } from './runner.js'
@@ -925,7 +925,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         ]
         return json(res, 200, {
           orientation: c.render.orientation === 'portrait' ? 'portrait' : 'landscape',
-          artStyle: ART_STYLES[c.art?.style] ? c.art.style : 'doodle',
+          artStyle: ART_STYLES[RETIRED_ART_STYLES[c.art?.style] ?? c.art?.style] ? RETIRED_ART_STYLES[c.art.style] ?? c.art.style : 'doodle',
           buddhaNarration: BUDDHA_NARRATIONS[c.script.buddhaNarration] ? c.script.buddhaNarration : 'teach',
           subtitles: SUBTITLE_STYLES[c.render.subtitles?.style] ? c.render.subtitles.style : 'off',
           pause: PAUSE_PRESETS[c.tts.pause] ? c.tts.pause : 'normal',

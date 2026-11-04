@@ -30,13 +30,15 @@ const Q = globalThis.DhammaFlowQuota
 let expectedAccount = ''
 const accountEmail = () => Q.emailOf(Q.profileLabel(document))
 async function verifiedAccountEmail() {
+  let detail = ''
   for (let attempt = 0; attempt < 10; attempt++) {
-    const result = await chrome.runtime.sendMessage({ type: 'FLOW_ACCOUNT_IDENTITY' })
+    // รอบสุดท้ายขอรายละเอียดว่าเห็นอะไรบนหน้า — ใช้แก้ตอนหน้า Flow เปลี่ยน
+    const result = await chrome.runtime.sendMessage({ type: 'FLOW_ACCOUNT_IDENTITY', diagnose: attempt === 9 })
     if (result?.ok && result.email) return result.email
-    if (result?.error) break
+    if (result?.error) { detail = ` (${result.error})`; break }
     await sleep(1000)
   }
-  throw new Error('FLOW_ACCOUNTS_EXHAUSTED: อ่านบัญชี Google Flow ปัจจุบันไม่ได้ — หยุดก่อนสร้างภาพ')
+  throw new Error(`FLOW_ACCOUNTS_EXHAUSTED: อ่านบัญชี Google Flow ปัจจุบันไม่ได้ — หยุดก่อนสร้างภาพ${detail}`)
 }
 class FlowQuotaError extends Error {
   constructor(quota) { super(quota.reason); this.quota = quota }

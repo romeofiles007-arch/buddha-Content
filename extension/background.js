@@ -436,7 +436,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ ok: false, error: 'คำขอไม่ได้มาจากแท็บ Google Flow' })
       return
     }
-    flowIdentity(chrome, _sender.tab.id).then(email => sendResponse({ ok: !!email, email })).catch(error => sendResponse({ ok: false, error: error.message }))
+    flowIdentity(chrome, _sender.tab.id, { diagnose: msg.diagnose === true }).then(email => sendResponse({ ok: !!email, email })).catch(error => sendResponse({ ok: false, error: error.message }))
     return true
   }
   if (msg.type === 'TIKTOK_SET_FILE' || msg.type === 'TIKTOK_SET_CAPTION' || msg.type === 'TIKTOK_SET_COVER') {

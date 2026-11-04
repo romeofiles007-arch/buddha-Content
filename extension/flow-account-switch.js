@@ -28,18 +28,39 @@ export async function rotateAccount({ currentEmail, payload, store, list, select
   return { email: Q.emailOf(next.email), previousEmail: current }
 }
 
-export async function flowIdentity(chrome, tabId) {
+export async function flowIdentity(chrome, tabId, { diagnose = false } = {}) {
   const tab = await chrome.tabs.get(tabId)
   if (!isFlow(tab.url)) return ''
   const [r] = await chrome.scripting.executeScript({ target: { tabId }, func: Q.profileLabel })
   if (Q.emailOf(r?.result)) return Q.emailOf(r.result)
   // Google renders the profile within a component; closed roots remain visible to accessibility.
+  // 2026-11-04 Flow's new layout: also look in child frames and in image/menu controls, but only
+  // controls (never page text such as prompts) whose name ties an email to an account/profile.
   return withDebugger(chrome, tabId, async command => {
-    const { nodes } = await command('Accessibility.getFullAXTree')
-    const labels = nodes.filter(n => !n.ignored && ['button', 'link'].includes(n.role?.value)).map(n => n.name?.value ?? '')
-    return Q.emailOf(labels.find(label => /(?:Google Account|บัญชี Google).*@/i.test(label)))
+    const frames = [null]
+    try {
+      const { frameTree } = await command('Page.getFrameTree')
+      const walk = tree => { for (const child of tree.childFrames ?? []) { frames.push(child.frame.id); walk(child) } }
+      walk(frameTree)
+    } catch {}
+    const seen = []
+    for (const frameId of frames) {
+      let nodes = []
+      try { ({ nodes } = await command('Accessibility.getFullAXTree', frameId ? { frameId } : {})) } catch { continue }
+      const labels = nodes.filter(n => !n.ignored && CONTROL_ROLES.includes(n.role?.value)).map(n => n.name?.value ?? '')
+      const hit = labels.find(label => /(?:Google Account|บัญชี Google).*@/i.test(label)) ?? labels.find(label => ACCOUNT_WORDS.test(label) && Q.emailOf(label))
+      if (hit) return Q.emailOf(hit)
+      seen.push(...labels.filter(label => ACCOUNT_WORDS.test(label)))
+    }
+    if (diagnose) {
+      const masked = [...new Set(seen)].slice(0, 5).map(label => label.replace(/[^\s@()]+@/g, '***@').slice(0, 80))
+      throw new Error(`ไม่พบปุ่มบัญชี Google บนหน้า Flow${masked.length ? ` (ปุ่มที่เกี่ยวกับบัญชีที่เห็น: ${masked.join(' | ')})` : ' (ไม่เห็นปุ่มบัญชีเลย — หน้า Flow อาจยังโหลดไม่เสร็จหรือออกจากระบบอยู่)'}`)
+    }
+    return ''
   })
 }
+const CONTROL_ROLES = ['button', 'link', 'img', 'image', 'menuitem', 'menuitemradio', 'tab']
+const ACCOUNT_WORDS = /account|บัญชี|profile|โปรไฟล์|signed in|ลงชื่อเข้าใช้/i
 
 async function withDebugger(chrome, tabId, fn) {
   const target = { tabId }

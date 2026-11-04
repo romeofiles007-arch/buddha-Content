@@ -41,3 +41,22 @@ test('a closed profile component is read through its real accessible Google acco
   }}}
   assert.equal(await flowIdentity(chrome,7),'b@x.com')
 })
+
+// 2026-11-04: Flow's new layout — the identity check stopped finding the account button.
+const axChrome = (frames) => ({runtime:{},tabs:{get:async()=>({url:'https://flow.google.com/project/p1'})},scripting:{executeScript:async()=>[{result:''}]},debugger:{attach:(_t,_v,cb)=>cb(),detach:(_t,cb)=>cb(),sendCommand:(_t,method,params,cb)=>{
+  if(method==='Page.getFrameTree') return cb({frameTree:{frame:{id:'main'},childFrames:Object.keys(frames).filter(k=>k!=='main').map(id=>({frame:{id}}))}})
+  assert.equal(method,'Accessibility.getFullAXTree')
+  cb({nodes:frames[params.frameId ?? 'main'] ?? []})
+}}})
+test('the account control is also found inside a child frame or as an image control', async()=>{
+  assert.equal(await flowIdentity(axChrome({main:[],bar:[{role:{value:'button'},name:{value:'Google Account: B (b@x.com)'}}]}),7),'b@x.com')
+  assert.equal(await flowIdentity(axChrome({main:[{role:{value:'img'},name:{value:'Profile picture for c@x.com'}}]}),7),'c@x.com')
+})
+test('page text and inputs holding an email never count as the signed-in account', async()=>{
+  const chrome=axChrome({main:[{role:{value:'StaticText'},name:{value:'Google Account: Evil (e@x.com)'}},{role:{value:'textbox'},name:{value:'Account a@x.com'}},{role:{value:'button'},name:{value:'Share with d@x.com'}}]})
+  assert.equal(await flowIdentity(chrome,7),'')
+})
+test('the last identity attempt explains what account controls were visible, with emails masked', async()=>{
+  await assert.rejects(flowIdentity(axChrome({main:[{role:{value:'button'},name:{value:'Account menu'}}]}),7,{diagnose:true}),/ไม่พบปุ่มบัญชี Google.*Account menu/)
+  await assert.rejects(flowIdentity(axChrome({main:[]}),7,{diagnose:true}),/ไม่เห็นปุ่มบัญชีเลย/)
+})
