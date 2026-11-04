@@ -270,8 +270,8 @@ OUTPUT 4 ภาพปก              → prompt ภาพปกคลิป
 - ตัวละครหลัก (คนธรรมดาที่กำลังทุกข์/สงสัย/ได้คิด) หน้าใหญ่ใกล้กล้อง อารมณ์ชัด (ครุ่นคิด/เศร้า/โล่งใจ/สงสัย)
 - สิ่งที่เป็นหัวใจของเรื่อง 1 อย่าง (ดอกบัว ใบโพธิ์ ลูกศร หัวใจที่ร้อน ฯลฯ) ชี้ด้วยลูกศรหรือวงกลมสีส้ม/แดง — **ห้ามชี้ลูกศรไปที่พระพุทธเจ้า พระสงฆ์ หรือพระพุทธรูป**
 - พระพุทธเจ้า/พระพุทธรูปบนปก: อยู่ด้านหลังหรือด้านข้าง สงบ สง่า มีรัศมีทองอ่อน ห้ามใช้เป็นตัวแสดงอารมณ์เกินจริง ห้ามตัดครึ่งหน้า ห้ามวางต่ำกว่าตัวอักษรหรือตัวละครอื่นแบบไม่เหมาะสม
-- ฉากหลังบอกบรรยากาศ (ต้นโพธิ์ สระบัว วัด ป่า แสงอรุณ) สีสด แต่เรียบกว่าตัวละคร ไม่รก · อ่านรู้เรื่องแม้เห็นภาพเล็กบนมือถือ
-- ห้ามภาพ/ฉากหลังขาวดำ โทนเทา ซีเปีย สีซีด หรือลายเส้นดินสอไม่ลงสีเด็ดขาด · อารมณ์เศร้า/ตึงเครียดใช้สีเข้มอิ่ม (คราม ม่วง เขียวอมฟ้า) กับแสงเทียน/แสงทองอุ่น แทนสีเทา · ห้ามใช้คำว่า "เทา" หรือ "หม่น" บรรยายโทนฉาก
+- ฉากหลังบอกบรรยากาศ (ต้นโพธิ์ สระบัว วัด ป่า แสงเช้า) สีอิ่มแต่สบายตา โทนตามอารมณ์เรื่อง แต่เรียบกว่าตัวละคร ไม่รก · อ่านรู้เรื่องแม้เห็นภาพเล็กบนมือถือ
+- ห้ามภาพ/ฉากหลังขาวดำ โทนเทา ซีเปีย สีซีด หรือลายเส้นดินสอไม่ลงสีเด็ดขาด · อารมณ์เศร้า/ตึงเครียดใช้สีเข้มอิ่ม (คราม ม่วง เขียวอมฟ้า) กับแสงนวลจุดเดียว (แสงจันทร์ แสงหน้าต่าง เทียนเล่มเล็ก) แทนสีเทา · ห้ามใช้คำว่า "เทา" หรือ "หม่น" บรรยายโทนฉาก
 - ชวนสงสัยแต่ตรงกับเนื้อหาจริง · สไตล์และตัวละครเดียวกับ Style Bible / Character Bible
 
 ---
@@ -286,7 +286,7 @@ OUTPUT 4 ภาพปก              → prompt ภาพปกคลิป
 === VISUAL STYLE DNA ===
 
 ART STYLE:
-- Hand-drawn 2D doodle cartoon animation, warm and peaceful mood
+- Hand-drawn 2D doodle cartoon animation, calm, cool and peaceful mood (easy on the eyes)
 - Flat colors, bold dark-brown/black outlines
 - Slightly imperfect sketchy lines (drawn fast with a marker), gentle and friendly
 
@@ -295,7 +295,7 @@ A) STICK MODE (default — no reference character image attached):
 - Simple stick figures with large circular heads
 - Dot eyes, expressive thick brow lines
 - Sometimes fully colored heads/bodies
-  (red = angry/hot-headed, white = neutral, soft gold glow = calm/peaceful mind)
+  (red = angry/hot-headed, white = neutral, soft sky-blue/white glow = calm/peaceful mind)
 - Props/costume pieces drawn on the stick body (scarf, office lanyard, phone, alms bowl) to tell characters apart
 B) FULL-BODY MODE (a reference character image is attached):
 - Full-body cartoon characters — NOT stick figures: solid torso, shoulders, arms and legs with volume
@@ -322,39 +322,46 @@ BACKGROUNDS (illustrated environments — never an empty single-color wall):
 - 3–6 story props that fit the narration (e.g., Thai temple = gilded roof tiers, chofa finials, bell, candles, lotus offerings, bodhi tree)
 - Buddha-era India: forest groves, Bodhi tree, simple huts, riverbanks, dusty village roads, palace of Kapilavastu
 - Modern life: Thai city condo, office desk with laptop, BTS train, night street food stall, phone glowing in a dark bedroom
-- Lighting & time of day set the mood: golden dawn, soft candlelight, moonlit forest, warm sunset over rice fields
+- Lighting & time of day follow the mood of the narration (see COLOR MOOD): soft morning daylight, misty blue dawn, cool moonlit forest, rainy window light · warm light (candle, sunset) only when the line is about warmth/love/hope, and only as a small light source — never a yellow wash over the whole frame
 - Rich but controlled color: one dominant hue per scene + a contrasting accent; background slightly softer/lighter than characters so characters pop
-- ALWAYS full saturated color. NEVER black-and-white, grayscale, sepia, desaturated/muted, or uncolored pencil-sketch backgrounds — sad/tense moods use deeper saturated hues (deep indigo, violet, teal) + warm candle/golden light, not gray. Do not describe scene tones as "เทา" or "หม่น"
+- ALWAYS full saturated color. NEVER black-and-white, grayscale, sepia, desaturated/muted, or uncolored pencil-sketch backgrounds — sad/tense moods use deeper saturated hues (deep indigo, violet, teal) + one soft light source (moonlight, window light, a small candle), not gray. Do not describe scene tones as "เทา" or "หม่น"
 - Allowed: simple cel-shading, soft cast shadows, light hatching/dots for texture, sky gradients, light rays through trees
-- Solid bold single-color backgrounds ONLY for pattern-interrupt / reveal / key-teaching shots (กฎ 6) — e.g., one lotus on deep indigo, one Bodhi leaf on saffron
+- Solid bold single-color backgrounds ONLY for pattern-interrupt / reveal / key-teaching shots (กฎ 6) — e.g., one lotus on deep indigo, one Bodhi leaf on soft teal
 
 ON-SCREEN TEXT:
 - Bold hand-lettered marker font, 1–4 short words in the clip's language (English = ALL CAPS)
 - Placed at top of frame
-- Color = SAFFRON ORANGE, DEEP BROWN, or GOLD-YELLOW (red only for anger/danger)
+- Color = WHITE with a dark outline, SOFT SKY BLUE, or DEEP INDIGO (red only for anger/danger · saffron only to highlight one Dhamma word)
 
 LABELS & ARROWS:
-- Brown or gold diagonal arrows pointing at objects (never at the Buddha, monks, or Buddha images)
+- Deep indigo or white diagonal arrows pointing at objects (never at the Buddha, monks, or Buddha images)
 - Short word beside arrowhead (clip's language)
 
 THOUGHT BUBBLES:
 - Classic cloud-shape
 - Short text inside in the clip's language (e.g., "HMMMM", "?", "WAIT..." / "หืมม", "?", "เดี๋ยวนะ...")
 
-COLOR PALETTE (base — add tints/shades of these for depth):
-- Saffron orange #E8892B
-- Robe gold #D9A425
-- Lotus pink #F29BB5
-- Lotus white #FFF8EC
-- Bodhi green #3E9B4F
-- Temple red #B53A2E
-- Sky blue #6EB5E8
-- Deep indigo night #1F2A5A
+COLOR PALETTE (base is COOL and easy on the eyes — the whole frame is never washed yellow, orange, amber or sepia):
+- Mist sky blue #A9CDE8
+- Calm blue #6EB5E8
 - Teal pond #1F9A8E
-- Earth brown #8B5E3C
-- Sand tan #D9B47A
-- Candle yellow #F7C948
+- Sage / jade green #7FB59A
+- Bodhi green #3E9B4F
+- Lavender dusk #A99BD1
+- Deep indigo night #1F2A5A
+- Lotus pink #F29BB5
+- Lotus white #F7FAFC
 - White #FFFFFF
+Small warm accents only (never the whole scene): saffron robe #E8892B (monks' robes — keep accurate), soft gold #D9A425 (Buddha's halo, candle flame), temple red #B53A2E, earth brown #8B5E3C
+
+COLOR MOOD (pick per scene from that part of the narration — one clip keeps one cool base tone, the mood shifts scene by scene):
+- Calm / teaching / mindfulness → soft cool daylight: mist blue, sage green, white
+- Sad / lonely / grief → deep indigo and blue-violet with one soft cool light (moonlight, window)
+- Anxious / stressed / overthinking → night blue and dark teal, phone/screen glow, small red accent for tension
+- Anger → deep teal/indigo background, red only on the angry character
+- Insight / relief / letting go → clear early-morning light: pale blue sky, soft white, fresh green
+- Love / gratitude / hope → soft pastels (lotus pink, light green, sky blue) with one gentle warm light source
+- Buddha-era / sacred → misty jade forest and cool dawn blue; gold only in the halo and the robe
 
 ASPECT RATIO: 16:9 (default — use 9:16 when the system says the clip is portrait)
 ```
@@ -419,7 +426,7 @@ AGENT BRIEF
 
 00_00_02_5.png SHOT 02 | Chars: @seeker | Env: same bedroom, thought bubble filled with an angry chat message, clock showing 2:15 | Action: @seeker replays the argument, fists clenched | Frame: close-up
 
-00_00_05.png SHOT 03 | Chars: @monk | Env: ancient Indian forest grove at golden dawn, large Bodhi tree, light rays through leaves, lotus pond in the foreground | Action: @monk sits calmly under the tree, one hand raised gently | Frame: wide shot
+00_00_05.png SHOT 03 | Chars: @monk | Env: ancient Indian forest grove at misty blue dawn, large Bodhi tree, light rays through leaves, lotus pond in the foreground | Action: @monk sits calmly under the tree, one hand raised gently | Frame: wide shot
 
 ... (จนครบทุก timecode)
 ```

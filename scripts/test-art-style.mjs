@@ -2,9 +2,9 @@
 //   node scripts/test-art-style.mjs
 // เคยเป็น (พ.ย. 2026): ภาพวาดจีนดูล้าหลัง ไม่ได้รับความนิยม ภาพออกมามีขอบขาวเหมือนภาพบนกระดาษ ไกลตัว
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ART_STYLES, RETIRED_ART_STYLES, FULL_BLEED_RULE } from '../extension/prompts.js'
+import { ART_STYLES, RETIRED_ART_STYLES, FULL_BLEED_RULE, COLOR_MOOD_RULE } from '../extension/prompts.js'
 import { ROOT } from '../pipeline/lib/config.mjs'
 import { readProfile } from '../pipeline/lib/clip_profile.mjs'
 import { flowPrompt } from '../pipeline/lib/prompts.mjs'
@@ -49,6 +49,19 @@ test('คลิปเก่าที่เป็นภาพวาดจีน �
 
 test('การ์ตูน doodle ก็ได้กฎเต็มเฟรมไม่มีขอบขาว', () => {
   assert.ok(flowPrompt('BRIEF', {}, null).includes(FULL_BLEED_RULE))
+})
+
+// พ.ย. 2026: ภาพออกโทนเหลืองไป — ผู้ใช้ขอโทนเย็นสบายตา หรือปรับตามอารมณ์เรื่อง
+test('โทนสีหลักเย็นสบายตาและปรับตามอารมณ์ — ทองใช้แค่จุดเล็ก', () => {
+  const prompt = flowPrompt('BRIEF', {}, null)
+  assert.ok(prompt.includes(COLOR_MOOD_RULE))
+  assert.match(COLOR_MOOD_RULE, /ห้ามทั้งภาพออกโทนเหลือง/)
+  assert.ok(!/สีสดอิ่ม/.test(prompt))
+  assert.ok(!/golden-saffron and amber|แสงทองเรือง|โทนทองอำพัน/.test(JSON.stringify(ART_STYLES)))
+  const blueprint = readFileSync(new URL('../extension/VDO Concept.txt', import.meta.url), 'utf8')
+  assert.match(blueprint, /COLOR PALETTE \(base is COOL/)
+  assert.match(blueprint, /COLOR MOOD/)
+  assert.ok(!/golden dawn, soft candlelight|warm and peaceful mood|SAFFRON ORANGE, DEEP BROWN, or GOLD-YELLOW/.test(blueprint))
 })
 
 console.log(`\nผ่าน ${passed} ข้อ`)

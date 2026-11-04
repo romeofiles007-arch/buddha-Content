@@ -119,6 +119,11 @@ export const BUDDHA_NARRATIONS = {
  * (โปรไฟล์คลิปเก่าที่เป็น 'chinese' อ่านเป็น watercolor — ดู RETIRED_ART_STYLES)
  */
 export const RETIRED_ART_STYLES = { chinese: 'watercolor' }
+/**
+ * โทนสี — พ.ย. 2026 ผู้ใช้: แบบเดิมออกเหลืองไป เอาโทนเย็นสบายตา หรือปรับตามอารมณ์ของเรื่อง
+ * (ชุดสีและตารางอารมณ์เต็มอยู่ใน COLOR PALETTE / COLOR MOOD ของ Blueprint) — ใช้กับทุกลายเส้น
+ */
+export const COLOR_MOOD_RULE = 'โทนสีหลักเย็นสบายตา (ฟ้าหมอก ฟ้า เขียวอมฟ้า เขียวเสจ ม่วงอ่อน ขาวนวล) และปรับแสง/โทนตามอารมณ์ของแต่ละช่วงเรื่อง (สงบ = แสงกลางวันนุ่ม · เศร้า/เหงา = ครามเข้มกับแสงจันทร์ · กังวล = น้ำเงินกลางคืนกับแสงจอ · คลี่คลาย = แสงเช้าใส · อบอุ่น/ความรัก = พาสเทลกับแสงอุ่นจุดเดียว) — ห้ามทั้งภาพออกโทนเหลือง ส้ม อำพัน หรือซีเปีย สีทอง/ส้มใช้ได้แค่จุดเล็ก (จีวรพระ รัศมี เปลวเทียน)'
 /** ห้ามภาพออกมาเป็น "ภาพวาดบนกระดาษ" ที่มีขอบขาว/กรอบ — ใช้กับทุกลายเส้น */
 export const FULL_BLEED_RULE = 'ภาพเต็มเฟรมจรดขอบทุกด้าน (full-bleed) — ห้ามวาดเป็นภาพบนแผ่นกระดาษ ภาพในกรอบ หรือภาพม้วน ห้ามขอบขาว ขอบกระดาษ กรอบรูป ขอบมน หรือขอบจางเป็นสีขาว'
 export const ART_STYLES = {
@@ -126,12 +131,12 @@ export const ART_STYLES = {
   watercolor: {
     label: 'สีน้ำพุทธกาล',
     rule: `**ลายเส้นของคลิปนี้: สีน้ำพุทธกาล — ใช้แทน ART STYLE และ CHARACTERS ใน VISUAL STYLE DNA ของ Blueprint ทั้งคลิป (ห้าม doodle ห้ามตัวก้าง ห้ามการ์ตูนหัวโต)**
-- ART STYLE ใน Style Bible ให้เขียนว่า: Traditional Thai Buddhist watercolor illustration — soft ink linework with painterly watercolor washes painted edge to edge (full-bleed, no paper border, no white margin, no frame), warm golden-saffron and amber palette with misty jade-green forests and soft blue moonlight, glowing golden light, detailed ancient Indian / Thai temple architecture and landscapes, cinematic wide compositions, reverent and serene mood
+- ART STYLE ใน Style Bible ให้เขียนว่า: Traditional Thai Buddhist watercolor illustration — soft ink linework with painterly watercolor washes painted edge to edge (full-bleed, no paper border, no white margin, no frame), cool, calm palette that is easy on the eyes — misty jade-green forests, soft sky-blue and moonlit blue, lotus pink and soft white, with golden light only as a small accent (halo, candle, robe), tones shifting with the mood of each scene, detailed ancient Indian / Thai temple architecture and landscapes, cinematic wide compositions, reverent and serene mood
 - ตัวละครวาดแบบภาพวาดสัดส่วนสมจริง (ไม่ใช่การ์ตูน): ใบหน้ามีรายละเอียด ผิวและผ้ามีแสงเงาแบบสีน้ำ · พระสงฆ์ห่มจีวรสีกรัก/เหลืองหม่น · พระพุทธเจ้าผิวทอง พระเกศาขมวด รัศมีเปลวไฟทรงไทยเรืองแสงทองรอบพระเศียร
-- ทุกช็อตเหมือนภาพจิตรกรรมหนึ่งภาพ: ฉากหลังละเอียด (ป่าใหญ่ ต้นสาละ หมอก แสงจันทร์ วิหาร เจดีย์ ทุ่งนา แม่น้ำ) แสงทองนุ่ม หมอกบาง ใบไม้/กลีบดอกลอย
+- ทุกช็อตเหมือนภาพจิตรกรรมหนึ่งภาพ: ฉากหลังละเอียด (ป่าใหญ่ ต้นสาละ หมอก แสงจันทร์ วิหาร เจดีย์ ทุ่งนา แม่น้ำ) แสงนวลเย็นตา หมอกบาง ใบไม้/กลีบดอกลอย
 - ${FULL_BLEED_RULE}
 - ตัวอักษรบนภาพใช้น้อยที่สุด (ซับไตเติลใส่ตอนตัดต่อ)`,
-    flow: 'ลายเส้น: ภาพวาดสีน้ำแบบจิตรกรรมไทยพุทธกาล ลายเส้นหมึกนุ่ม ลงสีน้ำซึมเต็มเฟรมถึงขอบ (ไม่ใช่ภาพบนกระดาษ ไม่มีขอบขาว) โทนทองอำพันกับเขียวหยกและฟ้าจันทร์ แสงทองเรือง ฉากหลังละเอียด ตัวละครสัดส่วนสมจริงแบบภาพวาด — ไม่ใช่การ์ตูน doodle ไม่ใช่ตัวก้าง ใช้ลายเส้นนี้ทุกภาพ',
+    flow: 'ลายเส้น: ภาพวาดสีน้ำแบบจิตรกรรมไทยพุทธกาล ลายเส้นหมึกนุ่ม ลงสีน้ำซึมเต็มเฟรมถึงขอบ (ไม่ใช่ภาพบนกระดาษ ไม่มีขอบขาว) โทนเย็นสบายตา (เขียวหยก ฟ้าหมอก ฟ้าจันทร์ ชมพูบัว ขาวนวล) สีทองใช้แค่จุดเล็ก (รัศมี จีวร เปลวเทียน) ฉากหลังละเอียด ตัวละครสัดส่วนสมจริงแบบภาพวาด — ไม่ใช่การ์ตูน doodle ไม่ใช่ตัวก้าง ใช้ลายเส้นนี้ทุกภาพ',
     body: '- แบบตัวละคร: ภาพวาดสีน้ำสัดส่วนสมจริง (ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง ไม่ใช่หัวโต) ตามลายเส้นสีน้ำพุทธกาลด้านล่าง · เขียนแบบนี้ใน Character Bible ด้วย',
     bodyFlow: 'ตัวละครทุกตัววาดแบบภาพวาดสีน้ำสัดส่วนสมจริง ไม่ใช่การ์ตูน ไม่ใช่ตัวก้าง',
   },

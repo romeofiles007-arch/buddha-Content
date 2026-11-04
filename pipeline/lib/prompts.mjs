@@ -60,6 +60,7 @@ ${table}
 - ตัวละครทุกตัวต้องมี @TAG และห้ามเปลี่ยนรูปร่าง/สี/อุปกรณ์ข้ามช็อต
 ${bodyStyleRule(activeCharacter(slug), readProfile(slug))}${shared.categoryRule(readProfile(slug), 'image') ? `\n${shared.categoryRule(readProfile(slug), 'image')}` : ''}
 - Env ต้องเป็นฉากที่มีรายละเอียดตาม BACKGROUNDS ใน Style Bible (สถานที่ + ของประกอบฉาก 3–6 ชิ้น + แสง/บรรยากาศ + โทนสี) ห้ามเขียนแค่ "พื้นหลังสีเรียบ"
+- แสงและโทนสีของ Env เลือกตาม COLOR MOOD ใน Style Bible ให้ตรงอารมณ์ของบรรทัดนั้น — โทนหลักเย็นสบายตา ห้ามบรรยายฉากเป็นแสงทอง/โทนเหลืองทั้งภาพ
 ${imageLanguageRule(clipLanguage(config, slug))}`
 }
 
@@ -125,7 +126,8 @@ export function flowPrompt(agentBrief, config = loadConfig(), slug = null) {
 ${bodyStyleFlowNote(character, readProfile(slug))}${shared.ART_STYLES[readProfile(slug)?.artStyle]?.flow ? `\n${shared.ART_STYLES[readProfile(slug).artStyle].flow}` : ''}${charNote ? `\n${charNote}` : ''}${portrait ? '\nทุกภาพเป็นแนวตั้ง 9:16 จัดองค์ประกอบแนวตั้ง ตัวละครอยู่กลางภาพ' : ''}
 ทุกภาพต้องเต็มเฟรม ฉากหลังยาวถึงขอบทุกด้าน ห้ามมีแถบว่าง ขอบขาว หรือพื้นที่เปล่าด้านบน/ล่าง
 ${shared.FULL_BLEED_RULE}
-ทุกภาพลงสีเต็มทั้งภาพ สีสดอิ่ม ทั้งตัวละครและฉากหลัง — ห้ามภาพขาวดำ โทนเทา ซีเปีย สีซีด หรือลายเส้นไม่ลงสีเด็ดขาด
+${shared.COLOR_MOOD_RULE}
+ทุกภาพลงสีเต็มทั้งภาพ สีอิ่มแต่สบายตา ทั้งตัวละครและฉากหลัง — ห้ามภาพขาวดำ โทนเทา ซีเปีย สีซีด หรือลายเส้นไม่ลงสีเด็ดขาด
 ตั้งชื่อแต่ละภาพเป็นชื่อไฟล์ที่อยู่หน้าบรรทัดของ shot นั้นเป๊ะๆ เช่น "00_00_00.png SHOT 01"
 ชื่อไฟล์ เลข SHOT และ @TAG ใช้ตั้งชื่อภาพเท่านั้น ห้ามเขียนลงในภาพ
 @TAG (เช่น @main @crowd1) เป็นชื่อเรียกตัวละครในคำสั่งเท่านั้น ห้ามวาดป้ายชื่อ ตัวอักษร @ หรือชื่อตัวละครลอยเหนือหัว/บนตัวละครเด็ดขาด
