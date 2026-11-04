@@ -32,7 +32,7 @@ export async function runTikTokJob({ jobs, enqueue, payload, onStart }, { timeou
           url = parsed.origin + parsed.pathname
         } catch { throw tiktokFailure('ลิงก์โพสต์ TikTok ไม่ตรงกับบัญชีที่เลือก — ตรวจใน TikTok ก่อนลองใหม่') }
       }
-      return { ...(url ? { url } : {}), privacy: payload.privacy, published: true }
+      return { ...(url ? { url } : {}), privacy: payload.privacy, published: true, ...(result.coverError ? { coverError: String(result.coverError) } : {}) }
     }
     if (Date.now() >= deadline) {
       Object.assign(current, { cancelled: true, status: 'error', error: 'รอ TikTok เกินเวลา — เปิด Chrome และตรวจบัญชี/โพสต์ก่อนลองใหม่' })

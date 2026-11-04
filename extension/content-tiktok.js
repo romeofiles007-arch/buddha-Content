@@ -24,6 +24,29 @@
       finally { if (!keepOpen) closeAccountMenu() }
     }
   }
+  // กด "แก้ไขหน้าปก" → แท็บอัปโหลด → ใส่ไฟล์ปก (ผ่าน background) → ยืนยัน แล้วรอหน้าต่างปิด
+  async function setCover(wait, jobId) {
+    const button = await wait(() => D.coverButton(document), 'ปุ่มแก้ไขหน้าปก TikTok', 15_000)
+    button.click()
+    const dialog = await wait(() => D.coverDialog(document), 'หน้าต่างภาพปก TikTok', 15_000)
+    const tab = await wait(() => D.coverUploadTab(dialog), 'แท็บอัปโหลดหน้าปก TikTok', 10_000)
+    tab.click()
+    // ช่องไฟล์ของแท็บอัปโหลดอาจโผล่หลังกดแท็บ — ลองใส่ไฟล์ซ้ำจนกว่าจะเจอ
+    let upload
+    await wait(async () => {
+      upload = await chrome.runtime.sendMessage({ type: 'TIKTOK_SET_COVER', jobId })
+      return upload?.ok === true
+    }, 'ช่องอัปโหลดภาพปก TikTok', 10_000).catch(() => { throw new Error(upload?.error ?? 'ใส่ไฟล์ภาพปก TikTok ไม่สำเร็จ') })
+    await new Promise(resolve => setTimeout(resolve, 1500)) // ให้ TikTok โหลดภาพตัวอย่างก่อน
+    const confirm = await wait(() => {
+      const current = D.coverDialog(document)
+      const node = current && D.coverConfirm(current)
+      return D.enabled(node) ? node : null
+    }, 'ปุ่มยืนยันภาพปก TikTok', 30_000)
+    confirm.click()
+    await wait(() => !D.coverDialog(document), 'TikTok บันทึกภาพปก', 30_000)
+  }
+
   async function run(job) {
     let attempt = null
     let cancelled = false
@@ -62,17 +85,31 @@
       }
       await wait(publishReady, 'TikTok ประมวลผลวิดีโอพร้อมแก้ไข', 10 * 60_000)
       phase = 'caption'
-      const editor = await wait(() => [...document.querySelectorAll('[contenteditable="true"], textarea')].find(D.visible), 'ช่องคำบรรยาย TikTok', 10 * 60_000)
-      editor.focus()
-      if (editor.tagName === 'TEXTAREA') {
-        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(editor, job.payload.caption)
-        editor.dispatchEvent(new Event('input', { bubbles: true }))
-      } else {
-        const inserted = await chrome.runtime.sendMessage({ type: 'TIKTOK_SET_CAPTION', jobId: job.id })
-        if (!inserted?.ok) throw new Error(inserted?.error ?? 'กรอกคำบรรยาย TikTok ไม่สำเร็จ')
+      const findEditor = () => [...document.querySelectorAll('[contenteditable="true"], textarea')].find(D.visible)
+      await wait(findEditor, 'ช่องคำบรรยาย TikTok', 10 * 60_000)
+      const captionText = (node = findEditor()) => String(node?.value ?? node?.innerText ?? node?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      const expectedCaption = String(job.payload.caption).replace(/\s+/g, ' ').trim()
+      // TikTok เติมชื่อไฟล์ลงช่องคำบรรยายเองหลังประมวลผลวิดีโอ (4 พ.ย. 2026 ได้ "ชื่อไฟล์+คำบรรยาย")
+      // → กรอกทับใหม่ (เลือกทั้งหมดแล้วพิมพ์) จนกว่าจะตรง สูงสุด 3 รอบ
+      const ensureCaption = async () => {
+        for (let round = 0; round < 3; round++) {
+          if (captionText() === expectedCaption) return
+          const editor = await wait(findEditor, 'ช่องคำบรรยาย TikTok', 30_000)
+          editor.focus()
+          if (editor.tagName === 'TEXTAREA') {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(editor, job.payload.caption)
+            editor.dispatchEvent(new Event('input', { bubbles: true }))
+          } else {
+            const inserted = await chrome.runtime.sendMessage({ type: 'TIKTOK_SET_CAPTION', jobId: job.id })
+            if (!inserted?.ok) throw new Error(inserted?.error ?? 'กรอกคำบรรยาย TikTok ไม่สำเร็จ')
+          }
+          try { return await wait(() => captionText() === expectedCaption, 'ยืนยันคำบรรยาย TikTok', 5000) } catch (error) {
+            if (cancelled || !/เกิน/.test(error.message)) throw error // หมดเวลาเท่านั้นที่ลองกรอกใหม่
+          }
+        }
+        throw new Error(`คำบรรยายใน TikTok ไม่ตรงกับที่ส่ง หลังกรอกใหม่ 3 รอบ (ในช่องขึ้นต้นว่า "${captionText().slice(0, 50)}")`)
       }
-      const captionText = (node = editor) => String(node?.value ?? node?.innerText ?? node?.textContent ?? '').replace(/\s+/g, ' ').trim()
-      await wait(() => captionText() === String(job.payload.caption).replace(/\s+/g, ' ').trim(), 'ยืนยันคำบรรยาย TikTok', 5000)
+      await ensureCaption()
       phase = 'settings'
       const labels = D.privacyLabels[job.payload.privacy]
       if (!labels) throw new Error('ยังไม่ได้เลือกการมองเห็นของคลิป TikTok')
@@ -110,7 +147,34 @@
         if (confirm && D.enabled(confirm)) { confirmedAi = true; confirm.click() }
         return false
       }, 'ยืนยันป้ายกำกับ AI ของ TikTok', 5000)
+      // ภาพปก — ไม่บังคับ: ทำไม่ได้ก็ปิดหน้าต่างแล้วโพสต์ต่อด้วยปกที่ TikTok เลือกเอง
+      let coverError = null
+      if (job.payload.cover) {
+        phase = 'cover'
+        try { await setCover(wait, job.id) } catch (error) {
+          if (cancelled) throw error
+          coverError = String(error.message)
+          const dialog = D.coverDialog(document)
+          if (dialog) {
+            const cancel = D.coverCancel(dialog)
+            if (cancel) cancel.click()
+            else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))
+            await wait(() => !D.coverDialog(document), 'ปิดหน้าต่างภาพปก TikTok', 10_000)
+          }
+        }
+        phase = 'settings'
+      }
       await wait(publishReady, 'TikTok อัปโหลดเสร็จและพร้อมโพสต์', 10 * 60_000)
+      // TikTok อาจเติมชื่อไฟล์ทีหลังตอนวิดีโอประมวลผลเสร็จ → ตรวจ/กรอกคำบรรยายอีกรอบก่อนโพสต์
+      phase = 'caption'
+      await ensureCaption()
+      phase = 'settings'
+      // กล่องแนะนำของ TikTok ("ดูตัวอย่างวิดีโอบนโทรศัพท์ … เข้าใจแล้ว") บังปุ่มโพสต์ — 4 พ.ย. 2026 กดโพสต์แล้วไม่ไปไหน
+      // ต้องปิดให้หมดก่อนกดโพสต์ ปิดไม่ได้ = หยุดก่อนโพสต์ (ลองใหม่ได้ ไม่เสี่ยงโพสต์ซ้ำ)
+      if (D.tipDismissButtons(document).length) {
+        for (const tip of D.tipDismissButtons(document)) tip.click()
+        await wait(() => !D.tipDismissButtons(document).length, 'ปิดกล่องแนะนำของ TikTok ที่บังปุ่มโพสต์', 5000)
+      }
       D.assertAccount(await readAccount({ keepOpen: true }), job.payload.username)
       await assertActive()
       if (cancelled) throw new Error('งาน TikTok ถูกยกเลิกแล้ว — หยุดก่อนโพสต์')
@@ -118,9 +182,9 @@
       closeAccountMenu()
       let finalAi = D.aiControl(document)
       if (finalAi?.matches('label')) finalAi = finalAi.querySelector('input, [role="switch"], [role="checkbox"]')
-      const finalEditor = [...document.querySelectorAll('[contenteditable="true"], textarea')].find(D.visible)
+      const finalEditor = findEditor()
       const post = publishReady()
-      const checks = { privacy: !!selectedPrivacy(), ai: !!finalAi && D.checked(finalAi) === (job.payload.aigc === true), publishButton: D.enabled(post) && post.isConnected !== false, caption: !!finalEditor && finalEditor.isConnected !== false && captionText(finalEditor) === String(job.payload.caption).replace(/\s+/g, ' ').trim() }
+      const checks = { privacy: !!selectedPrivacy(), ai: !!finalAi && D.checked(finalAi) === (job.payload.aigc === true), publishButton: D.enabled(post) && post.isConnected !== false, caption: !!finalEditor && finalEditor.isConnected !== false && captionText(finalEditor) === expectedCaption, noTips: !D.tipDismissButtons(document).length }
       if (Object.values(checks).some(ok => !ok)) throw new Error(`การตั้งค่า TikTok เปลี่ยนระหว่างอัปโหลด (${Object.keys(checks).filter(key => !checks[key]).join(', ')}) — หยุดก่อนโพสต์`)
       const before = D.publicationSignals(document)
       phase = 'publish'
@@ -128,7 +192,7 @@
       post.click() // Exactly one publish action. A missing result must not repeat it.
       const result = await wait(() => D.published(document, job.payload.username, location.href, before), 'TikTok ยืนยันว่าโพสต์สำเร็จ', 90_000)
       attempt.complete(result)
-      return { ok: true, ...result }
+      return { ok: true, ...result, ...(coverError ? { coverError } : {}) }
     } catch (error) {
       let diagnostic
       if (job.kind === 'tiktok-post' || job.payload?.inspect === true) {

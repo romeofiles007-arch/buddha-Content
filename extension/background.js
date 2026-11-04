@@ -439,7 +439,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     flowIdentity(chrome, _sender.tab.id).then(email => sendResponse({ ok: !!email, email })).catch(error => sendResponse({ ok: false, error: error.message }))
     return true
   }
-  if (msg.type === 'TIKTOK_SET_FILE' || msg.type === 'TIKTOK_SET_CAPTION') {
+  if (msg.type === 'TIKTOK_SET_FILE' || msg.type === 'TIKTOK_SET_CAPTION' || msg.type === 'TIKTOK_SET_COVER') {
     ;(async () => {
       const tabId = _sender.tab?.id
       const { tiktokTabId } = await chrome.storage.session.get('tiktokTabId')
@@ -459,18 +459,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           await insertTikTokCaption(command, info.caption)
           return { ok: true }
         }
+        const cover = msg.type === 'TIKTOK_SET_COVER'
+        if (cover && !info.cover) throw new Error('ไม่มีภาพปกที่ผูกกับงาน TikTok นี้')
         const { root } = await command('DOM.getDocument', { depth: -1, pierce: true })
         const inputs = []
+        // ช่องวิดีโอ: accept เป็นวิดีโอ (หรือไม่ระบุ) · ช่องภาพปก: accept เป็นรูปภาพเท่านั้น
+        const wanted = accept => cover ? !!accept && /image|png|jpe?g/i.test(accept) && !/video/i.test(accept) : !accept || /video|mp4|mov|webm/i.test(accept)
         const walk = node => {
           if (node.nodeName === 'INPUT') {
             const attrs = Object.fromEntries(Array.from({ length: (node.attributes?.length ?? 0) / 2 }, (_, i) => [node.attributes[i * 2], node.attributes[i * 2 + 1]]))
-            if (attrs.type === 'file' && (!attrs.accept || /video|mp4|mov|webm/i.test(attrs.accept))) inputs.push(node)
+            if (attrs.type === 'file' && wanted(attrs.accept)) inputs.push(node)
           }
           for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? []), ...(node.contentDocument ? [node.contentDocument] : [])]) walk(child)
         }
         walk(root)
-        if (inputs.length !== 1) throw new Error('ไม่พบช่องอัปโหลดวิดีโอ TikTok ที่แน่นอน — กรุณาตรวจหน้า TikTok Studio')
-        await command('DOM.setFileInputFiles', { nodeId: inputs[0].nodeId, files: [info.file] })
+        if (inputs.length !== 1) throw new Error(cover ? 'ไม่พบช่องอัปโหลดภาพปก TikTok ที่แน่นอน' : 'ไม่พบช่องอัปโหลดวิดีโอ TikTok ที่แน่นอน — กรุณาตรวจหน้า TikTok Studio')
+        await command('DOM.setFileInputFiles', { nodeId: inputs[0].nodeId, files: [cover ? info.cover : info.file] })
         return { ok: true }
       } finally {
         if (attached) await new Promise(resolve => chrome.debugger.detach(target, () => resolve()))

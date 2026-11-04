@@ -16,6 +16,7 @@ const GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token'
 const YT_API = 'https://www.googleapis.com/youtube/v3'
 const YT_UPLOAD = 'https://www.googleapis.com/upload/youtube/v3/videos'
+const YT_THUMBNAIL = 'https://www.googleapis.com/upload/youtube/v3/thumbnails/set'
 export const YOUTUBE_SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly']
 // drive.file = เห็น/แก้ได้เฉพาะไฟล์ที่โปรแกรมนี้สร้างเอง ไม่เห็นไฟล์อื่นใน Drive ของผู้ใช้
 export const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.file']
@@ -33,6 +34,7 @@ async function failure(res, service) {
   if (service === 'facebook' && (code === 200 || code === 10 || /permission/i.test(msg))) hint = ' — โทเค็นไม่มีสิทธิ์โพสต์วิดีโอ (ต้องมี pages_manage_posts, pages_read_engagement)'
   if (service === 'youtube' && /quota/i.test(msg)) hint = ' — โควตา YouTube API ของวันนี้หมด (อัปโหลดได้ราววันละ 6 คลิป) ลองใหม่พรุ่งนี้'
   if (service === 'youtube' && /invalid_grant/i.test(msg)) hint = ' — การเชื่อมต่อช่องหมดอายุ กดเชื่อมต่อช่องใหม่ในแท็บบัญชี'
+  if (service === 'youtube' && /thumbnail/i.test(msg) && /permission/i.test(msg)) hint = ' — ช่องต้องยืนยันตัวตนด้วยเบอร์โทรก่อนจึงจะตั้งภาพปกเองได้ (youtube.com/verify)'
   if (service === 'drive' && /invalid_grant/i.test(msg)) hint = ' — การเชื่อมต่อ Google Drive หมดอายุ กดเชื่อมต่อใหม่ในแท็บตั้งค่า'
   if (service === 'drive' && /not been used|disabled/i.test(msg)) hint = ' — เปิด Google Drive API ในโปรเจกต์ Google Cloud ก่อน (APIs & Services → Library)'
   if (service === 'drive' && /storageQuotaExceeded|quota/i.test(msg)) hint = ' — พื้นที่ Google Drive เต็ม'
@@ -51,8 +53,8 @@ export async function facebookPageInfo({ pageId, token }, { fetchImpl = fetch } 
   return { id: String(data.id), name: String(data.name ?? pageId) }
 }
 
-/** อัปโหลดวิดีโอขึ้นเพจ (เผยแพร่ทันที — การตั้งเวลาทำฝั่งเราเอง) */
-export async function facebookUpload({ pageId, token, file, title, description }, { fetchImpl = fetch } = {}) {
+/** อัปโหลดวิดีโอขึ้นเพจ (เผยแพร่ทันที — การตั้งเวลาทำฝั่งเราเอง) · cover = ไฟล์ JPG ภาพปก (ไม่บังคับ) */
+export async function facebookUpload({ pageId, token, file, title, description, cover = null }, { fetchImpl = fetch } = {}) {
   let submitted = false
   try {
     const form = new FormData()
@@ -60,6 +62,10 @@ export async function facebookUpload({ pageId, token, file, title, description }
     form.append('title', String(title ?? '').slice(0, 255))
     form.append('description', String(description ?? ''))
     form.append('source', await openAsBlob(file, { type: 'video/mp4' }), 'video.mp4')
+    // ภาพปกไปในคำขอเดียวกับวิดีโอ — อ่านไฟล์ปกไม่ได้ก็ส่งวิดีโอต่อโดยไม่มีปก
+    let thumb = null
+    if (cover) try { thumb = await openAsBlob(cover, { type: 'image/jpeg' }) } catch {} // openAsBlob throws ทันที ไม่ใช่ reject
+    if (thumb?.size) form.append('thumb', thumb, 'cover.jpg')
     submitted = true
     const res = await fetchImpl(`${GRAPH_VIDEO}/${encodeURIComponent(pageId)}/videos`, { method: 'POST', body: form })
     if (!res.ok) throw await failure(res, 'facebook')
@@ -118,8 +124,18 @@ export async function youtubeAccessToken({ clientId, clientSecret, refreshToken 
 /** ชื่อคลิป YouTube: ไม่เกิน 100 ตัวอักษร ห้ามมี < > */
 export const youtubeTitle = (title) => String(title ?? '').replace(/[<>]/g, '').trim().slice(0, 100)
 
-/** อัปโหลดแบบ resumable (2 ขั้น: ขอ URL อัปโหลด → ส่งไฟล์) */
-export async function youtubeUpload({ clientId, clientSecret, refreshToken, file, title, description, tags = [], privacy = 'public', categoryId = '27' }, { fetchImpl = fetch } = {}) {
+/** ตั้งภาพปก (thumbnail) ให้คลิปที่อัปแล้ว — JPG/PNG ไม่เกิน 2MB, ช่องต้องยืนยันตัวตนแล้ว */
+export async function youtubeThumbnail({ accessToken, videoId, file }, { fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(`${YT_THUMBNAIL}?videoId=${encodeURIComponent(videoId)}&uploadType=media`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'image/jpeg' },
+    body: await openAsBlob(file, { type: 'image/jpeg' }),
+  })
+  if (!res.ok) throw await failure(res, 'youtube')
+}
+
+/** อัปโหลดแบบ resumable (2 ขั้น: ขอ URL อัปโหลด → ส่งไฟล์) · มี cover → ตั้งภาพปกต่อ (พลาดได้ คลิปยังขึ้นแล้ว) */
+export async function youtubeUpload({ clientId, clientSecret, refreshToken, file, title, description, tags = [], privacy = 'public', categoryId = '27', cover = null }, { fetchImpl = fetch } = {}) {
   let submitted = false
   try {
     const accessToken = await youtubeAccessToken({ clientId, clientSecret, refreshToken }, { fetchImpl })
@@ -156,7 +172,12 @@ export async function youtubeUpload({ clientId, clientSecret, refreshToken, file
     if (!put.ok) throw await failure(put, 'youtube')
     const data = await put.json()
     if (!data.id) throw new Error('YouTube: อัปโหลดแล้วแต่ไม่ได้เลขวิดีโอกลับมา')
-    return { postId: data.id, url: `https://www.youtube.com/watch?v=${data.id}`, privacy: data.status?.privacyStatus ?? privacy }
+    const out = { postId: data.id, url: `https://www.youtube.com/watch?v=${data.id}`, privacy: data.status?.privacyStatus ?? privacy }
+    if (cover) {
+      // คลิปขึ้นแล้ว — ภาพปกพลาดต้องไม่ทำให้นับว่าโพสต์ไม่สำเร็จ (ไม่งั้นโพสต์ซ้ำ)
+      try { await youtubeThumbnail({ accessToken, videoId: data.id, file: cover }, { fetchImpl }) } catch (error) { out.coverError = error.message }
+    }
+    return out
   } catch (error) { error.needsVerification = submitted; throw error }
 }
 

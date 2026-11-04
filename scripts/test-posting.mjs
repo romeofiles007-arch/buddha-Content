@@ -143,6 +143,59 @@ await test('YouTube: โควตาหมด → บอกว่าลองพ
   )
 })
 
+// ── ภาพปก ──
+const coverSample = join(tmp, 'cover.jpg')
+writeFileSync(coverSample, Buffer.alloc(512, 2))
+
+await test('Facebook: มีภาพปก → ส่งเป็น thumb ในคำขอเดียวกับวิดีโอ', async () => {
+  const calls = []
+  await S.facebookUpload({ pageId: '42', token: 'tok', file: sample, title: 'ชื่อ', description: 'd', cover: coverSample }, {
+    fetchImpl: async (url, init) => (calls.push({ url, init }), reply(200, { id: '777' })),
+  })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].init.body.get('thumb').size, 512)
+  const none = []
+  await S.facebookUpload({ pageId: '42', token: 'tok', file: sample, title: 'ชื่อ', description: 'd', cover: join(tmp, 'missing.jpg') }, {
+    fetchImpl: async (url, init) => (none.push({ url, init }), reply(200, { id: '778' })),
+  })
+  assert.equal(none[0].init.body.get('thumb'), null, 'อ่านไฟล์ปกไม่ได้ = ส่งวิดีโออย่างเดียว')
+})
+
+await test('YouTube: มีภาพปก → อัปคลิปแล้วตั้ง thumbnail · ตั้งไม่ได้ก็ยังนับว่าโพสต์สำเร็จ', async () => {
+  const calls = []
+  const fetchImpl = (thumb) => async (url, init) => {
+    calls.push({ url, init })
+    if (url.includes('oauth2')) return reply(200, { access_token: 'at' })
+    if (url.includes('uploadType=resumable')) return reply(200, {}, { location: 'https://upload.example/s' })
+    if (url.includes('thumbnails/set')) return thumb
+    return reply(200, { id: 'abc' })
+  }
+  const ok = await S.youtubeUpload({ clientId: 'c', clientSecret: 's', refreshToken: 'r', file: sample, title: 't', cover: coverSample }, { fetchImpl: fetchImpl(reply(200, {})) })
+  const thumb = calls.find((c) => c.url.includes('thumbnails/set'))
+  assert.match(thumb.url, /videoId=abc/)
+  assert.equal(thumb.init.headers['content-type'], 'image/jpeg')
+  assert.equal(thumb.init.body.size, 512)
+  assert.equal(ok.coverError, undefined)
+  const denied = await S.youtubeUpload({ clientId: 'c', clientSecret: 's', refreshToken: 'r', file: sample, title: 't', cover: coverSample }, {
+    fetchImpl: fetchImpl(reply(403, { error: { message: "The authenticated user doesn't have permissions to upload and set custom video thumbnails." } })),
+  })
+  assert.equal(denied.postId, 'abc')
+  assert.match(denied.coverError, /ยืนยันตัวตน/)
+})
+
+await test('เตรียมภาพปก: ไม่มีไฟล์ = null · แปลงได้ = ไฟล์ JPG ใน staging · ใหญ่เกิน 2MB = ไม่ใช้และลบทิ้ง', async () => {
+  const L = await import('../pipeline/lib/delivery-ledger.mjs')
+  const dir = join(tmp, 'cover-stage')
+  assert.equal(await L.stageCover(join(tmp, 'nope.png'), dir), null)
+  const small = await L.stageCover(sample, dir, { convert: async (_src, out) => writeFileSync(out, Buffer.alloc(100)) })
+  assert.match(small.file, /staging[\\/][a-f0-9-]{36}\.jpg$/)
+  await small.remove()
+  assert.equal(existsSync(small.file), false)
+  let big
+  await assert.rejects(L.stageCover(sample, dir, { convert: async (_src, out) => { big = out; writeFileSync(out, Buffer.alloc(L.COVER_MAX_BYTES + 1)) } }), /2MB/)
+  assert.equal(existsSync(big), false)
+})
+
 await test('Drive: โฟลเดอร์เดิมถูกลบ → สร้างใหม่ แล้วอัปแบบ resumable เข้าโฟลเดอร์นั้น', async () => {
   const calls = []
   const out = await S.driveUpload({ clientId: 'c', clientSecret: 's', refreshToken: 'r', folderId: 'oldFolder', file: sample, name: 'คลิป.mp4' }, {
@@ -205,7 +258,8 @@ const server = createServer()
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
 const port = server.address().port
 const posting = createPosting({
-  jobs, json, readBody, port, token: TOKEN, log: (s) => logs.push(s),
+  // scheduler: false — เทสต์เรียก tick() เอง ไม่ให้ตัวจับเวลาเบื้องหลังโพสต์แข่งกับเทสต์
+  jobs, json, readBody, port, token: TOKEN, log: (s) => logs.push(s), scheduler: false,
   enqueue: (agent, kind, payload) => {
     const job = { id: `job${enqueued.length + 1}`, agent, kind, payload, status: 'queued' }
     jobs.set(job.id, job)
@@ -352,6 +406,7 @@ try {
     assert.equal(fb.title, 'ชื่อใหม่')
     assert.equal(fb.description, 'บรรยายใหม่\n\n#a #b')
     assert.equal(existsSync(fb.file), false, 'the staged file is removed after the upload round')
+    assert.equal(fb.cover, null, 'โปรเจกต์ไม่มี cover.png = ไม่ส่งภาพปก')
     const yt = uploads.find((u) => u.kind === 'yt')
     assert.equal(yt.refreshToken, 'rt-abc', 'bridge ใช้ refresh token ตัวจริงตอนอัปโหลด')
     assert.equal(Object.values(item.results).filter((r) => r.ok).length, 1)
@@ -362,7 +417,14 @@ try {
     const before = uploads.filter((u) => u.kind === 'fb').length
     await call('/api/posting/retry', { id })
     await posting.tick()
-    const v = await call('/api/posting')
+    let v = await call('/api/posting')
+    assert.equal(v.queue[0].status, 'scheduled', 'เพิ่งโพสต์ Facebook ไป → รอให้ครบ 30 นาทีก่อน ไม่โพสต์รัว')
+    // จำลองว่าโพสต์ล่าสุดผ่านไป 31 นาทีแล้ว
+    const queue = P.loadQueue()
+    for (const q of queue) for (const r of Object.values(q.results ?? {})) if (r?.ok) r.at = Date.now() - 31 * 60_000
+    P.saveQueue(queue)
+    await posting.tick()
+    v = await call('/api/posting')
     assert.equal(v.queue[0].status, 'posted')
     assert.equal(uploads.filter((u) => u.kind === 'fb').length, before, 'Facebook ต้องไม่ถูกโพสต์ซ้ำ')
     assert.ok(Object.values(v.queue[0].results).every((r) => r.ok && r.url))

@@ -21,7 +21,7 @@ import {
 import { facebookPageInfo, facebookUpload, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
 import { listVideos } from './videos.js'
 import { runTikTokJob, tiktokUsername } from '../pipeline/lib/tiktok-browser.mjs'
-import { createDeliveryLedger, stageDelivery, deliveryDestination, importDeliveryHistory } from '../pipeline/lib/delivery-ledger.mjs'
+import { createDeliveryLedger, stageDelivery, stageCover, deliveryDestination, importDeliveryHistory } from '../pipeline/lib/delivery-ledger.mjs'
 
 const PROJECTS = join(ROOT, 'projects')
 const TICK_MS = 30_000
@@ -43,6 +43,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   const yt = { connect: deps.youtubeConnect ?? youtubeConnect, upload: deps.youtubeUpload ?? youtubeUpload }
   const drive = { connect: deps.driveConnect ?? driveConnect, upload: deps.driveUpload ?? driveUpload, trash: deps.driveTrash ?? driveTrash }
   const videosOf = deps.listVideos ?? listVideos
+  const prepareCover = deps.stageCover ?? stageCover
   const redirectUri = `http://127.0.0.1:${port}`
   const oauthStates = new Map() // state → { expires, kind: 'youtube' | 'drive' }
   let uploading = false
@@ -444,15 +445,19 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     let file = videoPath(item)
     const text = caption(item.post)
     const results = { ...item.results }
-    let identity, staged
+    let identity, staged, cover = null
     try {
       staged = await stageDelivery(file, item, POSTING_DIR)
       file = staged.file; identity = staged.identity
-      mutateItem(id, it => { it.deliverySnapshot = { file, sha256: identity.sha256 } })
     } catch (error) {
       if (staged) await staged.remove().catch(() => {})
       return mutateItem(id, it => { it.status = 'failed'; it.error = error.message; it.finishedAt = Date.now(); for (const key of it.targets ?? []) if (!it.results[key]?.ok) it.results[key] = { ok: false, error: error.message, needsVerification: false, at: Date.now() } })
     }
+    // ภาพปก (05_images/cover.png) ไปพร้อมคลิปทุกที่ — เตรียมไม่ได้ก็โพสต์ต่อโดยไม่มีปก
+    try { cover = await prepareCover(join(PROJECTS, item.slug, '05_images', 'cover.png'), POSTING_DIR) } catch (error) {
+      log(`โพสต์อัตโนมัติ: เตรียมภาพปก "${item.title}" ไม่ได้ — โพสต์โดยไม่มีปก (${error.message})`)
+    }
+    mutateItem(id, it => { it.deliverySnapshot = { file, sha256: identity.sha256, ...(cover ? { cover: cover.file } : {}) } })
     async function sendTarget(key) {
       if (results[key]?.ok) return
       const { kind, account } = findTarget(accounts, key)
@@ -475,18 +480,22 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         let out
         started = true
         if (kind === 'facebook') {
-          out = await fb.upload({ pageId: account.pageId, token: account.token, file, title: item.post.title, description: text })
+          out = await fb.upload({ pageId: account.pageId, token: account.token, file, title: item.post.title, description: text, cover: cover?.file ?? null })
         } else if (kind === 'tiktok') {
-          out = await runTikTokJob({ jobs, enqueue, payload: { username: account.username, privacy: account.privacy ?? 'private', aigc: account.aigc !== false, file, caption: text || item.post.title }, onStart: job => mutateItem(id, it => { it.tiktokJobId = job.id }) }, { timeoutMs: deps.tiktokTimeoutMs, pollMs: deps.tiktokPollMs })
+          out = await runTikTokJob({ jobs, enqueue, payload: { username: account.username, privacy: account.privacy ?? 'private', aigc: account.aigc !== false, file, cover: !!cover, caption: text || item.post.title }, onStart: job => mutateItem(id, it => { it.tiktokJobId = job.id }) }, { timeoutMs: deps.tiktokTimeoutMs, pollMs: deps.tiktokPollMs })
         } else if (kind === 'youtube') {
           const { clientId, clientSecret } = accounts.settings.google
           if (!account.refreshToken) throw new Error('ช่องนี้ยังไม่ได้เชื่อมต่อ')
-          out = await yt.upload({ clientId, clientSecret, refreshToken: account.refreshToken, file, title: item.post.title, description: text, tags: item.post.hashtags, privacy: account.privacy ?? 'public' })
+          out = await yt.upload({ clientId, clientSecret, refreshToken: account.refreshToken, file, title: item.post.title, description: text, tags: item.post.hashtags, privacy: account.privacy ?? 'public', cover: cover?.file ?? null })
         } else throw new Error('ไม่รู้จักปลายทางนี้')
         if (kind !== 'tiktok' && !out?.postId) throw new Error('ปลายทางไม่ส่งเลขโพสต์กลับมา — หยุดเพื่อป้องกันโพสต์ซ้ำ')
         deliveries.complete(ticket, { ...out, destination })
         results[key] = { ok: true, ...out, destination, name: account.name, at: Date.now() }
         log(`โพสต์อัตโนมัติ: "${item.title}" ขึ้น ${account.name} แล้ว ${out.url}`)
+        if (out.coverError) {
+          log(`โพสต์อัตโนมัติ: "${item.title}" บน ${account.name} ตั้งภาพปกไม่ได้ — ${out.coverError}`)
+          mutateItem(id, it => note(it, `${account.name}: โพสต์แล้วแต่ตั้งภาพปกไม่ได้ (${out.coverError})`))
+        }
       } catch (err) {
         let needsVerification = started ? err.needsVerification !== false : err.needsVerification === true
         if (ticket) try { deliveries.fail(ticket, { message: err.message, needsVerification }) } catch { needsVerification = true }
@@ -518,6 +527,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       })
     } finally {
       await staged.remove().catch(error => log(`เก็บไฟล์ส่งชั่วคราวไว้ก่อน: ${error.message}`))
+      if (cover) await cover.remove().catch(() => {})
       mutateItem(id, it => { it.deliverySnapshot = null })
     }
   }
@@ -684,7 +694,9 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         if (!item || !job || job.agent !== 'tiktok' || job.kind !== 'tiktok-post' || job.status !== 'running' || job.cancelled) return json(res, 409, { error: 'งาน TikTok นี้ไม่ได้กำลังโพสต์แล้ว' }), true
         const file = item.deliverySnapshot?.file ?? videoPath(item)
         if (item.deliverySnapshot && (!resolve(file).startsWith(resolve(POSTING_DIR, 'staging') + sep) || !/^[a-f0-9-]{36}\.mp4$/.test(basename(file)))) return json(res, 409, { error: 'ไฟล์ส่ง TikTok ไม่ตรงกับงานนี้' }), true
-        return json(res, 200, { file, username: job.payload.username, caption: job.payload.caption }), true
+        const cover = item.deliverySnapshot?.cover
+        const coverOk = cover && resolve(cover).startsWith(resolve(POSTING_DIR, 'staging') + sep) && /^[a-f0-9-]{36}\.jpg$/.test(basename(cover)) && existsSync(cover)
+        return json(res, 200, { file, ...(coverOk ? { cover } : {}), username: job.payload.username, caption: job.payload.caption }), true
       }
       if (req.method === 'GET' && path === '/api/posting') return json(res, 200, await view()), true
       // เบาๆ สำหรับแจ้งเตือน (background ถามทุกนาที) + บรรทัด "โพสต์ล่าสุด" — ไม่ดึงคลัง/ไม่ไล่คิวแบบ view()

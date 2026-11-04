@@ -90,6 +90,30 @@
     const dialogs = [...doc.querySelectorAll('[role="dialog"]')].filter(visible).filter(node => /^Labeling AI-generated content(?:\s|$)/i.test(text(node)))
     return dialogs.length === 1 ? findButton(dialogs[0], ['Turn on']) : null
   }
+  // ปุ่มปิดกล่องแนะนำ (tooltip/onboarding) ของ TikTok — ข้อความตรงตัวเท่านั้น ไม่กดปุ่มอื่น
+  const tipDismissButtons = doc => [...doc.querySelectorAll('button, [role="button"]')].filter(node => enabled(node) && exact(text(node), ['เข้าใจแล้ว', 'Got it', 'รับทราบ']))
+  // ── ภาพปก: ปุ่ม "แก้ไขหน้าปก" บนฟอร์ม → หน้าต่างที่มีแท็บ "อัปโหลดหน้าปก" → ยืนยัน ──
+  const coverWords = /^(?:Edit cover|Select cover|แก้ไข(?:หน้าปก|ภาพปก|ปก)|เลือก(?:หน้าปก|ภาพปก))$/i
+  const clickable = node => node.closest('button, [role="button"], [role="tab"], label') ?? node
+  // เอาโหนดในสุดที่ข้อความตรง (ไม่ใช่กล่องใหญ่ที่บังเอิญมีข้อความเดียวกัน) แล้วไต่ขึ้นหาตัวที่กดได้
+  const innermost = (nodes, pattern) => nodes.find(node => ![...node.children].some(child => pattern.test(text(child))))
+  function coverButton(doc) {
+    const nodes = [...doc.querySelectorAll('button, [role="button"], div, span, p')].filter(node => visible(node) && !node.closest('[role="dialog"]') && coverWords.test(text(node)))
+    const node = innermost(nodes, coverWords)
+    return node ? clickable(node) : null
+  }
+  function coverDialog(doc) {
+    const dialogs = [...doc.querySelectorAll('[role="dialog"], [aria-modal="true"]')].filter(node => visible(node) && /cover|หน้าปก|ภาพปก/i.test(text(node)))
+    return dialogs.find(dialog => !dialogs.some(other => other !== dialog && dialog.contains(other))) ?? null
+  }
+  const uploadTabWords = /^(?:Upload cover|Upload image|Upload from device|อัปโหลด(?:หน้าปก|ภาพปก|รูปภาพ|จากอุปกรณ์))$/i
+  function coverUploadTab(dialog) {
+    const nodes = [...dialog.querySelectorAll('[role="tab"], button, [role="button"], div, span')].filter(node => visible(node) && uploadTabWords.test(text(node)))
+    const node = innermost(nodes, uploadTabWords)
+    return node ? clickable(node) : null
+  }
+  const coverConfirm = dialog => findButton(dialog, ['Confirm', 'Save', 'Done', 'Apply', 'ยืนยัน', 'บันทึก', 'เสร็จสิ้น', 'ใช้'])
+  const coverCancel = dialog => findButton(dialog, ['Cancel', 'Close', 'ยกเลิก', 'ปิด']) ?? [...dialog.querySelectorAll('button[aria-label]')].find(node => visible(node) && /^(?:close|ปิด)$/i.test(node.getAttribute('aria-label')))
   function inspectStudio(doc) {
     const controls = [...doc.querySelectorAll('button, input, select, [role="button"], [role="combobox"], [role="switch"], [contenteditable="true"]')].filter(visible).filter(node => !['password', 'email', 'tel'].includes(node.type)).slice(0, 100).map(node => ({
       tag: node.tagName, role: node.getAttribute('role'), type: node.getAttribute('type'), label: node.getAttribute('aria-label'), placeholder: node.getAttribute('placeholder'), e2e: node.getAttribute('data-e2e'), className: node.getAttribute('class'), ariaChecked: node.getAttribute('aria-checked'),
@@ -108,5 +132,5 @@
     })
     return { controls, profiles, avatars, navigation, settingRows, pageText: text(doc.body).slice(0, 4000) }
   }
-  globalThis.DhammaTikTokDom = { text, visible, username, checkPage, account, avatarTrigger, assertAccount, published, publicationSignals, claimAttempt, privacyLabels, exact, findButton, enabled, privacyControl, aiControl, aiConfirmation, checked, inspectStudio }
+  globalThis.DhammaTikTokDom = { text, visible, username, checkPage, account, avatarTrigger, assertAccount, published, publicationSignals, claimAttempt, privacyLabels, exact, findButton, enabled, privacyControl, aiControl, aiConfirmation, checked, tipDismissButtons, coverButton, coverDialog, coverUploadTab, coverConfirm, coverCancel, inspectStudio }
 })()

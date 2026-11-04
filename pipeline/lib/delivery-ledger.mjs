@@ -4,6 +4,7 @@ import { createReadStream, existsSync, mkdirSync, openSync, closeSync, readFileS
 import { join } from 'node:path'
 import { copyFile, unlink } from 'node:fs/promises'
 import { findTarget } from './posting.mjs'
+import { run } from './ffmpeg.mjs'
 
 const blocked = message => Object.assign(new Error(message), { needsVerification: true })
 const sources = identity => [identity.source, ...(identity.sources ?? [])].filter(Boolean)
@@ -49,6 +50,27 @@ export async function stageDelivery(file, item, dir) {
     const identity = await deliveryIdentity(snapshot, item)
     return { file: snapshot, identity, remove: () => unlink(snapshot) }
   } catch (error) { await unlink(snapshot).catch(() => {}); throw error }
+}
+
+// ภาพปกที่ส่งไปพร้อมคลิป: แปลง cover.png เป็น JPG ไม่เกิน 2MB (เพดานของ YouTube) ไว้ใน staging
+// ไม่มีปก = คืน null · เตรียมไม่ได้ = throw ให้ผู้เรียกโพสต์ต่อโดยไม่มีปก
+export const COVER_MAX_BYTES = 2 * 1024 * 1024
+async function coverJpeg(source, out) {
+  await run('ffmpeg', ['-y', '-v', 'error', '-i', source, '-frames:v', '1', '-q:v', '2', out])
+  if (statSync(out).size <= COVER_MAX_BYTES) return
+  // ยังใหญ่เกิน → ย่อด้านยาวเหลือ 1280px แล้วบีบเพิ่ม
+  await run('ffmpeg', ['-y', '-v', 'error', '-i', source, '-frames:v', '1', '-vf', "scale='if(gt(iw,ih),1280,-2)':'if(gt(iw,ih),-2,1280)'", '-q:v', '5', out])
+}
+export async function stageCover(source, dir, { convert = coverJpeg } = {}) {
+  if (!source || !existsSync(source)) return null
+  const staging = join(dir, 'staging'); mkdirSync(staging, { recursive: true })
+  const file = join(staging, randomUUID() + '.jpg')
+  try {
+    await convert(source, file)
+    if (!existsSync(file)) throw new Error('แปลงภาพปกไม่สำเร็จ')
+    if (statSync(file).size > COVER_MAX_BYTES) throw new Error('ภาพปกใหญ่เกิน 2MB')
+    return { file, remove: () => unlink(file) }
+  } catch (error) { await unlink(file).catch(() => {}); throw error }
 }
 
 export async function importDeliveryHistory(ledger, queue, accounts, pathOf) {
