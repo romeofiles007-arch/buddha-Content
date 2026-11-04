@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 import { test } from 'node:test'
 const domSource = readFileSync(new URL('../extension/tiktok-dom.js', import.meta.url), 'utf8')
 const driverSource = readFileSync(new URL('../extension/content-tiktok.js', import.meta.url), 'utf8')
-function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, delayedStudio = false, cdnAvatar = false, studioSwitch = false, ambiguousSwitch = false, aiConsent = false, replacePost = false, processing = false, contentEditable = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
+function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, stuckCaption = false, tip = false, stuckTip = false, delayedStudio = false, cdnAvatar = false, studioSwitch = false, ambiguousSwitch = false, aiConsent = false, replacePost = false, processing = false, contentEditable = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
   let listener, uploads = 0, clicks = 0, progress = 0, accountReads = 0, menuOpen = false, onCancel, rerendered = false, readyChecks = 0
   const results = [], memory = new Map()
   const node = (extra = {}) => ({ textContent: '', getClientRects: () => [{}], getAttribute: () => null, matches: () => false, focus() {}, click() {}, dispatchEvent() {}, ...extra })
@@ -13,7 +13,8 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   let processingReady = !processing, processingChecks = 0
   const editor = Object.assign(new Textarea(), node({ tagName: 'TEXTAREA', focus(){ if(!processingReady) throw new Error('caption edited before upload processing finished') } }))
   if(contentEditable){editor.tagName='DIV';editor.innerText='';delete editor._value}
-  const replacement = Object.assign(new Textarea(), node({ tagName: 'TEXTAREA' })); replacement.value = 'different caption'
+  // stuckCaption: the site overwrites whatever is typed (input never takes)
+  const replacement = Object.assign(new Textarea(), node({ tagName: 'TEXTAREA', dispatchEvent() { if (stuckCaption) this._value = 'different caption' } })); replacement.value = 'different caption'
   const options = ['Everyone', 'Friends', 'Only you'].map((textContent, i) => node({ textContent, value: ['public', 'friends', 'private'][i] }))
   const privacy = node({ tagName: 'SELECT', value: 'public', options, getAttribute: n => n === 'aria-label' ? 'Who can watch this video' : null })
   Object.defineProperty(privacy, 'selectedOptions', { get: () => options.filter(o => o.value === privacy.value) })
@@ -25,6 +26,9 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   const alerts = [], body = { innerText: '' }
   const post = node({ textContent: 'Post', disabled: false, click() { clicks++; if (confirm) { body.innerText = 'Video posted'; alerts.push(node({ innerText: 'Video posted' })) } } })
   const newPost=node({textContent:'Post',disabled:false,click:()=>post.click()})
+  // tip: TikTok's "preview on phone … Got it" box over the Post button (stuckTip: it will not close)
+  let tipOpen = tip, tipClicks = 0
+  const tipButton = node({ textContent: 'เข้าใจแล้ว', disabled: false, click() { tipClicks++; if (!stuckTip) tipOpen = false } })
   let postChanged=false
   let markedProfile = false
   const profile = node({ textContent: 'Profile', getAttribute: n => n === 'href' ? `/@${signedIn}` : null, matches: () => !cdnAvatar || markedProfile, closest: () => null, setAttribute: () => { markedProfile = true } })
@@ -40,7 +44,7 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
       if (selector === '[contenteditable="true"], textarea') return [rerendered ? replacement : editor]
       if (selector === 'select, button, [role="combobox"]') return missingPrivacy ? [] : [privacy]
       if (selector.startsWith('label,')) return [ai]
-      if (selector.startsWith('button, [role="button"]')) return [postChanged?newPost:post]
+      if (selector.startsWith('button, [role="button"]')) return [postChanged?newPost:post, ...(tipOpen ? [tipButton] : [])]
       if (selector === '[role="dialog"]') return consentOpen ? [consentDialog] : []
       if (selector === '[role="progressbar"]' && processing) {
         processingReady = ++processingChecks >= 2
@@ -67,7 +71,7 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   runInNewContext(domSource, ctx)
   runInNewContext(driverSource, ctx)
   const message = { type: 'RUN_JOB', job: { id: 'fixture-job', kind: 'tiktok-post', payload: { username: 'romeo', caption, privacy: 'private', aigc: true } } }
-  return { invoke: () => new Promise(resolve => listener(message, {}, resolve)), results, state: () => ({ uploads, clicks, caption: contentEditable?editor.innerText:editor.value, privacy: privacy.value, aigc: ai.checked }) }
+  return { invoke: () => new Promise(resolve => listener(message, {}, resolve)), results, replaced: () => replacement.value, tip: () => ({ open: tipOpen, clicks: tipClicks }), state: () => ({ uploads, clicks, caption: contentEditable?editor.innerText:editor.value, privacy: privacy.value, aigc: ai.checked }) }
 }
 
 test('React-owned caption editors use browser text input without replacing their DOM children',async()=>{
@@ -120,9 +124,31 @@ test('cancellation during the final account menu read prevents publishing', asyn
   assert.match(f.results[0].error, /ยกเลิก/)
   assert.equal(f.results[0].needsVerification, false)
 })
-test('replacing the caption editor during upload cannot publish a stale caption', async () => {
+// 2026-11-04: TikTok refilled the caption box with the file name after processing.
+test('a caption replaced during upload is re-entered and verified before publishing', async () => {
   const f = fixture({ replaceCaption: true }); await f.invoke()
+  assert.equal(f.results[0].ok, true, f.results[0].error)
+  assert.equal(f.replaced(), 'คำบรรยาย #ธรรมะ')
+  assert.equal(f.state().clicks, 1)
+})
+// 2026-11-04: a "preview on phone … เข้าใจแล้ว" tip covered Post; the click never reached it.
+test('a tip box over the Post button is closed before the single publish click', async () => {
+  const f = fixture({ tip: true }); await f.invoke()
+  assert.equal(f.results[0].ok, true, f.results[0].error)
+  assert.deepEqual(f.tip(), { open: false, clicks: 1 })
+  assert.equal(f.state().clicks, 1)
+})
+test('a tip box that will not close stops before publishing', async () => {
+  const f = fixture({ tip: true, stuckTip: true }); await f.invoke()
   assert.equal(f.state().clicks, 0)
+  assert.equal(f.results[0].ok, false)
+  assert.equal(f.results[0].needsVerification, false)
+})
+test('a caption that cannot be re-entered never publishes a stale caption', async () => {
+  const f = fixture({ replaceCaption: true, stuckCaption: true }); await f.invoke()
+  assert.equal(f.state().clicks, 0)
+  assert.equal(f.results[0].ok, false)
+  assert.match(f.results[0].error, /คำบรรยาย/)
   assert.equal(f.results[0].needsVerification, false)
 })
 
