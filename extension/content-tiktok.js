@@ -154,13 +154,19 @@
         try { await setCover(wait, job.id) } catch (error) {
           if (cancelled) throw error
           coverError = String(error.message)
-          const dialog = D.coverDialog(document)
-          if (dialog) {
+          // ปิดหน้าต่างภาพปก: กดยกเลิก → ไม่ปิดก็กด Esc แล้วยกเลิกซ้ำ (5 พ.ย. 2026 กดยกเลิกครั้งเดียวแล้วหน้าต่างค้าง)
+          // ปิดไม่ได้จริงๆ = หยุดก่อนโพสต์ และบอกสาเหตุที่ตั้งปกไม่ได้ด้วย
+          for (let round = 0; round < 3 && D.coverDialog(document); round++) {
+            const dialog = D.coverDialog(document)
             const cancel = D.coverCancel(dialog)
-            if (cancel) cancel.click()
-            else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))
-            await wait(() => !D.coverDialog(document), 'ปิดหน้าต่างภาพปก TikTok', 10_000)
+            if (round > 0 || !cancel) {
+              for (const target of [dialog, document.activeElement, document]) target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+            D.coverCancel(D.coverDialog(document) ?? dialog)?.click()
+            await wait(() => !D.coverDialog(document), 'ปิดหน้าต่างภาพปก TikTok', 5000).catch(() => {})
           }
+          if (D.coverDialog(document)) throw new Error(`ตั้งภาพปก TikTok ไม่ได้ (${coverError}) และปิดหน้าต่างภาพปกไม่ได้ — หยุดก่อนโพสต์`)
         }
         phase = 'settings'
       }

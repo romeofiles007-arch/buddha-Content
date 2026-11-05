@@ -521,7 +521,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         if (kind !== 'tiktok' && !out?.postId) throw new Error('ปลายทางไม่ส่งเลขโพสต์กลับมา — หยุดเพื่อป้องกันโพสต์ซ้ำ')
         deliveries.complete(ticket, { ...out, destination })
         results[key] = { ok: true, ...out, destination, name: account.name, at: Date.now() }
-        log(`โพสต์อัตโนมัติ: "${item.title}" ขึ้น ${account.name} แล้ว ${out.url}`)
+        log(`โพสต์อัตโนมัติ: "${item.title}" ขึ้น ${account.name} แล้ว${out.url ? ` ${out.url}` : ''}`)
         if (out.coverError) {
           log(`โพสต์อัตโนมัติ: "${item.title}" บน ${account.name} ตั้งภาพปกไม่ได้ — ${out.coverError}`)
           mutateItem(id, it => note(it, `${account.name}: โพสต์แล้วแต่ตั้งภาพปกไม่ได้ (${out.coverError})`))

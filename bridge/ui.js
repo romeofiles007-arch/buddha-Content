@@ -68,7 +68,8 @@ const TEST_AGENTS = /→ (x|cancel-test|flow-selftest) |ให้ (x|cancel-test
 function mergeAutopilotLog(run, bridgeEvents) {
   if (!run?.entries) return null
   const from = run.startedAt - 1000
-  const to = run.endedAt ? run.endedAt + 60_000 : Infinity
+  // คลิปจบแล้วยังแสดงเหตุการณ์ต่อจนกว่าจะเริ่มรอบใหม่ — งานที่ระบบเรียกเองระหว่างรอ (โพสต์ตามเวลา, QC) ต้องเห็นใน log
+  const to = Infinity
   const events = bridgeEvents
     .filter((e) => e.at >= from && e.at <= to && !TEST_AGENTS.test(e.text) && !/^เริ่ม |^ทำคลิปอัตโนมัติ /.test(e.text))
     .map((e) => ({ ...e, src: 'bridge' }))

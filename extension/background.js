@@ -81,6 +81,19 @@ async function ensureTab(agent) {
   return opening[agent]
 }
 
+// ปิดแท็บโพสต์ TikTok ที่ extension เปิดเองในรอบก่อนๆ (ไม่แตะแท็บ TikTok ที่ผู้ใช้เปิดเอง)
+// chrome.tabs.remove ปิดได้แม้หน้ามีหน้าต่างถาม "ออกจากเว็บไซต์?" ค้างอยู่
+async function closeFreshTikTokTabs() {
+  const { freshTikTokTabs = [] } = await chrome.storage.local.get('freshTikTokTabs')
+  if (!freshTikTokTabs.length) return
+  await chrome.storage.local.set({ freshTikTokTabs: [] })
+  await Promise.all(freshTikTokTabs.map(async (id) => {
+    // เลขแท็บเริ่มนับใหม่เมื่อเปิด Chrome ใหม่ → ปิดเฉพาะแท็บที่ยังเป็นหน้า TikTok Studio
+    const tab = await chrome.tabs.get(id).catch(() => null)
+    if (tab && /^https:\/\/www\.tiktok\.com\/tiktokstudio\//.test(tab.url ?? tab.pendingUrl ?? '')) await chrome.tabs.remove(id).catch(() => {})
+  }))
+}
+
 async function openTab(match, key) {
   const tab = await chrome.tabs.create({ url: match, active: false })
   await chrome.storage.session.set({ [key]: tab.id })
@@ -167,10 +180,12 @@ async function handleJob(job) {
   }
   // A failed Studio draft can still trigger beforeunload. Never navigate it for a new publish attempt.
   const freshTikTokPost = agent === 'tiktok' && job.kind === 'tiktok-post'
+  // งาน TikTok รับทีละงาน → แท็บโพสต์ของรอบก่อนๆ ที่ยังเปิดอยู่เป็นของเก่าทั้งหมด ปิดก่อนเปิดใหม่
+  if (freshTikTokPost) await closeFreshTikTokTabs()
   const tab = freshTikTokPost ? await openTab(AGENTS.tiktok.match, AGENTS.tiktok.key) : await ensureTab(agent)
   if (freshTikTokPost) {
-    const { freshTikTokTabs = [] } = await chrome.storage.session.get('freshTikTokTabs')
-    await chrome.storage.session.set({ freshTikTokTabs: [...freshTikTokTabs, tab.id].slice(-20) })
+    const { freshTikTokTabs = [] } = await chrome.storage.local.get('freshTikTokTabs')
+    await chrome.storage.local.set({ freshTikTokTabs: [...freshTikTokTabs, tab.id].slice(-20) })
   }
 
   if (agent === 'flow' && ['flow-switch-account', 'flow-account-inspect'].includes(job.kind)) {
@@ -550,13 +565,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const path = { PARTIAL: '/partial', RESULT: '/result', ERROR: '/error' }[msg.type]
     postReliable(path, msg.body).then(async (result) => {
       sendResponse(result)
-      // แท็บ TikTok ที่เปิดใหม่ให้โพสต์นี้ → โพสต์สำเร็จแล้วปิดทิ้ง ไม่ให้แท็บค้างเพิ่มทุกคลิป
-      // โพสต์พลาดเปิดค้างไว้ให้ดูสาเหตุ
+      // แท็บ TikTok ที่เปิดใหม่ให้โพสต์นี้ → งานจบแล้วปิดทิ้ง ทั้งสำเร็จและพลาด (สาเหตุส่งเข้า bridge แล้ว)
+      // ผู้ใช้ (5 พ.ย. 2026): แท็บที่โพสต์พลาดค้างพร้อมไฟล์วิดีโอทีละแท็บ จนดูเหมือนเรียกไฟล์อะไรไม่รู้ขึ้นมาเอง
+      // เหลือไว้เฉพาะกรณีไม่แน่ใจว่าโพสต์ขึ้นไหม ให้ตรวจในแท็บได้ (รอบโพสต์ถัดไปจะปิดให้)
       const tabId = _sender.tab?.id
-      if (!tabId || msg.type !== 'RESULT' || !result?.ok || msg.body?.meta?.ok === false || msg.body?.meta?.error) return
-      const { freshTikTokTabs = [] } = await chrome.storage.session.get('freshTikTokTabs')
+      if (!tabId || msg.type === 'PARTIAL' || !result?.ok || msg.body?.meta?.needsVerification) return
+      const { freshTikTokTabs = [] } = await chrome.storage.local.get('freshTikTokTabs')
       if (!freshTikTokTabs.includes(tabId)) return
-      await chrome.storage.session.set({ freshTikTokTabs: freshTikTokTabs.filter((id) => id !== tabId) })
+      await chrome.storage.local.set({ freshTikTokTabs: freshTikTokTabs.filter((id) => id !== tabId) })
       setTimeout(() => chrome.tabs.remove(tabId).catch(() => {}), 3000)
     })
     return true

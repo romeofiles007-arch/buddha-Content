@@ -3638,4 +3638,27 @@ chrome.runtime.sendMessage({ type: 'ENSURE_APP' }).then((app) => app?.ok && api(
 }).catch(() => {})
 setInterval(() => {
   if (prod?.state.active || $('prodBox').open) prodCall('/api/production')
+  followAutoInBackground()
 }, 20_000)
+
+/**
+ * ผลิตต่อเนื่อง/ตั้งเวลา เริ่มคลิปเองตอนแผงเปิดค้างอยู่ → แผงต้องตามงานนั้นด้วย
+ * เดิมตามเฉพาะตอนเปิดแผงหรือกดปุ่มเอง: ChatGPT/Flow ทำงานอยู่ แต่ log ค้างที่คลิปเก่า
+ * ไม่มีคลิปทำอยู่ → อัปเดต log ต่อ ให้เห็นงานที่ระบบเรียกเอง (เช่นโพสต์ TikTok ตามเวลา)
+ */
+let followingAuto = false
+async function followAutoInBackground() {
+  if (autoRunning || followingAuto) return
+  followingAuto = true
+  try {
+    const app = await localApp()
+    const a = await api(app, '/api/autopilot')
+    if (a?.run?.status === 'running') {
+      if (!$('autoTitle').value && a.status?.title) $('autoTitle').value = a.status.title
+      runAuto(app, a.slug)
+    } else if (a?.log && logSig) renderAutoLog(a.log)
+  } catch {
+  } finally {
+    followingAuto = false
+  }
+}
