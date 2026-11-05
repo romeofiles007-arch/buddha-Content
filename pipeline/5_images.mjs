@@ -16,6 +16,7 @@ import { flowPrompt, aspectOf, stripSafeArea, tagNames, untagShotPrompt, recolor
 import { characterAttachments, activeCharacter } from './lib/character.mjs'
 import { ensureProfile } from './lib/clip_profile.mjs'
 import { coverShot, coverBriefLines, hasCover, COVER_NAME } from './lib/cover.mjs'
+import { riddleShot, riddleBriefLines, hasRiddleImage, RIDDLE_NAME } from './lib/riddle.mjs'
 import { probeSize } from './lib/ffmpeg.mjs'
 import { collectImages } from './lib/shotfile.mjs'
 import { generateWithFailover } from './lib/flow-failover.mjs'
@@ -51,12 +52,15 @@ const onlyMissing = process.argv.includes('--missing')
 const coverOnly = process.argv.includes('--cover-only')
 const have = new Set(existing.map((i) => i.name))
 if (hasCover(slug)) have.add(COVER_NAME)
+if (hasRiddleImage(slug)) have.add(RIDDLE_NAME)
 const titleFile = join(projectDir(slug, 'script'), 'title.txt')
 const title = existsSync(titleFile) ? readFileSync(titleFile, 'utf8').trim() : slug
 // ปกคลิปเป็นภาพสุดท้ายเสมอ — มีอยู่แล้วก็ไม่สร้างซ้ำ (ยกเว้นสั่ง --cover-only)
 const cover = coverOnly || !have.has(COVER_NAME) ? coverShot(slug, title) : null
 const timeline = coverOnly ? [] : onlyMissing ? allShots.filter((s) => !have.has(s.filename)) : allShots
-const shots = [...timeline, ...(cover ? [cover] : [])]
+// ภาพปริศนาธรรมสำหรับ Story — มีโจทย์จาก ChatGPT แล้วแต่ยังไม่มีภาพ (คลิปเก่า/ภาษาอื่นไม่มีโจทย์ = ไม่ทำ)
+const riddle = !coverOnly && !have.has(RIDDLE_NAME) ? riddleShot(slug) : null
+const shots = [...timeline, ...(cover ? [cover] : []), ...(riddle ? [riddle] : [])]
 if (coverOnly) console.log('สร้างภาพปกคลิป')
 if (onlyMissing) console.log(`มีภาพแล้ว ${existing.length} ใบ · สร้างเฉพาะที่ขาด ${shots.length} ช็อต`)
 else if (existing.length && !coverOnly) console.log(`มีภาพอยู่แล้ว ${existing.length} ใบใน ${imagesDir} — จะถูกเขียนทับถ้าชื่อซ้ำ`)
@@ -80,6 +84,7 @@ const brief = [
   briefHead,
   ...(shotLines.length ? ['=== SHOT LIST ===', ...shotLines] : []),
   ...(cover ? coverBriefLines(untag(cover), aspect === '9:16') : []),
+  ...(riddle ? riddleBriefLines(riddle) : []),
 ].join('\n\n')
 
 // project ใน Flow ของคลิปนี้ — ลองซ้ำ/ทำต่อจะกลับไป project เดิม (--new-project = เปิดใหม่)
@@ -98,8 +103,9 @@ const result = await generateWithFailover({
     briefHead,
     `คำสั่งรอบนี้สร้างเฉพาะ ${remaining.length} ภาพตามรายชื่อไฟล์ใน SHOT LIST/COVER ด้านล่าง ไม่สร้างช็อตอื่นจากข้อความก่อนหน้า และใช้เครื่องมือสร้างภาพจริงก่อนตอบว่าสร้างแล้ว`,
     '=== SHOT LIST ===',
-    ...remaining.filter(s => s.filename !== COVER_NAME).map(s => `${s.filename} ${s.prompt}`),
+    ...remaining.filter(s => s.filename !== COVER_NAME && s.filename !== RIDDLE_NAME).map(s => `${s.filename} ${s.prompt}`),
     ...remaining.filter(s => s.filename === COVER_NAME).flatMap(s => coverBriefLines(untag(shots.find(original => original.filename === s.filename)), aspect === '9:16')),
+    ...remaining.filter(s => s.filename === RIDDLE_NAME).flatMap(() => riddleBriefLines(riddle)),
   ].join('\n\n'), undefined, slug),
   onSwitch: (quota, missing) => console.log(`\n  บัญชี Flow ${quota.email} ติดลิมิต — สลับบัญชีอัตโนมัติและทำต่อเฉพาะ ${missing} ภาพที่ขาด`),
   payload: {
@@ -144,6 +150,8 @@ if (result.meta && result.meta.generated !== result.meta.expected) {
 const { images } = collectImages(imagesDir)
 const got = new Set(images.map((i) => i.name))
 if (hasCover(slug)) got.add(COVER_NAME)
+if (hasRiddleImage(slug)) got.add(RIDDLE_NAME)
+if (riddle) console.log(hasRiddleImage(slug) ? 'ได้ภาพปริศนาธรรมแล้ว: 05_images/riddle.png' : 'ยังไม่ได้ภาพปริศนาธรรม (Story รอบนี้จะข้าม)')
 if (cover) console.log(hasCover(slug) ? 'ได้ภาพปกคลิปแล้ว: 05_images/cover.png' : 'ยังไม่ได้ภาพปกคลิป')
 const missing = shots.filter((s) => !got.has(s.filename))
 if (missing.length) {

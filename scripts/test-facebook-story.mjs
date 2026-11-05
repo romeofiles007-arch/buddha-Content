@@ -1,6 +1,7 @@
 // Facebook Story ตามรอบ (ทุก N โพสต์ต่อเพจ) — ไม่ยิง Facebook จริง
 //   node scripts/test-facebook-story.mjs
-// ผู้ใช้ (พ.ย. 2026): อยากแบ่งไปลง Story บ้าง เช่น 10 โพสต์ไป Story 1 · คลิป 62–75 วิ แต่ Story ไม่เกิน 60 วิ → แบ่ง 2 ตอน
+// ผู้ใช้ (พ.ย. 2026): อยากแบ่งไปลง Story บ้าง เช่น 10 โพสต์ไป Story 1
+// 5 พ.ย. 2026: Story เปลี่ยนเป็นภาพ "ไขปริศนาธรรม" ของคลิป (riddle.mjs) — ตัวตัดคลิปเป็นตอนยังอยู่ใน delivery-ledger
 import assert from 'node:assert/strict'
 import { test, beforeEach, after } from 'node:test'
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs'
@@ -81,6 +82,37 @@ test('Story: URL อัปโหลดที่ไม่ใช่ของ Faceb
   await assert.rejects(S.facebookStory({ pageId: '42', token: 'tok', file: sample }, { fetchImpl: async () => (++n === 1 ? reply(200, { video_id: 'v', upload_url: 'https://rupload.facebook.com/x' }) : n === 2 ? reply(200, { success: true }) : reply(500, { error: { message: 'publish broke' } })) }), (e) => e.needsVerification === true)
 })
 
+// ── Story ภาพปริศนาธรรม (5 พ.ย. 2026: แทนการตัดคลิปลง Story) ──
+const R = await import('../pipeline/lib/riddle.mjs')
+const jpg = join(dir, 'story.jpg'); writeFileSync(jpg, Buffer.alloc(500, 1))
+test('Story ภาพ: อัปภาพแบบยังไม่เผยแพร่ → ลง photo_stories ด้วยเลขภาพ · อัปภาพพลาด = รู้ว่ายังไม่ขึ้น · สั่งลงแล้วพลาด = ไม่รู้ผล', async () => {
+  const calls = []
+  const out = await S.facebookPhotoStory({ pageId: '42', token: 'tok', file: jpg }, { fetchImpl: async (url, init) => {
+    calls.push({ url, init })
+    return calls.length === 1 ? reply(200, { id: 'ph1' }) : reply(200, { success: true, post_id: 'st1' })
+  } })
+  assert.match(calls[0].url, /\/42\/photos$/)
+  assert.equal(calls[0].init.body.get('published'), 'false')
+  assert.match(calls[1].url, /\/42\/photo_stories$/)
+  assert.match(calls[1].init.body, /photo_id=ph1/)
+  assert.equal(out.postId, 'st1')
+  await assert.rejects(S.facebookPhotoStory({ pageId: '42', token: 'tok', file: jpg }, { fetchImpl: async () => reply(500, { error: { message: 'photo broke' } }) }), (e) => e.needsVerification === false)
+  let n = 0
+  await assert.rejects(S.facebookPhotoStory({ pageId: '42', token: 'tok', file: jpg }, { fetchImpl: async () => (++n === 1 ? reply(200, { id: 'ph' }) : reply(500, { error: { message: 'story broke' } })) }), (e) => e.needsVerification === true)
+})
+test('โจทย์ปริศนา: อ่านบรรทัด riddle.png จาก ChatGPT · ชิ้นภาพ 2–3 ชิ้นเท่านั้น · ข้อความบนภาพมีหัวข้อและเฉลยมุมล่าง · คลิปภาษาอื่นไม่ขอโจทย์', () => {
+  const r = R.parseRiddle('=== RIDDLE ===\nriddle.png | RIDDLE | ANSWER: "ขันติ" | PIECES: ขันน้ำ = ขัน + นิ้วชี้ = ติ | MEANING: ความอดทน')
+  assert.deepEqual(r, { answer: 'ขันติ', pieces: [{ picture: 'ขันน้ำ', sound: 'ขัน' }, { picture: 'นิ้วชี้', sound: 'ติ' }], meaning: 'ความอดทน' })
+  assert.equal(R.parseRiddle('riddle.png | RIDDLE | ANSWER: สติ | PIECES: ส้ม = ส | MEANING: x'), null, 'ชิ้นเดียวไม่ใช่ปริศนา')
+  assert.equal(R.parseRiddle('ไม่มีโจทย์'), null)
+  const ass = R.riddleAss(r)
+  assert.match(ass, /ไขปริศนาธรรม/)
+  assert.match(ass, /Style: Ans,[^\n]*,3,36,36,40,222/, 'เฉลยชิดมุมขวาล่าง')
+  assert.match(ass, /เฉลย: ขันติ \(ขัน \+ ติ\)\\Nความอดทน/)
+  assert.equal(R.riddleRequest('en'), '')
+  assert.match(R.riddleRequest('th', { dhamma: 'ขันติ (ความอดทนอดกลั้น)' }), /riddle\.png \| RIDDLE/)
+})
+
 // ── ทั้งระบบ (คิวจริง ไม่ยิงเน็ต) ──
 const project = mkdtempSync(join(ROOT, 'projects', '_storytest-')), slug = basename(project)
 mkdirSync(join(project, '06_render'))
@@ -98,34 +130,45 @@ beforeEach(() => {
   for (const name of ['deliveries.json', 'deliveries.lock', 'deliveries.initialized']) rmSync(join(dir, name), { force: true })
   P.saveAccounts({ settings: {}, facebook: [{ id: 'fb', pageId: '123', token: 'fake-page-token-123456', name: 'Page', storyEvery: 3, storySince: 1 }], youtube: [], tiktok: [] })
 })
-function harness({ story = async () => ({ postId: 's' }) } = {}) {
-  const calls = { feed: 0, story: [] }; let body, response
+function harness({ story = async () => ({ postId: 's' }), riddle = true } = {}) {
+  const calls = { feed: 0, story: [], videoStory: 0 }; let body, response
   const posting = createPosting({ jobs: new Map(), enqueue() { throw new Error('no jobs') }, port: 1, token: 'test', log() {}, scheduler: false, readBody: async () => body, json: (_res, code, data) => { response = { code, data } }, deps: {
     listVideos: async () => [],
     facebookUpload: async () => { calls.feed++; return { postId: `f${calls.feed}`, url: `https://www.facebook.com/123/videos/f${calls.feed}` } },
-    facebookStory: async (x) => { calls.story.push(x.file); return story(x) },
-    stageStoryParts: async () => ({ files: ['part1.mp4', 'part2.mp4'], remove: async () => {} }),
+    facebookStory: async () => { calls.videoStory++; return { postId: 'v' } },
+    facebookPhotoStory: async (x) => { calls.story.push(x.file); return story(x) },
+    prepareRiddleStory: async (s) => (riddle ? { file: `${s}/story.jpg`, riddle: { answer: 'ขันติ' }, remove: async () => {} } : null),
     stageCover: async () => null,
   } })
   return { posting, calls, request: async (path, data) => { body = data; await posting.handle({ method: data ? 'POST' : 'GET', headers: { host: '127.0.0.1:1', 'x-bridge-token': 'test' } }, {}, new URL(path, 'http://127.0.0.1:1')); return response } }
 }
-test('โพสต์ที่ถึงรอบ ลง Story 2 ตอนตามลำดับหลังโพสต์หน้าเพจ · โพสต์ถัดไปไม่ลงซ้ำ', async () => {
+test('โพสต์ที่ถึงรอบ ลง Story ภาพปริศนาของคลิปนั้นหลังโพสต์หน้าเพจ · ไม่ลงคลิปเป็น Story · โพสต์ถัดไปไม่ลงซ้ำ', async () => {
   const clip = newClip()
   P.saveQueue([done(newClip(), LONG_AGO), done(newClip(), LONG_AGO + 1), scheduled(clip)])
   const h = harness(); await h.posting.tick()
   const item = P.loadQueue().find((q) => q.file === clip)
   assert.equal(item.status, 'posted')
   assert.equal(h.calls.feed, 1)
-  assert.deepEqual(h.calls.story, ['part1.mp4', 'part2.mp4'])
+  assert.deepEqual(h.calls.story, [`${slug}/story.jpg`])
+  assert.equal(h.calls.videoStory, 0)
   assert.equal(item.results['fb:fb'].story.ok, true)
-  assert.equal(item.results['fb:fb'].story.parts, 2)
-  assert.ok(item.history.some((x) => /ลง Story แล้ว 2 ตอน/.test(x.text)))
-  // โพสต์ถัดไป (นับใหม่จาก Story นี้) ยังไม่ถึงรอบ
+  assert.equal(item.results['fb:fb'].story.riddle, 'ขันติ')
+  assert.ok(item.history.some((x) => /ลง Story ปริศนาธรรมแล้ว \(เฉลย: ขันติ\)/.test(x.text)))
   const next = newClip()
   P.saveQueue([...P.loadQueue().map((q) => ({ ...q, ...(q.postedAt ? { postedAt: q.postedAt - 3600_000 } : {}), results: Object.fromEntries(Object.entries(q.results ?? {}).map(([k, r]) => [k, { ...r, at: r.at - 3600_000, ...(r.story ? { story: { ...r.story, at: r.story.at - 3600_000 } } : {}) }])) })), scheduled(next)])
   const h2 = harness(); await h2.posting.tick()
   assert.equal(h2.calls.feed, 1)
   assert.deepEqual(h2.calls.story, [])
+})
+test('คลิปไม่มีภาพปริศนา → ข้าม Story ไม่นับรอบ · โพสต์ถัดไปลองใหม่', async () => {
+  const clip = newClip()
+  P.saveQueue([done(newClip(), LONG_AGO), done(newClip(), LONG_AGO + 1), scheduled(clip)])
+  const h = harness({ riddle: false }); await h.posting.tick()
+  const item = P.loadQueue().find((q) => q.file === clip)
+  assert.equal(item.results['fb:fb'].ok, true)
+  assert.equal(item.results['fb:fb'].story.skipped, true)
+  assert.deepEqual(h.calls.story, [])
+  assert.equal(P.storyDue(P.loadQueue(), 'fb:fb', P.loadAccounts().facebook[0]), true)
 })
 test('Story พลาดไม่ทำให้โพสต์หน้าเพจนับว่าพลาด · ยังถึงรอบ โพสต์ถัดไปลองใหม่', async () => {
   const clip = newClip()
@@ -137,21 +180,20 @@ test('Story พลาดไม่ทำให้โพสต์หน้าเ�
   assert.equal(item.results['fb:fb'].story.ok, false)
   assert.equal(P.storyDue(P.loadQueue(), 'fb:fb', P.loadAccounts().facebook[0]), true)
 })
-test('ตอนแรกขึ้นแล้วแต่ตอนสองพลาด → ไม่รู้ผล นับเป็นลงแล้ว และคลิปเดิมจะไม่ลง Story ซ้ำ', async () => {
+test('สั่งลง Story แล้วไม่รู้ผล → นับเป็นลงแล้ว และคลิปเดิมจะไม่ลง Story ซ้ำ', async () => {
   const clip = newClip()
   P.saveQueue([done(newClip(), LONG_AGO), done(newClip(), LONG_AGO + 1), scheduled(clip)])
-  let n = 0
-  const h = harness({ story: async () => { if (++n === 2) throw Object.assign(new Error('lost'), { needsVerification: false }); return { postId: 's1' } } }); await h.posting.tick()
+  const h = harness({ story: async () => { throw Object.assign(new Error('lost'), { needsVerification: true }) } }); await h.posting.tick()
   const story = P.loadQueue().find((q) => q.file === clip).results['fb:fb'].story
   assert.equal(story.ok, false)
   assert.equal(story.needsVerification, true)
-  assert.equal(story.parts, 1)
   assert.equal(P.storyDue(P.loadQueue(), 'fb:fb', P.loadAccounts().facebook[0]), false)
 })
-test('ตั้งค่ารอบ Story ต่อเพจ: รับเฉพาะ ปิด/5/10/20 · เปลี่ยนค่าแล้วเริ่มนับใหม่ · หน้าจอเห็นว่าอีกกี่โพสต์', async () => {
+test('ตั้งค่ารอบ Story ต่อเพจ: รับเฉพาะ ปิด/1/2/3/5/10/20 · เปลี่ยนค่าแล้วเริ่มนับใหม่ · หน้าจอเห็นว่าอีกกี่โพสต์', async () => {
   P.saveQueue([done(newClip(), LONG_AGO)])
   const h = harness()
   assert.equal((await h.request('/api/posting/facebook/update', { id: 'fb', storyEvery: 7 })).code, 400)
+  assert.equal((await h.request('/api/posting/facebook/update', { id: 'fb', storyEvery: 1 })).code, 200)
   const before = Date.now()
   const r = await h.request('/api/posting/facebook/update', { id: 'fb', storyEvery: 10 })
   assert.equal(r.code, 200)

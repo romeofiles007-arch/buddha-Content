@@ -97,6 +97,8 @@ if (autoTopic) {
   topicPick = { chosen: topics[0], candidates: topics, at: Date.now() }
   title = topics[0].title
   console.log(`   เลือก: ${title} (${topics[0].score} คะแนน)`)
+  const theme = topics[0].theme
+  if (theme?.area || theme?.dhamma) console.log(`   ด้านชีวิต: ${theme.area ?? '-'} · หลักธรรมแกน: ${theme.dhamma ?? '-'}`)
 }
 const slug = slugify(title)
 // ค่าใช้จ่าย: token ChatGPT ของคลิปนี้ (ช่วงคิดหัวข้อจดไว้ที่ไฟล์พัก → รวมเข้าคลิปตอนนี้)

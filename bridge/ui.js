@@ -639,7 +639,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         if (!slug) return json(res, 400, { error: 'ยังไม่ได้เลือกหัวข้อ' }), true
         const { name, base64 } = await readBody(req)
         // ชื่อไฟล์ต้องอ่านเวลากลับได้ (กฎ 4) — ขั้นตัดต่อวางภาพตามชื่อไฟล์
-        if (parseTimecodeFilename(String(name)) == null && String(name) !== 'cover.png') return json(res, 400, { error: `ชื่อไฟล์ไม่ใช่ timecode: ${name}` }), true
+        if (parseTimecodeFilename(String(name)) == null && !['cover.png', 'riddle.png'].includes(String(name))) return json(res, 400, { error: `ชื่อไฟล์ไม่ใช่ timecode: ${name}` }), true
         const dir = join(ROOT, 'projects', slug, '05_images')
         mkdirSync(dir, { recursive: true })
         writeFileSync(join(dir, String(name)), Buffer.from(String(base64), 'base64'))

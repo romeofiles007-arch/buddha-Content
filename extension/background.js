@@ -167,6 +167,24 @@ async function reloadIfTranslated(tabId, url, settleMs, { preserveContext = fals
 async function handleJob(job) {
   await setStatus(`กำลังทำ ${job.kind}`)
   const agent = job.payload.agent ?? jobAgent(job)
+  if (agent !== 'tiktok' || job.kind !== 'tiktok-post') return runJob(job, agent)
+  // 5 พ.ย. 2026: โพสต์ TikTok ขาดการติดต่อ 3 รอบ ทั้งที่แท็บยังทำงาน — Chrome หน่วงตัวจับเวลาของแท็บที่ไม่อยู่บนจอ
+  // (สัญญาณแรกจากแท็บมาถึงช้าไป 2 นาทีกว่า) → service worker ส่งสัญญาณแทนระหว่างเปิดแท็บและรอผล ไม่เกิน 12 นาที
+  // งานถูกยกเลิกแล้วก็หยุดส่ง · แท็บค้างจริงเกิน 12 นาที bridge จะตัดสินว่าหลุดตามปกติ
+  const until = Date.now() + 12 * 60_000
+  const keepAlive = setInterval(async () => {
+    if (Date.now() > until) return clearInterval(keepAlive)
+    const state = await post('/progress', { id: job.id }).then((res) => res.json()).catch(() => null)
+    if (state?.cancelled || (state && state.status !== 'running')) clearInterval(keepAlive)
+  }, 20_000)
+  try {
+    return await runJob(job, agent)
+  } finally {
+    clearInterval(keepAlive)
+  }
+}
+
+async function runJob(job, agent) {
   if (agent === 'tiktok' && job.kind === 'tiktok-inspect' && job.payload.preserve === true) {
     const tabs = await chrome.tabs.query({ url: AGENTS.tiktok.pattern })
     const snapshots = []
@@ -201,7 +219,23 @@ async function handleJob(job) {
     return
   }
 
-  if (freshTikTokPost) await chrome.tabs.update(tab.id, { active: true })
+  if (freshTikTokPost) {
+    await chrome.tabs.update(tab.id, { active: true })
+    // กันหน้าเว็บเปิดหน้าต่างเลือกไฟล์ของ Windows (หน้าเว็บหยุดทั้งหน้าจนกว่าจะมีคนกดปิด) — ทำงานเมื่อ content script ติดธงไว้เท่านั้น
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      func: () => {
+        if (window.__dhammaPickerGuard) return
+        window.__dhammaPickerGuard = true
+        const blocked = (input) => input?.type === 'file' && document.documentElement.dataset.dhammaBlockPicker === '1'
+        const click = HTMLInputElement.prototype.click
+        HTMLInputElement.prototype.click = function () { if (!blocked(this)) return click.call(this) }
+        const showPicker = HTMLInputElement.prototype.showPicker
+        if (showPicker) HTMLInputElement.prototype.showPicker = function () { if (!blocked(this)) return showPicker.call(this) }
+      },
+    }).catch((err) => console.warn('ติดตั้งตัวกันหน้าต่างเลือกไฟล์ใน TikTok ไม่ได้', err))
+  }
   else if (agent === 'tiktok') await loadInTab(tab.id, AGENTS.tiktok.match, 1500)
 
   // Flow: เริ่มจากหน้าแรกทุกครั้ง → content script กด New project ได้ project ใหม่ต่อคลิป

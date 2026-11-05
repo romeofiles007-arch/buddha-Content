@@ -523,8 +523,8 @@ async function scanAllTiles() {
   return tiles
 }
 
-// ชื่อภาพที่เก็บกลับ: timecode ของช็อต หรือ cover.png (ภาพปกคลิป)
-const TIMECODE_NAME = /(\d{2}_\d{2}_\d{2}(?:_\d)?\.png|cover\.png)/i
+// ชื่อภาพที่เก็บกลับ: timecode ของช็อต · cover.png (ภาพปกคลิป) · riddle.png (ภาพปริศนาธรรมสำหรับ Story)
+const TIMECODE_NAME = /(\d{2}_\d{2}_\d{2}(?:_\d)?\.png|cover\.png|riddle\.png)/i
 
 /** ภาพจาก flow-content.google เป็น JPEG → แปลงเป็น PNG ให้ตรงกับชื่อไฟล์ตาม Blueprint กฎ 4 */
 /**
@@ -690,7 +690,8 @@ function namedPicks(wanted) {
  * เปิดภาพในหน้าแก้ภาพ (คลิก tile → /edit/…) อ่าน prompt แล้วกดกลับ — อ่านอย่างเดียว ไม่แก้ภาพ
  */
 const shotNo = (s) => Number((/\bSHOT\s*0*(\d+)/i.exec(s ?? '') ?? [])[1]) || null
-const isCoverPrompt = (s) => !shotNo(s) && /\bcover\b|thumbnail|ภาพปก/i.test(s ?? '')
+// ภาพพิเศษที่ไม่มีเลขช็อต — จับคู่จากคำใน prompt (prompt ภาพปริศนาห้ามมีคำว่าปก/thumbnail และกลับกัน)
+const SPECIAL_SHOTS = [{ name: 'cover.png', re: /\bcover\b|thumbnail|ภาพปก/i }, { name: 'riddle.png', re: /\briddle\b|\brebus\b|ปริศนา/i }]
 const tileImg = (id) => document.querySelector(`flow-grid-tile-container img[data-media-id="${CSS.escape(id)}"]`)
 const inEditor = () => /\/edit\//.test(location.pathname)
 
@@ -747,14 +748,17 @@ async function promptPicks(wanted, shots, { skip = new Set(), beat = async () =>
   // skip = ภาพที่มีอยู่ก่อนเริ่มงานนี้ — project เดิมอาจมีภาพของ shot list ชุดก่อน เลข SHOT ซ้ำแต่คนละฉาก ห้ามจับคู่
   const picks = namedPicks(wanted)
   const byNo = new Map()
-  let cover = null
+  const specials = new Map() // ชื่อไฟล์ภาพพิเศษที่ยังหาไม่เจอ → คำใน prompt ที่ใช้จับคู่
   for (const s of shots) {
     if (!wanted.has(s.filename) || picks.has(s.filename)) continue
     const n = shotNo(s.prompt) ?? shotNo(s.shot)
     if (n) byNo.set(n, s.filename)
-    else if (/cover/i.test(s.filename)) cover = s.filename
+    else {
+      const special = SPECIAL_SHOTS.find((x) => x.name === String(s.filename).toLowerCase())
+      if (special) specials.set(s.filename, special.re)
+    }
   }
-  if (!byNo.size && !cover) return picks
+  if (!byNo.size && !specials.size) return picks
   const taken = new Set([...picks.values()])
   const match = (id) => {
     if (skip.has(id)) return
@@ -762,12 +766,12 @@ async function promptPicks(wanted, shots, { skip = new Set(), beat = async () =>
     const p = tilePrompts.get(id)
     if (!t?.src || !p || taken.has(t.src)) return
     const n = shotNo(p)
-    const filename = n ? byNo.get(n) : isCoverPrompt(p) ? cover : null
+    const filename = n ? byNo.get(n) : [...specials].find(([, re]) => re.test(p))?.[0] ?? null
     if (!filename || picks.has(filename)) return
     picks.set(filename, t.src)
     taken.add(t.src)
     if (n) byNo.delete(n)
-    else cover = null
+    else specials.delete(filename)
   }
   for (const id of tiles.keys()) match(id)
   // ย่อหน้าจอชั่วคราวให้ grid วาด tile ครบทุกใบ (แบบเดียวกับ scanAllTiles) แล้วไล่อ่าน prompt ใบที่ยังไม่รู้
@@ -780,7 +784,7 @@ async function promptPicks(wanted, shots, { skip = new Set(), beat = async () =>
     collectTiles()
     let n = 0
     for (const id of [...tiles.keys()]) {
-      if (!byNo.size && !cover) break
+      if (!byNo.size && !specials.size) break
       if (skip.has(id) || tilePrompts.has(id) || picks.size >= wanted.size) continue
       await readTilePrompt(id)
       collectTiles()

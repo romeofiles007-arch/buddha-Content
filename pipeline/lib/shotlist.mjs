@@ -14,6 +14,8 @@ import { activeCharacter, characterRule, bodyStyleRule } from './character.mjs'
 import { readProfile } from './clip_profile.mjs'
 import { categoryRule } from '../../extension/prompts.js'
 import { coverRequest, parseCover, saveCoverPrompt, readCoverPrompt, coverShot, coverBriefLines } from './cover.mjs'
+import { riddleRequest, parseRiddle, saveRiddle } from './riddle.mjs'
+import { themeOf } from './topics.mjs'
 import { orientationOf } from './prompts.mjs'
 
 export const SHOTS_PER_ROUND = 40
@@ -123,7 +125,7 @@ ${batch.map(slotLine).join('\n')}
 - ส่วน 5.3 ต้องขึ้นต้นด้วยบรรทัด "=== SHOT LIST ===" แล้วตามด้วย shot
 ${OUTPUT_RULES}${orientationRule(config) ? `\n${orientationRule(config)}` : ''}
 ${bodyStyleRule(character, profile)}${charRule ? `\n${charRule}` : ''}${catRule ? `\n${catRule}` : ''}
-${coverRequest(orientationOf(config) === 'portrait', language)}`,
+${coverRequest(orientationOf(config) === 'portrait', language)}${riddleRequest(language, themeOf(slug)) ? `\n${riddleRequest(language, themeOf(slug))}` : ''}`,
     }
   }
 
@@ -181,6 +183,9 @@ export function mergeRounds(slug) {
   // prompt ปกคลิปจากรอบแรก (ไม่มี = Flow ออกแบบเองตอนสร้างภาพ)
   const cover = parseCover(all)
   if (cover) saveCoverPrompt(slug, cover)
+  // โจทย์ภาพปริศนาธรรมสำหรับ Facebook Story (คลิปไทย) — Flow วาดต่อท้ายภาพปก
+  const riddle = parseRiddle(all)
+  if (riddle) saveRiddle(slug, riddle)
   // ปกคลิปต่อท้ายคำสั่ง Flow — สร้างเป็นภาพสุดท้าย (5_images.mjs ตัด brief ที่หัว SHOT LIST แล้วใส่ปกเองอีกที)
   const titleFile = join(projectDir(slug, 'script'), 'title.txt')
   const title = existsSync(titleFile) ? readFileSync(titleFile, 'utf8').trim() : slug

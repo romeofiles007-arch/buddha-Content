@@ -8,7 +8,7 @@ function integer(value, min, max, field, message) {
 }
 
 export function scheduleFields(s) {
-  return { start: s.start, time: s.time, count: s.count || 5, unlimited: s.count === 0,
+  return { start: s.start, time: s.time, count: s.count || 1, unlimited: s.count === 0,
     pause: !s.delayMin && !s.delayMax ? 'none' : s.delayMin === s.delayMax ? 'fixed' : 'random',
     min: s.delayMin || (s.delayMax ? 0 : 20), max: s.delayMax || 40 }
 }

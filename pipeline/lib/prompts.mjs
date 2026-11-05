@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { ROOT, loadConfig } from './config.mjs'
+import { ROOT, loadConfig, slugify } from './config.mjs'
+import { recentThemes, themeOf } from './topics.mjs'
 import { characterFlowNote, bodyStyleRule, bodyStyleFlowNote, activeCharacter } from './character.mjs'
 import { readProfile } from './clip_profile.mjs'
 
@@ -20,13 +21,13 @@ export function topicsPrompt(config) {
 export const { parseScoredTopics } = shared
 
 /** หัวข้อพร้อมคะแนน — ชื่อหัวข้อใช้ภาษาเดียวกับเสียงพากย์ของคลิป */
-export function scoredTopicsPrompt(config, { avoid = [], seen = [] } = {}) {
-  return shared.scoredTopicsPrompt(blueprint(config), { titleLanguage: config.script.language, minutes: config.script.targetMinutes, avoid, seen, genre: config.script.genre, narration: config.script.buddhaNarration })
+export function scoredTopicsPrompt(config, { avoid = [], seen = [], themes } = {}) {
+  return shared.scoredTopicsPrompt(blueprint(config), { titleLanguage: config.script.language, minutes: config.script.targetMinutes, avoid, seen, genre: config.script.genre, narration: config.script.buddhaNarration, themes: themes ?? shared.pickThemes(5, recentThemes()) })
 }
 
 /** profile = โปรไฟล์ของคลิป (หมวด + พระเกจิ) จาก clip_profile.mjs — ไม่มี = ให้ ChatGPT ดูหมวดจากชื่อเรื่อง */
 export function scriptPrompt(config, title, profile = null) {
-  return shared.scriptPrompt(blueprint(config), title, { ...config.script, profile })
+  return shared.scriptPrompt(blueprint(config), title, { ...config.script, profile, theme: themeOf(slugify(title)) })
 }
 
 

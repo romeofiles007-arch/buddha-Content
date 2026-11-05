@@ -18,10 +18,11 @@ import {
   loadQueue, saveQueue, newItem, postFromFile, cleanHashtags, videosToEnroll, clipsToPull, caption, nextFreeSlot, dueItems,
   frameTimes, qcPrompt, parseQc, STATUS, nextDriveUpload, driveToTrash, postingEvents, lastPosted, STORY_EVERY, storyDue, postsSinceStory,
 } from '../pipeline/lib/posting.mjs'
-import { facebookPageInfo, facebookUpload, facebookStory, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
+import { facebookPageInfo, facebookUpload, facebookStory, facebookPhotoStory, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
 import { listVideos } from './videos.js'
 import { runTikTokJob, tiktokUsername } from '../pipeline/lib/tiktok-browser.mjs'
-import { createDeliveryLedger, stageDelivery, stageCover, stageStoryParts, deliveryDestination, importDeliveryHistory } from '../pipeline/lib/delivery-ledger.mjs'
+import { prepareRiddleStory } from '../pipeline/lib/riddle.mjs'
+import { createDeliveryLedger, stageDelivery, stageCover, deliveryDestination, importDeliveryHistory } from '../pipeline/lib/delivery-ledger.mjs'
 
 const PROJECTS = join(ROOT, 'projects')
 const TICK_MS = 30_000
@@ -39,12 +40,12 @@ const ENROLL_EVERY_MS = 2 * 60_000
 const OAUTH_TTL_MS = 15 * 60_000
 
 export function createPosting({ jobs, enqueue, json, readBody, log, port, token, pipelineBusy = () => false, scheduler = true, deps = {} }) {
-  const fb = { info: deps.facebookPageInfo ?? facebookPageInfo, upload: deps.facebookUpload ?? facebookUpload, story: deps.facebookStory ?? facebookStory }
+  const fb = { info: deps.facebookPageInfo ?? facebookPageInfo, upload: deps.facebookUpload ?? facebookUpload, story: deps.facebookStory ?? facebookStory, photoStory: deps.facebookPhotoStory ?? facebookPhotoStory }
   const yt = { connect: deps.youtubeConnect ?? youtubeConnect, upload: deps.youtubeUpload ?? youtubeUpload }
   const drive = { connect: deps.driveConnect ?? driveConnect, upload: deps.driveUpload ?? driveUpload, trash: deps.driveTrash ?? driveTrash }
   const videosOf = deps.listVideos ?? listVideos
   const prepareCover = deps.stageCover ?? stageCover
-  const prepareStory = deps.stageStoryParts ?? stageStoryParts
+  const prepareRiddle = deps.prepareRiddleStory ?? prepareRiddleStory
   const redirectUri = `http://127.0.0.1:${port}`
   const oauthStates = new Map() // state → { expires, kind: 'youtube' | 'drive' }
   let uploading = false
@@ -420,23 +421,29 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     if (next) await startCheck(next.id).catch((err) => mutateItem(next.id, (it) => { it.ai = { status: 'error', error: err.message } }))
   }
 
-  // ── Facebook Story ตามรอบ: ตัดคลิปเป็นตอนละไม่เกิน 60 วิ แล้วลงทีละตอนตามลำดับ ──
+  // ── Facebook Story ตามรอบ: ภาพ "ไขปริศนาธรรม" ของคลิป (riddle.mjs) ──
+  // ผู้ใช้ (5 พ.ย. 2026): Story ให้เป็นภาพปริศนาแบบเวทีทอง แทนการตัดคลิปลงทีละตอน
+  // คลิปที่ไม่มีภาพปริศนา (คลิปเก่า/ภาษาอื่น) → ข้าม ไม่นับรอบ โพสต์ถัดไปจะลองใหม่
   // คืนผลเสมอ ไม่ throw — โพสต์หน้าเพจขึ้นไปแล้ว Story พลาดต้องไม่ทำให้นับว่าโพสต์ไม่สำเร็จ
-  async function postStory(account, file, identity, itemId, title) {
+  async function postStory(account, file, identity, itemId, title, slug) {
     const destination = `facebook-story:${account.pageId}`
     const posted = []
     let ticket, parts
     try {
+      parts = await prepareRiddle(slug, POSTING_DIR)
+      if (!parts) {
+        log(`โพสต์อัตโนมัติ: "${title}" ไม่มีภาพปริศนาธรรม — ข้าม Story ของ ${account.name} รอบนี้ (ลองกับโพสต์ถัดไป)`)
+        return { ok: false, skipped: true, error: 'คลิปนี้ไม่มีภาพปริศนาธรรม', needsVerification: false, at: Date.now() }
+      }
       const claim = deliveries.reserve({ identity, destination, itemId })
       if (claim.status === 'done') return { ok: true, duplicateSkipped: true, at: Date.now() }
       if (claim.status === 'blocked') throw Object.assign(new Error('ยังไม่รู้ผล Story ครั้งก่อนของคลิปนี้ — ไม่ลงซ้ำ'), { needsVerification: true })
       ticket = claim.ticket
-      parts = await prepareStory(file, POSTING_DIR)
-      for (const part of parts.files) posted.push((await fb.story({ pageId: account.pageId, token: account.token, file: part })).postId)
-      deliveries.complete(ticket, { postIds: posted, destination })
-      log(`โพสต์อัตโนมัติ: "${title}" ลง Story ของ ${account.name} แล้ว (${posted.length} ตอน)`)
-      mutateItem(itemId, it => note(it, `${account.name}: ลง Story แล้ว ${posted.length} ตอน`))
-      return { ok: true, parts: posted.length, postIds: posted, at: Date.now() }
+      posted.push((await fb.photoStory({ pageId: account.pageId, token: account.token, file: parts.file })).postId)
+      deliveries.complete(ticket, { postIds: posted, destination, riddle: parts.riddle.answer })
+      log(`โพสต์อัตโนมัติ: "${title}" ลง Story ปริศนาธรรม (เฉลย: ${parts.riddle.answer}) ของ ${account.name} แล้ว`)
+      mutateItem(itemId, it => note(it, `${account.name}: ลง Story ปริศนาธรรมแล้ว (เฉลย: ${parts.riddle.answer})`))
+      return { ok: true, parts: 1, postIds: posted, riddle: parts.riddle.answer, at: Date.now() }
     } catch (err) {
       // ตอนแรกขึ้นไปแล้วแต่ตอนถัดไปพลาด หรือขาดคำตอบหลังสั่งเผยแพร่ → ไม่รู้ผลแน่ ห้ามลงซ้ำ
       const needsVerification = err.needsVerification === true || posted.length > 0
@@ -534,7 +541,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       }
       // Story ตามรอบของเพจ — ทำหลังโพสต์หน้าเพจสำเร็จเท่านั้น พลาดก็ไม่กระทบโพสต์หลัก
       if (kind === 'facebook' && results[key]?.ok && !results[key].duplicateSkipped && storyDue(loadQueue(), key, account, id)) {
-        results[key] = { ...results[key], story: await postStory(account, file, identity, id, item.title) }
+        results[key] = { ...results[key], story: await postStory(account, file, identity, id, item.title, item.slug) }
       }
       mutateItem(id, (it) => { it.results = { ...it.results, [key]: results[key] }; if (kind === 'tiktok') it.tiktokJobId = null })
     }

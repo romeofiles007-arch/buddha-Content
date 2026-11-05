@@ -60,7 +60,8 @@ try {
  * งานที่ส่งให้ extension แล้วเงียบหาย (แท็บถูกปิด, service worker ตาย, Chrome ปิด)
  * content script ส่ง heartbeat ทุก 20 วิระหว่างทำงาน → เงียบเกินนี้ถือว่าหลุด ส่งงานให้ใหม่
  */
-const STALE_MS = { chatgpt: 3 * 60_000, flow: 6 * 60_000, meta: 4 * 60_000, tiktok: 2 * 60_000 }
+// tiktok 4 นาที: เปิดแท็บใหม่ใช้ได้ถึง 30 วิ และแท็บที่ไม่อยู่บนจอส่งสัญญาณช้า (5 พ.ย. 2026 ขาดการติดต่อทั้งที่ยังทำงาน)
+const STALE_MS = { chatgpt: 3 * 60_000, flow: 6 * 60_000, meta: 4 * 60_000, tiktok: 4 * 60_000 }
 const MAX_ATTEMPTS = 3
 
 /**

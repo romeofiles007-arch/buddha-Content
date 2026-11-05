@@ -62,7 +62,7 @@ function makeChrome({ tabs, windows, focused, session = {}, translated = false }
 
 function loadBackground(env) {
   const { chrome, calls } = makeChrome(env)
-  const ctx = vm.createContext({ ...flowNavigation, insertTikTokCaption, chrome, console: { log() {}, warn() {} }, setTimeout, clearTimeout, queueMicrotask, URL, fetch: async () => ({ ok: false, status: 500 }) })
+  const ctx = vm.createContext({ ...flowNavigation, insertTikTokCaption, chrome, console: { log() {}, warn() {} }, setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask, URL, fetch: async () => ({ ok: false, status: 500 }) })
   vm.runInContext(bgSource.replace(/^import \{[^\n]+\} from '\.\/(?:flow-(?:navigation|account-switch)|tiktok-caption)\.js'\r?\n/gm, ''), ctx)
   return { ctx, calls }
 }

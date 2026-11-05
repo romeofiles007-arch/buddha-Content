@@ -36,6 +36,10 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   const avatarImage = node({ getAttribute: n => n === 'src' ? 'https://p16.tiktokcdn.com/tos-alisg-avt-0068/account.jpeg' : null, closest: () => avatar })
   const document = {
     body,
+    // ตัวกันหน้าต่างเลือกไฟล์ของ Windows (content-tiktok.js ติด/ถอดระหว่างทำงาน)
+    documentElement: { dataset: {} },
+    addEventListener() {},
+    removeEventListener() {},
     querySelector: selector => selector.includes('input[type="file"]') ? (++readyChecks >= (delayedStudio ? 2 : 1) ? node() : null) : studioSwitch && selector === '[data-e2e="aigc_container"]' ? aiRow : null,
     querySelectorAll: selector => {
       if (selector === 'a[href*="/@"]') { accountReads++; if(replacePost && accountReads>1){post.isConnected=false;postChanged=true} return (cdnAvatar && !menuOpen) || (delayedStudio && readyChecks < 2) || (cancelDuringAccount && accountReads > 1 && !menuOpen) ? [] : [profile] }

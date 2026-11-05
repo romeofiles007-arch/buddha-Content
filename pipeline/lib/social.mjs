@@ -103,6 +103,34 @@ export async function facebookStory({ pageId, token, file, aiGenerated = true },
   } catch (error) { error.needsVerification = submitted; throw error }
 }
 
+/**
+ * Facebook Story แบบภาพนิ่ง (ภาพปริศนาธรรม) — อัปโหลดภาพแบบยังไม่เผยแพร่ แล้วสั่งลง Story ด้วยเลขภาพนั้น
+ * (Pages API: POST /{page}/photos published=false → POST /{page}/photo_stories photo_id)
+ */
+export async function facebookPhotoStory({ pageId, token, file }, { fetchImpl = fetch } = {}) {
+  let submitted = false
+  try {
+    const body = new FormData()
+    body.set('published', 'false')
+    body.set('access_token', token)
+    body.set('source', await openAsBlob(file, { type: 'image/jpeg' }), 'story.jpg')
+    const photo = await fetchImpl(`${GRAPH}/${encodeURIComponent(pageId)}/photos`, { method: 'POST', body })
+    if (!photo.ok) throw await failure(photo, 'facebook')
+    const { id: photoId } = await photo.json()
+    if (!photoId) throw new Error('Facebook Story: ไม่ได้เลขภาพกลับมา')
+    submitted = true // สั่งลง Story แล้ว ถ้าขาดคำตอบหลังจากนี้ อาจขึ้นไปแล้ว
+    const story = await fetchImpl(`${GRAPH}/${encodeURIComponent(pageId)}/photo_stories`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ photo_id: String(photoId), access_token: token }).toString(),
+    })
+    if (!story.ok) throw await failure(story, 'facebook')
+    const data = await story.json()
+    if (data.success === false || !(data.post_id || data.success)) throw new Error('Facebook Story: เผยแพร่ไม่สำเร็จ')
+    return { postId: String(data.post_id ?? photoId) }
+  } catch (error) { error.needsVerification = submitted; throw error }
+}
+
 // ── YouTube ───────────────────────────────────────────────────────
 
 export function youtubeAuthUrl({ clientId, redirectUri, state, scopes = YOUTUBE_SCOPES }) {
