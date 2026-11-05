@@ -47,8 +47,10 @@ const clip = () => P.loadQueue().find((q) => q.slug === SLUG && q.file === `${SL
 const post = { title: 'ชื่อ', description: 'd', hashtags: [] }
 
 try {
-  await test('ค่าเริ่มต้น: ตรวจด้วย AI (ไม่ข้าม)', () => {
-    assert.equal(P.DEFAULT_SETTINGS.skipCheck, false)
+  // ผู้ใช้ (5 พ.ย. 2026): เริ่มต้นไม่ให้ AI ตรวจ แต่เลือกเปิดได้
+  await test('ค่าเริ่มต้น: ไม่ตรวจ — ข้าม AI · ไม่ส่ง AI ตรวจเมื่อเข้าคิว', () => {
+    assert.equal(P.DEFAULT_SETTINGS.skipCheck, true)
+    assert.equal(P.DEFAULT_SETTINGS.autoCheck, false)
   })
 
   P.updateAccounts((d) => {

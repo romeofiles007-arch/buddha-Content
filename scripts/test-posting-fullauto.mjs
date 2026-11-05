@@ -98,7 +98,7 @@ const lastJob = () => [...jobs.values()].at(-1)
 try {
   P.updateAccounts((d) => {
     d.facebook.push({ id: 'p1', name: 'เพจธรรมะ', pageId: '1234567', token: 'x'.repeat(30) })
-    Object.assign(d.settings, { enabledAt: clipAt - 1000, autoCheck: true, autoApprove: true, slots: ['12:00', '19:00'] })
+    Object.assign(d.settings, { enabledAt: clipAt - 1000, autoCheck: true, autoApprove: true, skipCheck: false, slots: ['12:00', '19:00'] }) // เลือก AI ตรวจเอง (ค่าเริ่มต้นไม่ตรวจ)
   })
 
   await test('ผลิตเสร็จ → เข้าคิวเอง → ส่ง AI ตรวจเอง', async () => {

@@ -34,7 +34,9 @@ export const DEFAULT_SETTINGS = {
   delayMax: 40,
   random: { genre: true, art: true, narration: true, language: false },
   languages: ['th'], // ภาษาที่สุ่มได้ (ใช้เมื่อ random.language)
-  autoPost: 'ai', // off | ai = AI ตรวจผ่านแล้วตั้งเวลาโพสต์เอง | now = ตั้งเวลาโพสต์ทันที ไม่ตรวจ
+  // off | ai = AI ตรวจผ่านแล้วตั้งเวลาโพสต์เอง | now = ตั้งเวลาโพสต์ทันที ไม่ตรวจ
+  // ผู้ใช้ (5 พ.ย. 2026): เริ่มต้นไม่ให้ AI ตรวจ แต่เลือกเปิดได้
+  autoPost: 'now',
   // โพสต์ลงเพจไหน: all = ทุกเพจ/ช่องที่รับหมวดของคลิป · split = แบ่งคลิปตามจำนวนที่ตั้งต่อเพจ (คลิปละเพจเดียว)
   postPages: 'all',
   pageQuota: {}, // { "fb:<id>" | "yt:<id>": จำนวนคลิปต่อชุด } ใช้เมื่อ postPages = split

@@ -3371,7 +3371,7 @@ function prodOptions() {
     count: $('prodUnlimited').checked ? 0 : Number($('prodCount').value),
     random: { genre: $('prodRandGenre').checked, art: $('prodRandArt').checked, narration: $('prodRandNarration').checked, language: $('prodRandLang').checked },
     languages: [...$('prodLangs').querySelectorAll('input:checked')].map((i) => i.value),
-    autoPost: $('prodAutoPost').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'ai',
+    autoPost: $('prodAutoPost').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'now',
     postPages: $('prodPages').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'all',
     pageQuota: Object.fromEntries([...$('prodQuota').querySelectorAll('input[data-key]')].map((i) => [i.dataset.key, Math.max(0, Math.round(Number(i.value) || 0))])),
   }
