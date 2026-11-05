@@ -254,14 +254,11 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
   /** ครบจำนวนคลิปของรอบ → แจ้งเสร็จ แล้วหยุด (หรือรอรอบพรุ่งนี้ในโหมดทุกวัน) */
   function completeBatch(now = Date.now()) {
     playDoneSound()
-    // คลิปพร้อมดู: รวมเป็นโฟลเดอร์เดียว เปิดโฟลเดอร์ + เปิดคลิปแรกเต็มจอ
+    // คลิปพร้อมดู: รวมเป็นโฟลเดอร์เดียว — ไม่เปิดเอง กดปุ่ม "เล่น" / "เปิดโฟลเดอร์" ในหน้าผลิตต่อเนื่องเมื่ออยากดู
+    // ผู้ใช้ (5 พ.ย. 2026): ทำคลิปเสร็จแล้วไม่ต้องเปิดคลิปให้อัตโนมัติ และไม่ต้องเปิดโฟลเดอร์ขึ้นมา
     try {
       const ready = prepareReady(state.history.filter((h) => h.batch === state.batch))
-      if (ready) {
-        state.ready = ready
-        openMax(ready.dir)
-        openMax(ready.files[0].file)
-      }
+      if (ready) state.ready = ready
     } catch (err) {
       log(`ผลิตต่อเนื่อง: เตรียมคลิปพร้อมดูไม่ได้ — ${err.message}`)
     }
