@@ -1126,17 +1126,19 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     const accounts = loadAccounts()
     const queue = loadQueue()
     const picked = queue.filter((q) => q.status === 'review')
-    if (!picked.length) return 0
+    // คลิปที่ตั้งเวลาไว้แล้วแต่ยังไม่โพสต์ ก็แบ่งเพจใหม่ด้วย (ผู้ใช้สั่ง "แบ่งกันระหว่าง 2 เพจ") — เวลาที่เลือกเองไม่แตะ
+    const waiting = queue.filter((q) => q.status === 'scheduled' && q.targetsEdited)
+    if (!picked.length && !waiting.length) return 0
     for (const q of picked) {
       q.auto = 'now'
       if (q.postJob?.status === 'error') q.postJob = null
-      // ผู้ใช้สั่งให้แบ่งเพจ → ให้ระบบเลือกเพจใหม่ทุกคลิปตามหมวด (รวมที่ผลิตต่อเนื่อง/ติ๊กเองไว้เพจเดียว)
-      q.targetsEdited = false
       note(q, 'โพสต์ทั้งหมดเลย (ไม่ตรวจ) — รอชื่อโพสต์/ช่องเวลาของเพจ')
     }
+    // ผู้ใช้สั่งให้แบ่งเพจ → ให้ระบบเลือกเพจใหม่ตามหมวด (รวมที่ผลิตต่อเนื่อง/ติ๊กเองไว้เพจเดียว)
+    for (const q of [...picked, ...waiting]) q.targetsEdited = false
     const { queue: spread } = reorganizeQueue(queue, accounts)
     saveQueue(spread)
-    log(`โพสต์อัตโนมัติ: โพสต์ทั้งหมดเลย (ไม่ตรวจ) ${picked.length} คลิป — กระจายเพจและตั้งเวลาให้เอง`)
+    log(`โพสต์อัตโนมัติ: โพสต์ทั้งหมดเลย (ไม่ตรวจ) ${picked.length} คลิป · แบ่งเพจใหม่ ${picked.length + waiting.length} คลิป — กระจายเพจและตั้งเวลาให้เอง`)
     fillPosts()
     scheduleAuto()
     return picked.length

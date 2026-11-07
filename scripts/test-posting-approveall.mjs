@@ -13,7 +13,7 @@ const { ROOT } = await import('../pipeline/lib/config.mjs')
 // savePost เขียน projects/<slug>/... ของจริง — ลบโฟลเดอร์คลิปทดสอบทิ้ง
 after(() => {
   rmSync(dir, { recursive: true, force: true })
-  for (let n = 1; n <= 8; n++) rmSync(join(ROOT, 'projects', `_approveall_c${n}`), { recursive: true, force: true })
+  for (let n = 1; n <= 12; n++) rmSync(join(ROOT, 'projects', `_approveall_c${n}`), { recursive: true, force: true })
 })
 
 const accounts = () => ({
@@ -56,6 +56,23 @@ test('กดครั้งเดียว: คลิปที่มีชื่
   const first = Math.min(...q.map((x) => x.scheduleAt))
   assert.equal(q.filter((x) => x.scheduleAt === first).length, 2, 'ช่องแรกลงพร้อมกัน 2 เพจ คนละคลิป')
   assert.equal(h.enqueued.length, 0, 'ไม่ส่งไปให้ AI ตรวจ')
+})
+
+test('เพจที่เพิ่งลงไป 46 คลิปในสัปดาห์นี้ ไม่ทำให้เพจใหม่ได้คลิปทั้งหมด (แบ่งตามคิวที่รอ) · คลิปที่ตั้งเวลาไว้แล้วก็แบ่งใหม่', async () => {
+  for (let n = 0; n < 46; n++) P.recordPosted(`old${n}/v.mp4`, 'fb:a', { name: 'ใจใส', at: Date.now() - 2 * 86_400_000 })
+  const later = Date.now() + 86_400_000
+  P.saveQueue([
+    clip(9, { status: 'scheduled', scheduleAt: later, targets: ['fb:b'], targetsEdited: true, auto: 'now' }),
+    clip(10, { status: 'scheduled', scheduleAt: later + 3 * 3600_000, targets: ['fb:b'], targetsEdited: true, auto: 'now' }),
+    clip(11, { targets: ['fb:b'] }),
+    clip(12, { targets: ['fb:b'] }),
+  ])
+  const h = harness()
+  await h.request('/api/posting/approve-all', {})
+  const q = P.loadQueue()
+  const per = (k) => q.filter((x) => x.targets[0] === k).length
+  assert.equal(per('fb:a'), 2, 'แบ่งตามคิวที่รอ ไม่ใช่ประวัติ — ได้เท่ากัน')
+  assert.equal(per('fb:b'), 2)
 })
 
 test('คลิปที่ยังไม่มีชื่อโพสต์ → ChatGPT เขียนให้ (ที่เคยพลาดก็ลองใหม่) แล้วตั้งเวลาเอง', async () => {
