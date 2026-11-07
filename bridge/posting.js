@@ -857,16 +857,31 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         const token = String(body.token ?? '').trim()
         if (!/^\d{5,}$/.test(pageId)) return json(res, 400, { error: 'Page ID ต้องเป็นตัวเลข (ดูได้ในหน้าเกี่ยวกับของเพจ)' }), true
         if (token.length < 20) return json(res, 400, { error: 'ใส่ Page access token ให้ครบ' }), true
-        const page = await fb.info({ pageId, token }) // ตรวจว่าใช้ได้จริงก่อนบันทึก
+        const page = await checkPage(pageId, token)
         const name = String(body.name ?? '').trim() || page.name
         let id
         updateAccounts((data) => {
           const old = data.facebook.find((a) => a.pageId === pageId)
-          if (old) Object.assign(old, { name, token, checkedAt: Date.now() })
-          else data.facebook.push({ id: (id = newId()), name, pageId, token, addedAt: Date.now(), checkedAt: Date.now() })
+          if (old) Object.assign(old, { name, ...page.fields })
+          else data.facebook.push({ id: (id = newId()), name, pageId, ...page.fields, addedAt: Date.now() })
         })
         if (id) retarget()
-        log(`โพสต์อัตโนมัติ: เพิ่มเพจ "${name}"`)
+        log(`โพสต์อัตโนมัติ: เพิ่มเพจ "${name}"${page.note}`)
+        return json(res, 200, await view()), true
+      }
+      // แก้ไขเพจที่มีอยู่ — เปลี่ยนชื่อเรียก/โทเค็น โดยไม่ต้องลบ (Story ช่องเวลา หมวด และคิวยังอยู่ครบ)
+      if (path === '/api/posting/facebook/edit') {
+        const current = loadAccounts().facebook.find((x) => x.id === body.id)
+        if (!current) return json(res, 404, { error: 'ไม่พบเพจนี้' }), true
+        const token = String(body.token ?? '').trim()
+        if (token && token.length < 20) return json(res, 400, { error: 'ใส่โทเค็นให้ครบ (เว้นว่าง = ใช้โทเค็นเดิม)' }), true
+        const page = token ? await checkPage(current.pageId, token) : null
+        const name = String(body.name ?? '').trim() || page?.name || current.name
+        updateAccounts((data) => {
+          const a = data.facebook.find((x) => x.id === body.id)
+          if (a) Object.assign(a, { name, ...(page?.fields ?? {}) })
+        })
+        log(`โพสต์อัตโนมัติ: แก้ไขเพจ "${name}"${page ? ` — เปลี่ยนโทเค็น${page.note}` : ''}`)
         return json(res, 200, await view()), true
       }
       if (path === '/api/posting/tiktok/connect') {
@@ -1124,6 +1139,23 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
    * ไม่ทำระหว่างกำลังโพสต์ (คิวกำลังเปลี่ยน)
    */
   /** เปลี่ยนเวลาโพสต์ (กลาง/ของเพจ) → คลิปที่ตั้งตามช่องเดิมย้ายไปช่องว่างแรกตามเวลาใหม่ · ไม่ย้ายคลิปข้ามเพจ */
+  /** ตรวจโทเค็นกับ Facebook ก่อนบันทึก · ได้ User token มา → แลกเป็น Page token ของเพจนี้ (โพสต์ด้วย User token ไม่ได้) */
+  async function checkPage(pageId, token) {
+    let page
+    try {
+      page = await fb.info({ pageId, token })
+    } catch (err) {
+      log(`โพสต์อัตโนมัติ: ตรวจโทเค็นเพจ ${pageId} ไม่ผ่าน — ${err.message}`)
+      throw err
+    }
+    const expiry = page.expiresAt ? ` · โทเค็นหมดอายุ ${new Date(page.expiresAt).toLocaleString('th-TH')} (แลกเป็น long-lived token จะไม่หมดอายุ)` : ''
+    return {
+      name: page.name,
+      fields: { token: page.token ?? token, tokenKind: page.kind ?? null, tokenExpiresAt: page.expiresAt ?? null, checkedAt: Date.now() },
+      note: `${page.kind === 'user' ? ' (แลก User token เป็น Page token ให้แล้ว)' : ''}${expiry}`,
+    }
+  }
+
   function retime(beforeData, reason) {
     if (uploading) return
     const old = loadQueue()

@@ -163,6 +163,9 @@
 
 /* หมวดที่เพจ/ช่องรับ */
 .pAccounts .pCats { flex: 1 1 100%; }
+/* ฟอร์มแก้ไขเพจในการ์ด — เต็มแถว ซ่อนจนกดแก้ไข */
+.pAccounts .pEditPage { flex: 1 1 100%; display: grid; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--gull-line); }
+.pAccounts .pEditPage[hidden] { display: none; }
 .pCats > summary { cursor: pointer; font-size: 13px; color: var(--gull); font-weight: 600; }
 .pCats .hint { margin: 6px 0; }
 .pCatGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 4px 10px; margin-bottom: 8px; }

@@ -676,12 +676,26 @@ export function initPosting({ api, localApp }) {
     const pageId = el('input', { type: 'text', inputMode: 'numeric', placeholder: 'เช่น 102345678901234', autocomplete: 'off' })
     const pageToken = el('input', { type: 'password', placeholder: 'EAAB…', autocomplete: 'off' })
     const pageName = el('input', { type: 'text', placeholder: 'เว้นว่าง = ใช้ชื่อเพจจริง' })
+    // ฟอร์มแก้ไขเพจ (ซ่อนไว้จนกดแก้ไข) — เปลี่ยนชื่อเรียก/โทเค็นได้โดยไม่ต้องลบเพจ
+    const editPageForm = (a) => {
+      const name = el('input', { type: 'text', value: a.name ?? '', 'aria-label': `ชื่อเรียกของ ${a.name}` })
+      const token = el('input', { type: 'password', placeholder: 'เว้นว่าง = ใช้โทเค็นเดิม', autocomplete: 'off', 'aria-label': `โทเค็นใหม่ของ ${a.name}` })
+      return el('div', { className: 'pEditPage', hidden: true },
+        el('label', { className: 'pField' }, 'ชื่อเรียก', name),
+        el('label', { className: 'pField' }, 'โทเค็นใหม่ (Page หรือ User token)', token),
+        el('button', {
+          type: 'button', className: 'primary',
+          on: { click: () => call('/api/posting/facebook/edit', { id: a.id, name: name.value.trim(), token: token.value.trim() }, token.value.trim() ? 'ตรวจโทเค็นผ่าน · บันทึกแล้ว' : 'บันทึกแล้ว').catch(() => {}) },
+        }, 'บันทึกการแก้ไข'))
+    }
     const fb = el('section', { className: 'pBox', 'aria-label': 'Facebook Page' },
       el('h3', {}, kindTag('fb'), 'Facebook Page'),
       data.facebook.length
         ? el('ul', { className: 'pAccounts' }, data.facebook.map((a) => el('li', {},
-          pageAvatar(a), el('strong', {}, a.name), el('span', { className: 'pMeta' }, `ID ${a.pageId} · โทเค็น ${a.token}`),
+          pageAvatar(a), el('strong', {}, a.name), el('span', { className: 'pMeta' }, `ID ${a.pageId} · โทเค็น ${a.token}${a.tokenExpiresAt ? ` · หมดอายุ ${new Date(a.tokenExpiresAt).toLocaleString('th-TH')}` : a.tokenExpiresAt === 0 ? ' · ไม่หมดอายุ' : ''}`),
+          el('button', { type: 'button', className: 'ghost', 'aria-expanded': 'false', on: { click: (e) => { const form = e.currentTarget.parentElement.querySelector('.pEditPage'); form.hidden = !form.hidden; e.currentTarget.setAttribute('aria-expanded', String(!form.hidden)) } } }, 'แก้ไข'),
           el('button', { type: 'button', className: 'ghost', on: { click: () => { if (confirm(`ลบเพจ "${a.name}" ออกจากโหมดโพสต์? (โทเค็นจะถูกลบจากเครื่องนี้)`)) call('/api/posting/facebook/remove', { id: a.id }, 'ลบเพจแล้ว').catch(() => {}) } } }, 'ลบ'),
+          editPageForm(a),
           // ลง Story ทุก N โพสต์ — เป็นภาพ "ไขปริศนาธรรม" ของคลิป (คลิปไม่มีภาพปริศนา = ข้ามไปโพสต์ถัดไป)
           el('label', { className: 'pField' }, 'ลง Story ภาพปริศนาธรรม',
             el('select', {
@@ -708,7 +722,8 @@ export function initPosting({ api, localApp }) {
         el('ol', {},
           el('li', {}, 'Page ID: เปิดเพจ → เกี่ยวกับ (About) → ความโปร่งใสของเพจ จะเห็นรหัสเพจเป็นตัวเลข'),
           el('li', {}, 'สร้างแอปที่ developers.facebook.com (ประเภท Business) แล้วเปิด Graph API Explorer'),
-          el('li', {}, 'เลือกแอป → Get Page Access Token → ติ๊กสิทธิ์ pages_show_list, pages_read_engagement, pages_manage_posts → เลือกเพจ'),
+          el('li', {}, 'เลือกแอป → ติ๊กสิทธิ์ pages_show_list, pages_read_engagement, pages_manage_posts → Generate Access Token → ในหน้าต่างที่เด้งขึ้น ต้องติ๊กเลือกเพจที่จะโพสต์ด้วย (ไม่ติ๊ก = แอปโพสต์เพจนั้นไม่ได้)'),
+          el('li', {}, 'วางได้ทั้ง Page token และ User token — ถ้าเป็น User token โปรแกรมจะแลกเป็น Page token ของเพจนี้ให้เอง'),
           el('li', {}, 'อยากให้โทเค็นไม่หมดอายุ: แลกเป็น long-lived user token ใน Access Token Debugger ก่อน แล้วค่อยขอ Page token จากโทเค็นนั้น'),
           el('li', {}, 'คัดลอกโทเค็นของเพจมาวางด้านบน — เก็บไว้ในเครื่องนี้เท่านั้น ไม่ขึ้น GitHub ไม่อยู่ในแพ็กเกจลูกค้า'),
         )),
