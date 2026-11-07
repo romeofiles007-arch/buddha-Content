@@ -130,7 +130,8 @@ try {
   await test('ถึงเวลา → โพสต์ → endpoint บอกว่าโพสต์ไปไหนบ้าง (แจ้งเตือน + โพสต์ล่าสุด)', async () => {
     const since = Date.now() - 1
     const q = P.loadQueue()
-    q.find((x) => x.slug === SLUG).scheduleAt = Date.now() - 1000
+    // ถึงเวลาทุกปลายทาง (เวลาต่อปลายทาง: ต้องเลื่อนทั้งของคลิปและของแต่ละปลายทาง)
+    P.setTargetTimes(q.find((x) => x.slug === SLUG), Object.fromEntries(q.find((x) => x.slug === SLUG).targets.map((k) => [k, Date.now() - 1000])))
     P.saveQueue(q)
     await posting.tick()
     assert.equal(item().status, 'posted')

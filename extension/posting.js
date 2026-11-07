@@ -481,7 +481,9 @@ export function initPosting({ api, localApp }) {
       const when = el('input', { type: 'datetime-local', value: toLocalInput(q.scheduleAt) })
       return el('li', { className: 'pCard' },
         head(q, [el('span', { className: 'pBadge gold' }, posting ? 'กำลังโพสต์…' : `โพสต์ ${fmtWhen(q.scheduleAt)}`)]),
-        el('div', { className: 'pTargets' }, (q.targets ?? []).map((k) => el('span', { className: 'pTarget' }, kindTag(k.slice(0, 2)), targetAvatar(k), targetName(k)))),
+        // เวลาต่อปลายทาง: แต่ละปลายทางลงตามช่องของตัวเอง (FB สองเพจช่องเดียวกันได้ · TikTok ตามช่องของ TikTok)
+        el('div', { className: 'pTargets' }, (q.targets ?? []).map((k) => el('span', { className: 'pTarget' }, kindTag(k.slice(0, 2)), targetAvatar(k), targetName(k),
+          el('small', { className: 'pTargetAt' }, q.results?.[k]?.ok ? ' · ✓ ขึ้นแล้ว' : ` · ${fmtWhen(q.targetAt?.[k] ?? q.scheduleAt)}`)))),
         !q.targets?.length ? el('p', { className: 'pWarn' }, 'ยังไม่มีเพจหรือช่องปลายทาง — กดยกเลิกเวลา แล้วเลือกหมวดและเพจในแท็บรอตรวจ ก่อนตั้งเวลาใหม่') : null,
         el('p', { className: 'pMeta' }, q.post?.title ?? ''),
         posting

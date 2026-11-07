@@ -17,7 +17,7 @@ import {
   POSTING_DIR, loadAccounts, updateAccounts, publicAccounts, allTargets, findTarget, newId, cleanSlots, targetsFor, cleanCategories, CATEGORIES, AI_CATEGORIES, clipCategory,
   loadQueue, saveQueue, newItem, postFromFile, cleanHashtags, videosToEnroll, clipsToPull, caption, nextFreeSlot, dueItems,
   frameTimes, qcPrompt, parseQc, STATUS, nextDriveUpload, driveToTrash, postingEvents, lastPosted, STORY_EVERY, storyDue, postsSinceStory,
-  loadPosted, recordPosted, backfillPosted, clipKey, onePerPlatform, platformOf, PLATFORM_NAME, takenFor, nextSlotFor, readyItems, reorganizeQueue, multiAccountPlatforms, slotsFor, nextSlotForItem,
+  loadPosted, recordPosted, backfillPosted, clipKey, onePerPlatform, platformOf, PLATFORM_NAME, takenFor, nextSlotFor, readyItems, reorganizeQueue, multiAccountPlatforms, slotsFor, nextSlotForItem, scheduleTargets, setTargetTimes, dueTargets, timeFor,
 } from '../pipeline/lib/posting.mjs'
 import { facebookPageInfo, facebookUpload, facebookStory, facebookPhotoStory, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
 import { listVideos } from './videos.js'
@@ -326,10 +326,12 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       }
       if (!item.targetsEdited && !item.targets?.length) item.targets = targetsFor(accounts, item.category, { clip: clipKey(item) })
       if (!item.targets?.length || !item.post?.title) continue // ยังไม่มีเพจ/ช่อง หรือยังไม่มีข้อความโพสต์ → รอ
-      const at = nextSlotForItem(accounts, queue, item) // ตามเวลาของเพจที่คลิปจะลง · เพจอื่นช่องเดียวกันได้
-      if (!at) continue
+      // เวลาต่อปลายทาง: แต่ละปลายทางลงช่องว่างของตัวเอง (FB สองเพจช่องเดียวกันได้ · TikTok ตามช่องของ TikTok)
+      const times = scheduleTargets(accounts, queue, item)
+      if (!times) continue
       item.status = 'scheduled'
-      item.scheduleAt = at
+      setTargetTimes(item, times)
+      const at = item.scheduleAt
       note(item, item.auto === 'now' ? 'ตั้งเวลาเองทันที (ผลิตต่อเนื่อง)'
         : item.auto ? 'AI ให้ผ่าน → ตั้งเวลาเอง (ผลิตต่อเนื่อง)'
           : item.ai?.verdict === 'pass' ? 'AI ให้ผ่าน → อนุมัติเองและลงช่องเวลาถัดไป'
@@ -404,10 +406,10 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       }
       changed = true
       if (settings.autoApprove && item.status === 'review' && item.ai.status === 'done' && item.ai.verdict === 'pass' && item.targets?.length && item.post?.title) {
-        const at = nextSlotForItem(loadAccounts(), queue, item)
-        if (at) {
+        const times = scheduleTargets(loadAccounts(), queue, item)
+        if (times) {
           item.status = 'scheduled'
-          item.scheduleAt = at
+          setTargetTimes(item, times)
           note(item, 'AI ให้ผ่าน → อนุมัติเองและลงช่องเวลาถัดไป')
         }
       }
@@ -575,8 +577,12 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     }
     // Each platform has an independent connection. Keep a platform's own accounts
     // serial, while a slow upload on one platform cannot hold the other two.
+    // เวลาต่อปลายทาง: ส่งเฉพาะปลายทางที่ถึงเวลาแล้ว (ลองใหม่/โพสต์ทันที = ทุกปลายทางถึงเวลา) · ที่เหลือรอช่องของตัวเอง
+    const startedAt = Date.now()
+    const sendNow = new Set(dueTargets(item, startedAt))
     const groups = new Map()
     for (const key of new Set(item.targets ?? [])) {
+      if (!sendNow.has(key)) continue
       const platform = key.split(':')[0]
       if (!groups.has(platform)) groups.set(platform, [])
       groups.get(platform).push(key)
@@ -590,8 +596,21 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       const skip = new Set(blocked.map((b) => b.key))
       it.targets = (it.targets ?? []).filter((k) => !skip.has(k))
       for (const b of blocked) note(it, b.reason)
-      const failed = it.targets.filter((k) => !results[k]?.ok)
+      // ยังไม่ถึงเวลา = ไม่ได้ส่งรอบนี้ ไม่นับว่าพลาด
+      const failed = it.targets.filter((k) => !results[k]?.ok && sendNow.has(k))
+      const later = it.targets.filter((k) => !results[k]?.ok && !sendNow.has(k))
       it.results = results
+      if (!failed.length && later.length) {
+        // ขึ้นปลายทางที่ถึงเวลาครบแล้ว → รอปลายทางที่เหลือตามเวลาของมัน (เช่น FB ขึ้นแล้ว · TikTok ช่องถัดไป)
+        const name = (k) => results[k]?.name ?? findTarget(accounts, k).account?.name ?? k
+        const done = [...sendNow].filter((k) => results[k]?.ok)
+        it.status = 'scheduled'
+        it.scheduleAt = Math.min(...later.map((k) => timeFor(it, k)).filter(Boolean))
+        it.finishedAt = Date.now()
+        it.error = null
+        note(it, `${done.length ? `ขึ้น ${done.map(name).join(', ')} แล้ว · ` : ''}รอ ${later.map((k) => `${name(k)} ${new Date(timeFor(it, k)).toLocaleString('th-TH')}`).join(', ')}`)
+        return
+      }
       if (!failed.length && blocked.length && !Object.values(results).some((r) => r?.ok)) {
         // ทุกปลายทางโดนกฎ — ไม่มีอะไรขึ้นจากคิวนี้
         it.status = 'failed'
@@ -708,7 +727,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       // คลิปที่ยังไม่มีข้อความโพสต์ตอนเข้าคิว แต่ตอนนี้มี post.json แล้ว → เติมให้ (ไม่ทับที่ผู้ใช้แก้)
       const post = !q.post?.title && v?.post ? postFromFile(v.post) : q.post
       // postedOn = แพลตฟอร์มที่คลิปนี้ลงไปแล้ว (สมุดบันทึกห้ามโพสต์ซ้ำ) — แผงใช้ล็อกช่องติ๊กของแพลตฟอร์มนั้น
-      return { ...q, post, thumb: v?.thumb ?? null, video: f?.url ?? null, seconds: f?.seconds ?? null, missing: !f, postedOn: postedLog[clipKey(q)] ?? null, nextSlot: q.status === 'review' ? nextSlotForItem(accData, raw, q) : null }
+      return { ...q, post, thumb: v?.thumb ?? null, video: f?.url ?? null, seconds: f?.seconds ?? null, missing: !f, postedOn: postedLog[clipKey(q)] ?? null, nextSlot: q.status === 'review' ? (() => { const t = scheduleTargets(accData, raw, q); return t ? Math.min(...Object.values(t)) : null })() : null }
     })
     const inQueue = new Set(queue.map((q) => `${q.slug}/${q.file}`))
     const library = videos
@@ -1019,8 +1038,10 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       if (path === '/api/posting/approve') {
         const queue = loadQueue()
         const { settings } = loadAccounts()
-        const taken = takenFor(queue, queue.find((q) => q.id === body.id)?.targets, body.id) // ช่องเวลาต่อเพจ
-        const at = body.when === 'now' ? Date.now() : body.when === 'next' ? nextFreeSlot(slotsFor(loadAccounts(), queue.find((q) => q.id === body.id)?.targets), taken) : Number(body.when)
+        const target = queue.find((q) => q.id === body.id)
+        // ช่องเวลาถัดไป = เวลาต่อปลายทาง (แต่ละปลายทางลงช่องว่างของตัวเอง) · โพสต์ทันที/เลือกเวลาเอง = ทุกปลายทางเวลาเดียวกัน
+        const times = body.when === 'next' && target ? scheduleTargets(loadAccounts(), queue, target) : null
+        const at = body.when === 'now' ? Date.now() : body.when === 'next' ? (times ? Math.min(...Object.values(times)) : null) : Number(body.when)
         if (!Number.isFinite(at) || !at) return json(res, 400, { error: body.when === 'next' ? 'ยังไม่ได้ตั้งช่องเวลาประจำ — ตั้งในแท็บตั้งค่า หรือเลือกวันเวลาเอง' : 'เลือกวันเวลาโพสต์ก่อน' }), true
         if (body.when !== 'now' && at < Date.now() - 60_000) return json(res, 400, { error: 'เวลาที่เลือกผ่านไปแล้ว' }), true
         mutateItem(body.id, (it) => {
@@ -1031,7 +1052,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
           }
           if (it.status === 'posting' || it.status === 'posted') throw new Error('คลิปนี้โพสต์ไปแล้ว')
           it.status = 'scheduled'
-          it.scheduleAt = at
+          setTargetTimes(it, times ?? Object.fromEntries((it.targets ?? []).map((k) => [k, at])))
           note(it, body.when === 'now' ? 'อนุมัติ · โพสต์ทันที' : `อนุมัติ · ตั้งเวลา ${new Date(at).toLocaleString('th-TH')}`)
         })
         if (body.when === 'now' && scheduler) setTimeout(() => tick().catch(() => {}), 200)
@@ -1041,7 +1062,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         mutateItem(body.id, (it) => {
           if (it.status !== 'scheduled') throw new Error('คลิปนี้ไม่ได้อยู่ในรายการตั้งเวลา')
           it.status = 'review'
-          it.scheduleAt = null
+          setTargetTimes(it, null)
           note(it, 'ยกเลิกเวลา กลับไปรอตรวจ')
         })
         return json(res, 200, await view()), true
@@ -1050,7 +1071,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         mutateItem(body.id, (it) => {
           if (it.status === 'posting' || it.status === 'posted') throw new Error('คลิปนี้โพสต์ไปแล้ว')
           it.status = 'rejected'
-          it.scheduleAt = null
+          setTargetTimes(it, null)
           note(it, `ตีกลับ${body.reason ? `: ${body.reason}` : ''}`)
         })
         return json(res, 200, await view()), true
@@ -1071,7 +1092,8 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         mutateItem(body.id, (it) => {
           if (it.status !== 'failed') throw new Error('คลิปนี้ไม่ได้โพสต์พลาด')
           it.status = 'scheduled'
-          it.scheduleAt = Date.now()
+          const now = Date.now()
+          setTargetTimes(it, Object.fromEntries((it.targets ?? []).filter((k) => !it.results?.[k]?.ok).map((k) => [k, now])))
           note(it, 'ลองโพสต์ใหม่ (เฉพาะที่พลาด)')
         })
         if (scheduler) setTimeout(() => tick().catch(() => {}), 200)
@@ -1084,7 +1106,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         // เก็บไว้เป็นสถานะ removed (ซ่อน) — ไม่งั้นรอบเข้าคิวเองจะดึงคลิปนี้กลับมาอีก · เพิ่มคืนจากคลังได้
         if (item) {
           item.status = 'removed'
-          item.scheduleAt = null
+          setTargetTimes(item, null)
           note(item, 'เอาออกจากคิว')
           saveQueue(queue)
         }
@@ -1105,7 +1127,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   function retime(beforeData, reason) {
     if (uploading) return
     const old = loadQueue()
-    const { queue, rescheduled } = reorganizeQueue(old, loadAccounts(), { retarget: false, before: beforeData })
+    const { queue, rescheduled } = reorganizeQueue(old, loadAccounts(), { retarget: false, before: beforeData, perTarget: true })
     if (!rescheduled) return
     for (const q of queue) {
       const o = old.find((x) => x.id === q.id)
@@ -1136,7 +1158,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     }
     // ผู้ใช้สั่งให้แบ่งเพจ → ให้ระบบเลือกเพจใหม่ตามหมวด (รวมที่ผลิตต่อเนื่อง/ติ๊กเองไว้เพจเดียว)
     for (const q of [...picked, ...waiting]) q.targetsEdited = false
-    const { queue: spread } = reorganizeQueue(queue, accounts)
+    const { queue: spread } = reorganizeQueue(queue, accounts, { perTarget: true })
     saveQueue(spread)
     log(`โพสต์อัตโนมัติ: โพสต์ทั้งหมดเลย (ไม่ตรวจ) ${picked.length} คลิป · แบ่งเพจใหม่ ${picked.length + waiting.length} คลิป — กระจายเพจและตั้งเวลาให้เอง`)
     fillPosts()
@@ -1148,7 +1170,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     if (uploading) throw new Error('กำลังโพสต์อยู่ — รอโพสต์เสร็จแล้วค่อยจัดคิวใหม่')
     const before = loadQueue()
     const accounts = loadAccounts()
-    const { queue, retargeted, rescheduled } = reorganizeQueue(before, accounts)
+    const { queue, retargeted, rescheduled } = reorganizeQueue(before, accounts, { perTarget: true })
     const name = (k) => findTarget(accounts, k).account?.name ?? k
     for (const q of queue) {
       const old = before.find((x) => x.id === q.id)
