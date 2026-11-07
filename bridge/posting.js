@@ -1004,6 +1004,10 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         retime(beforeSlots, 'เปลี่ยนเวลาของเพจ')
         return json(res, 200, await view()), true
       }
+      if (path === '/api/posting/approve-all') {
+        const count = approveAll()
+        return json(res, 200, { ...(await view()), approvedAll: count }), true
+      }
       if (path === '/api/posting/reorganize') {
         const out = reorganize('กดจัดคิวใหม่')
         return json(res, 200, { ...(await view()), reorganized: out }), true
@@ -1109,6 +1113,32 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     }
     saveQueue(queue)
     log(`โพสต์อัตโนมัติ: ${reason} — ย้ายเวลา ${rescheduled} คลิปตามช่องใหม่`)
+  }
+
+  /**
+   * ✓ โพสต์ทั้งหมดเลย (ไม่ตรวจ) — ผู้ใช้ (8 พ.ย. 2026): "บอกไม่ต้องตรวจให้ post ได้เลย และแบ่งกันระหว่าง 2 เพจ"
+   * คลิปรอตรวจทุกคลิป → ข้าม AI ตรวจ (auto 'now') · ไม่มีชื่อโพสต์ให้ ChatGPT เขียนให้ (ที่เคยพลาดก็ลองใหม่) ·
+   * กระจายเพจให้คลิปละ 1 เพจต่อแพลตฟอร์ม (ที่ติ๊กเองหลายเพจก็เหลือเพจเดียว) · แล้วลงช่องเวลาของเพจนั้นเอง
+   * คลิปที่ AI บอกให้แก้ / ไม่มีไฟล์ ก็ไปด้วย — ผู้ใช้สั่งเองว่าไม่ต้องตรวจ
+   */
+  function approveAll() {
+    if (uploading) throw new Error('กำลังโพสต์อยู่ — รอโพสต์เสร็จแล้วค่อยกดอีกครั้ง')
+    const accounts = loadAccounts()
+    const queue = loadQueue()
+    const picked = queue.filter((q) => q.status === 'review')
+    if (!picked.length) return 0
+    for (const q of picked) {
+      q.auto = 'now'
+      if (q.postJob?.status === 'error') q.postJob = null
+      if (q.targetsEdited) q.targets = onePerPlatform(q.targets ?? [], { clip: clipKey(q), queue: queue.filter((x) => x.id !== q.id) })
+      note(q, 'โพสต์ทั้งหมดเลย (ไม่ตรวจ) — รอชื่อโพสต์/ช่องเวลาของเพจ')
+    }
+    const { queue: spread } = reorganizeQueue(queue, accounts)
+    saveQueue(spread)
+    log(`โพสต์อัตโนมัติ: โพสต์ทั้งหมดเลย (ไม่ตรวจ) ${picked.length} คลิป — กระจายเพจและตั้งเวลาให้เอง`)
+    fillPosts()
+    scheduleAuto()
+    return picked.length
   }
 
   function reorganize(reason) {

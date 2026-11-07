@@ -243,6 +243,18 @@ export function initPosting({ api, localApp }) {
       wrap.append(el('p', { className: 'pWarn' }, 'ยังไม่มีเพจ Facebook หรือช่อง YouTube — เพิ่มในแท็บตั้งค่าก่อน ถึงจะอนุมัติโพสต์ได้'))
     }
     wrap.append(renderLibrary())
+    // ✓ โพสต์ทั้งหมดเลย (ไม่ตรวจ): ข้ามการตรวจ · ไม่มีชื่อโพสต์ให้ ChatGPT เขียน · กระจายเพจ · ลงช่องเวลาของเพจ
+    if (list.length && targetList().length) {
+      wrap.append(el('div', { className: 'pReorg' },
+        el('p', { className: 'hint', style: 'margin:0' }, `ไม่ต้องตรวจ — ส่ง ${list.length} คลิปเข้าคิวโพสต์เลย กระจายคลิปละ 1 เพจ`),
+        el('button', {
+          type: 'button', className: 'primary',
+          on: { click: () => {
+            if (!confirm(`โพสต์ทั้ง ${list.length} คลิปโดยไม่ตรวจ?\n\nคลิปที่ยังไม่มีชื่อโพสต์ ChatGPT จะเขียนให้ แล้วระบบกระจายไปเพจละคลิป และโพสต์ตามช่องเวลาของแต่ละเพจเอง`)) return
+            call('/api/posting/approve-all', {}, 'ส่งเข้าคิวโพสต์แล้ว — คลิปที่ยังไม่มีชื่อโพสต์จะตั้งเวลาเองหลัง ChatGPT เขียนให้').catch(() => {})
+          } },
+        }, `✓ โพสต์ทั้งหมดเลย (${list.length})`)))
+    }
     if (!list.length) wrap.append(el('p', { className: 'pEmpty' }, data.settings.enabledAt ? 'ยังไม่มีคลิปรอตรวจ — คลิปที่ทำเสร็จจะมาอยู่ที่นี่เอง' : 'ยังไม่มีคลิปรอตรวจ — เปิดโหมดในแท็บตั้งค่า หรือเพิ่มคลิปจากคลังด้านบน'))
     const ul = el('ul', { className: 'pList' }, list.map(reviewCard))
     wrap.append(ul)
