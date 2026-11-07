@@ -16,8 +16,21 @@ const el = (tag, props = {}, ...children) => {
   return node
 }
 
+/**
+ * รูปโปรไฟล์เพจ Facebook — ลิงก์สาธารณะของ Graph (ใช้แค่ Page ID ไม่ต้องใช้โทเค็น)
+ * โหลดไม่ได้ = ตัวอักษรตัวแรกของชื่อเพจ (ข้ามสระหน้า เ แ โ ใ ไ — "ใจใส" ได้ "จ" ไม่ใช่ "ใ")
+ */
+export const pageAvatarUrl = (pageId) => `https://graph.facebook.com/${encodeURIComponent(pageId)}/picture?type=square&width=96&height=96`
+export const avatarInitial = (name) => [...String(name ?? '').trim()].find((c) => /[\p{L}\p{N}]/u.test(c) && !/[เแโใไ]/.test(c)) ?? '?'
+/** size: 'lg' = หน้าตั้งค่าเพจ · 'sm' = ป้ายเพจในรายการเลือกปลายทาง · on ใส่ก่อน src ให้จับ error ทัน */
+const pageAvatar = (a, size = 'lg') => el('img', {
+  className: `pAvatar ${size}`, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer', title: a.name,
+  on: { error: (e) => e.target.replaceWith(el('span', { className: `pAvatar pAvatarText ${size}`, 'aria-hidden': 'true' }, avatarInitial(a.name))) },
+  src: pageAvatarUrl(a.pageId),
+})
+
 const fmtWhen = (ms) => (ms ? new Date(ms).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '')
-const fmtDur = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '')
+const fmtDur =(s) => (s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '')
 /** ค่าให้ <input type=datetime-local> (เวลาเครื่อง) */
 const toLocalInput = (ms) => {
   const d = new Date(ms)
@@ -132,13 +145,18 @@ export function initPosting({ api, localApp }) {
   // ── ชื่อเพจ/ช่องจากรหัสปลายทาง ──
   function targetList() {
     return [
-      ...(data?.facebook ?? []).map((a) => ({ key: `fb:${a.id}`, kind: 'fb', name: a.name })),
+      ...(data?.facebook ?? []).map((a) => ({ key: `fb:${a.id}`, kind: 'fb', name: a.name, pageId: a.pageId })),
       ...(data?.youtube ?? []).filter((a) => a.connected).map((a) => ({ key: `yt:${a.id}`, kind: 'yt', name: a.name })),
       ...(data?.tiktok ?? []).map((a) => ({ key: `tk:${a.id}`, kind: 'tk', name: `${a.name} (@${a.username})` })),
     ]
   }
   const targetName = (key) => targetList().find((t) => t.key === key)?.name ?? 'บัญชีที่ถูกลบ'
   const kindTag = (kind) => el('span', { className: `kind ${kind}` }, kind === 'fb' ? 'FB' : kind === 'tk' ? 'TT' : 'YT')
+  /** รูปเล็กหน้าชื่อเพจ Facebook ในป้ายปลายทาง (ช่องอื่นไม่มีรูป) */
+  const targetAvatar = (key) => {
+    const t = targetList().find((x) => x.key === key)
+    return t?.kind === 'fb' && t.pageId ? pageAvatar(t, 'sm') : null
+  }
 
   // ── วาดทั้งหน้า ──
   function render() {
@@ -377,33 +395,46 @@ export function initPosting({ api, localApp }) {
     const all = targetList()
     if (!all.length) return el('p', { className: 'hint' }, 'ยังไม่มีเพจหรือช่อง — เพิ่มในแท็บตั้งค่า')
     const chosen = new Set(q.targets ?? [])
+    // กฎห้ามโพสต์ซ้ำ: แพลตฟอร์มละ 1 เพจ/ช่อง/บัญชี · แพลตฟอร์มที่คลิปนี้ลงไปแล้วเลือกไม่ได้อีก
+    const postedOn = q.postedOn ?? {}
+    const PLATFORM = { fb: 'Facebook', yt: 'YouTube', tk: 'TikTok' }
+    const lockedNote = Object.entries(postedOn).map(([p, v]) => `ลง ${PLATFORM[p] ?? p} แล้วที่ ${v.name ?? v.key}`)
     return el('fieldset', { className: 'pField', style: 'border:0;padding:0;margin:0' },
       el('legend', { style: 'padding:0;margin-bottom:4px' }, 'โพสต์ลง',
         q.targetsEdited
           ? el('span', {}, ' · เลือกเอง ', el('button', { type: 'button', className: 'linkBtn', on: { click: () => call('/api/posting/item', { id: q.id, resetTargets: true }, 'เลือกปลายทางตามหมวดแล้ว').catch(() => {}) } }, 'เลือกตามหมวด'))
           : el('span', {}, q.category ? ' · เลือกตามหมวดให้แล้ว' : ' · เพจ/ช่องที่รับทุกหมวด')),
-      el('div', { className: 'pTargets' }, all.map((t) => el('label', { className: 'pTarget' },
-        el('input', {
-          type: 'checkbox', checked: chosen.has(t.key),
-          on: { change: (e) => {
-            if (e.target.checked) chosen.add(t.key)
-            else chosen.delete(t.key)
-            call('/api/posting/item', { id: q.id, targets: [...chosen] }, 'บันทึกปลายทางแล้ว').catch(() => {})
-          } },
-        }),
-        kindTag(t.kind), t.name))),
+      el('div', { className: 'pTargets' }, all.map((t) => {
+        const locked = !!postedOn[t.kind] && !q.results?.[t.key]?.ok
+        return el('label', { className: `pTarget${locked ? ' pLocked' : ''}`, title: locked ? `คลิปนี้ลง ${PLATFORM[t.kind]} ไปแล้ว — ห้ามโพสต์ซ้ำ` : '' },
+          el('input', {
+            type: 'checkbox', checked: chosen.has(t.key) && !locked, disabled: locked,
+            on: { change: (e) => {
+              if (e.target.checked) {
+                // แพลตฟอร์มเดียวกันเลือกได้เพจเดียว — ติ๊กเพจนี้ = เอาเพจอื่นของแพลตฟอร์มนี้ออก
+                for (const k of [...chosen]) if (k.split(':')[0] === t.kind) chosen.delete(k)
+                chosen.add(t.key)
+              } else chosen.delete(t.key)
+              call('/api/posting/item', { id: q.id, targets: [...chosen] }, 'บันทึกปลายทางแล้ว').catch(() => {})
+            } },
+          }),
+          kindTag(t.kind), targetAvatar(t.key), t.name)
+      })),
+      el('p', { className: 'hint', style: 'margin:4px 0 0' }, `1 คลิปลงได้ 1 เพจต่อแพลตฟอร์ม (ห้ามคลิปซ้ำ)${lockedNote.length ? ` · ${lockedNote.join(' · ')}` : ''}`),
     )
   }
 
   function reviewCard(q) {
-    const when = el('input', { type: 'datetime-local', value: toLocalInput(q.scheduleAt ?? data.nextSlot ?? Date.now() + 3600_000) })
+    // ช่องเวลาต่อเพจ: ช่องว่างถัดไปของเพจที่คลิปนี้จะลง (เพจอื่นช่องเดียวกันได้)
+    const slot = q.nextSlot ?? data.nextSlot
+    const when = el('input', { type: 'datetime-local', value: toLocalInput(q.scheduleAt ?? slot ?? Date.now() + 3600_000) })
     const approve = async (whenValue, label) => {
       try {
         await flush(q)
         await call('/api/posting/approve', { id: q.id, when: whenValue }, label)
       } catch {}
     }
-    const nextLabel = data.nextSlot ? `✓ อนุมัติ · ${fmtWhen(data.nextSlot)}` : '✓ อนุมัติ · ช่องเวลาถัดไป'
+    const nextLabel = slot ? `✓ อนุมัติ · ${fmtWhen(slot)}` : '✓ อนุมัติ · ช่องเวลาถัดไป'
     return el('li', { className: 'pCard' },
       head(q),
       aiBlock(q),
@@ -428,12 +459,16 @@ export function initPosting({ api, localApp }) {
   // ── ตั้งเวลาแล้ว ──
   function renderScheduled(list) {
     if (!list.length) return el('p', { className: 'pEmpty' }, 'ยังไม่มีคลิปที่ตั้งเวลา — อนุมัติคลิปในแท็บรอตรวจก่อน')
-    return el('ul', { className: 'pList' }, list.map((q) => {
+    // ช่องเวลาต่อเพจ: แต่ละเพจลงคลิปของตัวเองในช่องเวลาเดียวกันได้ · ปุ่มนี้จัดเพจและเวลาให้ใหม่ (ไม่แตะที่ติ๊กเพจเอง/เลือกเวลาเอง)
+    const tools = el('div', { className: 'pReorg' },
+      el('p', { className: 'hint', style: 'margin:0' }, 'ช่องเวลาเดียวกัน ทุกเพจโพสต์พร้อมกันได้ แต่คนละคลิป'),
+      el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/reorganize', {}, 'จัดคิวใหม่แล้ว — กระจายคลิปให้ทุกเพจ').catch(() => {}) } }, '↻ จัดคิวใหม่'))
+    return el('div', {}, tools, el('ul', { className: 'pList' }, list.map((q) => {
       const posting = q.status === 'posting'
       const when = el('input', { type: 'datetime-local', value: toLocalInput(q.scheduleAt) })
       return el('li', { className: 'pCard' },
         head(q, [el('span', { className: 'pBadge gold' }, posting ? 'กำลังโพสต์…' : `โพสต์ ${fmtWhen(q.scheduleAt)}`)]),
-        el('div', { className: 'pTargets' }, (q.targets ?? []).map((k) => el('span', { className: 'pTarget' }, kindTag(k.slice(0, 2)), targetName(k)))),
+        el('div', { className: 'pTargets' }, (q.targets ?? []).map((k) => el('span', { className: 'pTarget' }, kindTag(k.slice(0, 2)), targetAvatar(k), targetName(k)))),
         !q.targets?.length ? el('p', { className: 'pWarn' }, 'ยังไม่มีเพจหรือช่องปลายทาง — กดยกเลิกเวลา แล้วเลือกหมวดและเพจในแท็บรอตรวจ ก่อนตั้งเวลาใหม่') : null,
         el('p', { className: 'pMeta' }, q.post?.title ?? ''),
         posting
@@ -445,7 +480,7 @@ export function initPosting({ api, localApp }) {
             el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/unschedule', { id: q.id }, 'ยกเลิกเวลาแล้ว กลับไปรอตรวจ').catch(() => {}) } }, 'ยกเลิกเวลา'),
           ),
       )
-    }))
+    })))
   }
 
   // ── โพสต์แล้ว / พลาด ──
@@ -544,8 +579,8 @@ export function initPosting({ api, localApp }) {
       }),
       el('span', {}, '🤖 ออโต้ทั้งหมด',
         el('small', {}, s.skipCheck && allAuto
-          ? 'ผลิตเสร็จเข้าคิวเอง → โพสต์ตามเวลาโพสต์ (ไม่ตรวจ) ไปทุกเพจ/ช่องที่รับหมวดของคลิป · ไม่มีข้อความโพสต์ให้ ChatGPT เขียนให้ · โพสต์แล้วแจ้งเตือนว่าไปไหนบ้าง'
-          : 'ผลิตเสร็จเข้าคิวเอง → AI ตรวจ → ผ่านแล้วโพสต์ตามเวลาโพสต์ ไปทุกเพจ/ช่องที่รับหมวดของคลิป · ไม่ผ่านรอคนดู · ไม่มีข้อความโพสต์ให้ ChatGPT เขียนให้ · โพสต์แล้วแจ้งเตือนว่าไปไหนบ้าง')))
+          ? 'ผลิตเสร็จเข้าคิวเอง → โพสต์ตามเวลาโพสต์ (ไม่ตรวจ) ไปเพจ/ช่องที่รับหมวดของคลิป แพลตฟอร์มละ 1 ที่ (ห้ามคลิปซ้ำ) · ไม่มีข้อความโพสต์ให้ ChatGPT เขียนให้ · โพสต์แล้วแจ้งเตือนว่าไปไหนบ้าง'
+          : 'ผลิตเสร็จเข้าคิวเอง → AI ตรวจ → ผ่านแล้วโพสต์ตามเวลาโพสต์ ไปเพจ/ช่องที่รับหมวดของคลิป แพลตฟอร์มละ 1 ที่ (ห้ามคลิปซ้ำ) · ไม่ผ่านรอคนดู · ไม่มีข้อความโพสต์ให้ ChatGPT เขียนให้ · โพสต์แล้วแจ้งเตือนว่าไปไหนบ้าง')))
 
     // ตรวจก่อนโพสต์ (เฉพาะตอนออโต้) — ไม่ตรวจ = ได้เวลาโพสต์ทันที · คลิปที่ AI เคยบอกให้แก้ยังรอคนดู
     const skip = !!s.skipCheck
@@ -581,7 +616,7 @@ export function initPosting({ api, localApp }) {
       el('h3', {}, kindTag('fb'), 'Facebook Page'),
       data.facebook.length
         ? el('ul', { className: 'pAccounts' }, data.facebook.map((a) => el('li', {},
-          el('strong', {}, a.name), el('span', { className: 'pMeta' }, `ID ${a.pageId} · โทเค็น ${a.token}`),
+          pageAvatar(a), el('strong', {}, a.name), el('span', { className: 'pMeta' }, `ID ${a.pageId} · โทเค็น ${a.token}`),
           el('button', { type: 'button', className: 'ghost', on: { click: () => { if (confirm(`ลบเพจ "${a.name}" ออกจากโหมดโพสต์? (โทเค็นจะถูกลบจากเครื่องนี้)`)) call('/api/posting/facebook/remove', { id: a.id }, 'ลบเพจแล้ว').catch(() => {}) } } }, 'ลบ'),
           // ลง Story ทุก N โพสต์ — เป็นภาพ "ไขปริศนาธรรม" ของคลิป (คลิปไม่มีภาพปริศนา = ข้ามไปโพสต์ถัดไป)
           el('label', { className: 'pField' }, 'ลง Story ภาพปริศนาธรรม',

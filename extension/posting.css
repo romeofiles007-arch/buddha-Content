@@ -148,6 +148,13 @@
 .pAccounts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .pAccounts li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--gull-line); border-radius: 10px; font-size: 13px; }
 .pAccounts li strong { flex: 1 1 120px; overflow-wrap: anywhere; }
+/* รูปโปรไฟล์เพจ Facebook — วงกลมหน้าชื่อเพจ · โหลดไม่ได้เป็นตัวอักษรแรกของชื่อ */
+.pAvatar { flex: none; border-radius: 50%; object-fit: cover; border: 1px solid var(--gull-line); background: var(--gull-bg); }
+.pAvatar.lg { width: 40px; height: 40px; }
+.pAvatar.sm { width: 20px; height: 20px; }
+.pAvatarText { display: inline-grid; place-items: center; font-weight: 700; color: var(--gull); line-height: 1; }
+.pAvatarText.lg { font-size: 17px; }
+.pAvatarText.sm { font-size: 11px; }
 .pAccounts select { padding: 6px 8px; border: 1px solid var(--gull-line); border-radius: 8px; background: var(--gull-bg); color: var(--ink); font: inherit; font-size: 13px; }
 .pGrid2 { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .pTikTokAccount { display: grid; gap: 10px; padding-block: 12px; border-top: 1px solid var(--gull-line); }
@@ -163,3 +170,9 @@
 .pCat input { accent-color: var(--gull); margin-top: 2px; flex: none; }
 .linkBtn { border: 0; background: none; padding: 0; color: var(--gull); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
 .pField select { width: 100%; }
+
+/* ปลายทางที่คลิปนี้ลงแพลตฟอร์มนั้นไปแล้ว — ติ๊กไม่ได้ (กฎห้ามโพสต์ซ้ำ) */
+.pTarget.pLocked { opacity: .5; cursor: not-allowed; text-decoration: line-through; }
+
+/* ปุ่มจัดคิวใหม่ในแท็บตั้งเวลาแล้ว */
+.pReorg { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }

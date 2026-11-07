@@ -12,7 +12,7 @@ const project = mkdtempSync(join(ROOT, 'projects', '_deliverytest-')), slug = ba
 mkdirSync(join(project, '06_render')); writeFileSync(join(project, '06_render', 'video.mp4'), 'same video content')
 beforeEach(() => {
   writeFileSync(join(project, '06_render', 'video.mp4'), 'same video content')
-  for (const name of ['deliveries.json', 'deliveries.lock', 'deliveries.initialized']) rmSync(join(dir, name), { force: true })
+  for (const name of ['deliveries.json', 'deliveries.lock', 'deliveries.initialized', 'posted.json']) rmSync(join(dir, name), { force: true })
   P.saveAccounts({ settings: {}, facebook: [{ id: 'fb', pageId: '123', token: 'fake', name: 'Page' }], youtube: [{ id: 'yt', channelId: 'UC123', refreshToken: 'fake', name: 'Channel' }], tiktok: [{ id: 'tk', username: 'romeo', privacy: 'public', name: 'TikTok' }] })
   P.saveQueue([])
 })
@@ -62,10 +62,17 @@ test('adding a removed legacy clip cannot discard its success before history mig
   const h = harness()
   assert.equal((await h.request('/api/posting/add', { slug, file: 'video.mp4' })).code, 200)
   const [q] = P.loadQueue()
-  await h.request('/api/posting/item', { id: q.id, targets: ['fb:fb'], post: { title: 'Caption' } })
-  await h.request('/api/posting/approve', { id: q.id, when: 'now' }); await h.posting.tick()
+  // กฎห้ามโพสต์ซ้ำ: คลิปนี้เคยขึ้น Facebook แล้ว → ระบบไม่เลือก Facebook ให้ และติ๊ก Facebook เองก็ไม่ได้
+  assert.ok(!q.targets.some((k) => k.startsWith('fb:')), 'ไม่เลือก Facebook ให้คลิปที่เคยขึ้น Facebook แล้ว')
+  const picked = await h.request('/api/posting/item', { id: q.id, targets: ['fb:fb'], post: { title: 'Caption' } })
+  assert.equal(picked.code, 500)
+  assert.match(picked.data.error, /เคยโพสต์ลง Facebook แล้ว/)
+  // แม้จะมีคิวเก่าที่ติ๊ก Facebook ค้างไว้ ด่านสุดท้ายตอนส่งก็ไม่อัปโหลด
+  P.saveQueue(P.loadQueue().map((x) => (x.id === q.id ? { ...x, targets: ['fb:fb'], post: { title: 'Caption' }, status: 'scheduled', scheduleAt: Date.now() - 1000 } : x)))
+  await h.posting.tick()
   assert.equal(h.calls.length, 0)
-  assert.equal(P.loadQueue()[0].results['fb:fb'].duplicateSkipped, true)
+  const after = P.loadQueue().find((x) => x.id === q.id)
+  assert.equal(after.results['fb:fb']?.duplicateSkipped, true, 'ปลายทางเดิมนับว่าขึ้นแล้ว (จากประวัติเดิม) ไม่อัปซ้ำ')
 })
 test('all adapters upload the hashed snapshot even if the project render is replaced', async () => {
   let started, release

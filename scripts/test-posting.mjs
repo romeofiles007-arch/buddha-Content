@@ -71,7 +71,8 @@ await test('ปลายทางตามหมวด: ไม่เลือก
     facebook: [{ id: 'all' }, { id: 'a', categories: [A] }],
     youtube: [{ id: 'b', refreshToken: 'r', categories: [B] }, { id: 'off', categories: [] }],
   }
-  assert.deepEqual(P.targetsFor(data, A), ['fb:all', 'fb:a'])
+  // 2 เพจรับหมวดนี้ แต่กฎห้ามโพสต์ซ้ำให้ลงได้เพจเดียวต่อแพลตฟอร์ม (ยังไม่มีประวัติ = เพจแรก)
+  assert.deepEqual(P.targetsFor(data, A), ['fb:all'])
   assert.deepEqual(P.targetsFor(data, B), ['fb:all', 'yt:b'])
   assert.deepEqual(P.targetsFor(data, null), ['fb:all'], 'ช่องที่ไม่ได้เชื่อมต่อ (ไม่มี refreshToken) ไม่นับ')
   assert.deepEqual(P.cleanCategories([A, 'มั่ว', A]), [A])
@@ -500,6 +501,9 @@ try {
     assert.ok(v.queue[0].drive.fileId)
     const fileId = v.queue[0].drive.fileId
     youtubeFails = false
+    // คลิปทดสอบนี้เคยโพสต์ไปแล้วในข้อก่อน — ข้อนี้ทดสอบ Drive ไม่ใช่กฎห้ามโพสต์ซ้ำ จึงล้างสมุดบันทึกก่อน
+    rmSync(join(tmp, 'posted.json'), { force: true })
+    await call('/api/posting/item', { id, resetTargets: true })
     await call('/api/posting/approve', { id, when: 'now' })
     await posting.tick()
     v = await call('/api/posting')
@@ -529,6 +533,8 @@ try {
     assert.deepEqual(v.categories, P.CATEGORIES, 'ส่งรายการหมวดให้หน้าจอ')
 
     // คลิปใหม่ ยังไม่รู้หมวด → ลงเฉพาะช่องที่รับทุกหมวด
+    // (ใช้คลิปทดสอบตัวเดิมที่โพสต์ไปแล้วในข้อก่อน — ข้อนี้ทดสอบหมวด จึงล้างสมุดบันทึกห้ามโพสต์ซ้ำก่อน)
+    rmSync(join(tmp, 'posted.json'), { force: true })
     await call('/api/posting/remove', { id: v.queue[0].id })
     v = await call('/api/posting/add', { slug: SLUG, file: `${SLUG}.mp4` })
     const id = v.queue.find((q) => q.status === 'review').id
@@ -567,7 +573,12 @@ try {
     v = await call('/api/posting/item', { id, resetTargets: true })
     item = v.queue.find((q) => q.id === id)
     assert.equal(item.targetsEdited, false)
-    assert.deepEqual(item.targets.sort(), [`fb:${dinoPage}`, `fb:${spacePage}`, `yt:${yt}`].sort())
+    // กฎห้ามโพสต์ซ้ำ: Facebook ได้เพจเดียว (1 ใน 2 เพจที่รับหมวดนี้) + YouTube 1 ช่อง
+    const fbTargets = item.targets.filter((k) => k.startsWith('fb:'))
+    assert.equal(fbTargets.length, 1, 'Facebook ได้เพจเดียวต่อคลิป')
+    assert.ok([`fb:${dinoPage}`, `fb:${spacePage}`].includes(fbTargets[0]))
+    assert.ok(item.targets.includes(`yt:${yt}`))
+    await call('/api/posting/item', { id, targets: [`fb:${dinoPage}`, `fb:${spacePage}`] }, { expect: 500 })
   })
 
   await test('ปิดโปรแกรมกลางการโพสต์ → เปิดใหม่ไม่โพสต์ซ้ำเอง (เป็นโพสต์ไม่สำเร็จ)', async () => {

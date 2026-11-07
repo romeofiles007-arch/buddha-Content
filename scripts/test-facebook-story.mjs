@@ -127,7 +127,7 @@ function newClip() {
 const scheduled = (file) => ({ ...P.newItem({ slug, file, title: `Clip ${file}`, post: { title: 'Caption' }, targets: ['fb:fb'] }), status: 'scheduled', scheduleAt: Date.now() - 1000, targetsEdited: true })
 const done = (file, at) => ({ ...P.newItem({ slug, file, title: 'old', post: { title: 'x' }, targets: ['fb:fb'] }), status: 'posted', postedAt: at, results: { 'fb:fb': { ok: true, postId: 'old', at } } })
 beforeEach(() => {
-  for (const name of ['deliveries.json', 'deliveries.lock', 'deliveries.initialized']) rmSync(join(dir, name), { force: true })
+  for (const name of ['deliveries.json', 'deliveries.lock', 'deliveries.initialized', 'posted.json']) rmSync(join(dir, name), { force: true })
   P.saveAccounts({ settings: {}, facebook: [{ id: 'fb', pageId: '123', token: 'fake-page-token-123456', name: 'Page', storyEvery: 3, storySince: 1 }], youtube: [], tiktok: [] })
 })
 function harness({ story = async () => ({ postId: 's' }), riddle = true } = {}) {

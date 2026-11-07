@@ -15,7 +15,7 @@ const slug = basename(project)
 mkdirSync(join(project, '06_render'))
 writeFileSync(join(project, '06_render', `${slug}.mp4`), 'fixture')
 beforeEach(() => {
-  for (const file of ['deliveries.json', 'deliveries.lock', 'deliveries.initialized']) rmSync(join(temp, file), { force: true })
+  for (const file of ['deliveries.json', 'deliveries.lock', 'deliveries.initialized', 'posted.json']) rmSync(join(temp, file), { force: true })
 })
 after(() => {
   assert.ok(resolve(project).startsWith(resolve(ROOT, 'projects') + sep))

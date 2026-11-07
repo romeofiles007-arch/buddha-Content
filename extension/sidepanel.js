@@ -3440,7 +3440,7 @@ function renderProdPages(s) {
   const split = form.postPages === 'split'
   $('prodQuota').style.display = split ? 'grid' : 'none'
   if (!split) {
-    $('prodPagesHint').textContent = `ทุกคลิปลงทุกเพจ/ช่องที่รับหมวดของคลิป (${pages.length} ปลายทาง)`
+    $('prodPagesHint').textContent = `คลิปละ 1 เพจต่อแพลตฟอร์ม (ห้ามคลิปซ้ำ) · ระบบกระจายไปทุกเพจที่รับหมวดของคลิปพอๆ กัน (${pages.length} ปลายทาง)`
     return
   }
   const quota = prodOptions().pageQuota
@@ -3448,7 +3448,7 @@ function renderProdPages(s) {
   const count = form.count
   const parts = pages.filter((p) => quota[p.key] > 0).map((p) => `${p.name} ${quota[p.key]}`)
   $('prodPagesHint').textContent = !total
-    ? '⚠️ ใส่จำนวนคลิปอย่างน้อยหนึ่งเพจ — ถ้าเป็น 0 หมด ระบบลงทุกเพจแทน'
+    ? '⚠️ ใส่จำนวนคลิปอย่างน้อยหนึ่งเพจ — ถ้าเป็น 0 หมด ระบบกระจายเพจให้เองแทน'
     : `คลิปละเพจเดียว สลับกันไป: ${parts.join(' · ')}`
       + (count && total !== count ? ` · ⚠️ รวม ${total} คลิป แต่ผลิตชุดละ ${count} คลิป — ${total > count ? 'เพจท้ายๆ จะได้น้อยกว่าที่ตั้ง' : 'ครบลำดับแล้ววนเพจแรกใหม่'}` : '')
 }
