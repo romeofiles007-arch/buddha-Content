@@ -1130,7 +1130,8 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     for (const q of picked) {
       q.auto = 'now'
       if (q.postJob?.status === 'error') q.postJob = null
-      if (q.targetsEdited) q.targets = onePerPlatform(q.targets ?? [], { clip: clipKey(q), queue: queue.filter((x) => x.id !== q.id) })
+      // ผู้ใช้สั่งให้แบ่งเพจ → ให้ระบบเลือกเพจใหม่ทุกคลิปตามหมวด (รวมที่ผลิตต่อเนื่อง/ติ๊กเองไว้เพจเดียว)
+      q.targetsEdited = false
       note(q, 'โพสต์ทั้งหมดเลย (ไม่ตรวจ) — รอชื่อโพสต์/ช่องเวลาของเพจ')
     }
     const { queue: spread } = reorganizeQueue(queue, accounts)

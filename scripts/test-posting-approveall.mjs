@@ -13,7 +13,7 @@ const { ROOT } = await import('../pipeline/lib/config.mjs')
 // savePost เขียน projects/<slug>/... ของจริง — ลบโฟลเดอร์คลิปทดสอบทิ้ง
 after(() => {
   rmSync(dir, { recursive: true, force: true })
-  for (let n = 1; n <= 6; n++) rmSync(join(ROOT, 'projects', `_approveall_c${n}`), { recursive: true, force: true })
+  for (let n = 1; n <= 8; n++) rmSync(join(ROOT, 'projects', `_approveall_c${n}`), { recursive: true, force: true })
 })
 
 const accounts = () => ({
@@ -40,17 +40,19 @@ test('กดครั้งเดียว: คลิปที่มีชื่
     clip(2, { targets: ['fb:a'] }),
     clip(3, { targets: ['fb:a', 'fb:b'], targetsEdited: true }), // ติ๊กเองทั้งสองเพจ (ผิดกฎ)
     clip(4, { auto: 'ai', targets: ['fb:b'] }), // จากผลิตต่อเนื่องแบบรอ AI ตรวจ
+    clip(7, { auto: 'now', targets: ['fb:b'], targetsEdited: true }), // ผลิตต่อเนื่องแบ่งเพจไว้เพจเดียว
+    clip(8, { auto: 'now', targets: ['fb:b'], targetsEdited: true }),
   ])
   const h = harness()
   const r = await h.request('/api/posting/approve-all', {})
   assert.equal(r.code, 200)
-  assert.equal(r.data.approvedAll, 4)
+  assert.equal(r.data.approvedAll, 6)
   const q = P.loadQueue()
   assert.ok(q.every((x) => x.status === 'scheduled'), 'ทุกคลิปตั้งเวลาแล้ว ไม่ต้องรอ AI')
   assert.ok(q.every((x) => x.targets.length === 1), 'คลิปละ 1 เพจ')
   const per = (k) => q.filter((x) => x.targets[0] === k).length
-  assert.equal(per('fb:a'), 2)
-  assert.equal(per('fb:b'), 2)
+  assert.equal(per('fb:a'), 3, 'ที่ผลิตต่อเนื่องเลือกเพจไว้ก็ถูกแบ่งใหม่')
+  assert.equal(per('fb:b'), 3)
   const first = Math.min(...q.map((x) => x.scheduleAt))
   assert.equal(q.filter((x) => x.scheduleAt === first).length, 2, 'ช่องแรกลงพร้อมกัน 2 เพจ คนละคลิป')
   assert.equal(h.enqueued.length, 0, 'ไม่ส่งไปให้ AI ตรวจ')
