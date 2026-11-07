@@ -108,7 +108,9 @@ test('โจทย์ปริศนา: อ่านบรรทัด riddle.p
   const ass = R.riddleAss(r)
   assert.match(ass, /ไขปริศนาธรรม/)
   assert.match(ass, /Style: Ans,[^\n]*,3,36,36,40,222/, 'เฉลยชิดมุมขวาล่าง')
-  assert.match(ass, /เฉลย: ขันติ \(ขัน \+ ติ\)\\Nความอดทน/)
+  // เฉลยกับความหมายคนละกล่อง (เดิมกล่องเดียว 2 บรรทัด พื้นทับกัน) — เฉลยยกขึ้นเหนือความหมาย
+  assert.match(ass, /,Ans,,0,0,102,,เฉลย: ขันติ \(ขัน \+ ติ\)\n/)
+  assert.match(ass, /,Mean,,0,0,0,,ความอดทน\n/)
   assert.equal(R.riddleRequest('en'), '')
   assert.match(R.riddleRequest('th', { dhamma: 'ขันติ (ความอดทนอดกลั้น)' }), /riddle\.png \| RIDDLE/)
 })

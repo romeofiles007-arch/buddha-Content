@@ -14,7 +14,7 @@ import { activeCharacter, characterRule, bodyStyleRule } from './character.mjs'
 import { readProfile } from './clip_profile.mjs'
 import { categoryRule } from '../../extension/prompts.js'
 import { coverRequest, parseCover, saveCoverPrompt, readCoverPrompt, coverShot, coverBriefLines } from './cover.mjs'
-import { riddleRequest, parseRiddle, saveRiddle } from './riddle.mjs'
+import { riddleRequest, parseRiddle, parseRiddleDraft, riddleProblem, saveRiddle } from './riddle.mjs'
 import { themeOf } from './topics.mjs'
 import { orientationOf } from './prompts.mjs'
 
@@ -184,8 +184,10 @@ export function mergeRounds(slug) {
   const cover = parseCover(all)
   if (cover) saveCoverPrompt(slug, cover)
   // โจทย์ภาพปริศนาธรรมสำหรับ Facebook Story (คลิปไทย) — Flow วาดต่อท้ายภาพปก
+  // โจทย์ผิด (เล่นกับตัวอักษร / อ่านไม่ตรงคำตอบ) ไม่บันทึก → ไม่วาด ไม่ลง Story — แจ้งเหตุผลใน log
   const riddle = parseRiddle(all)
   if (riddle) saveRiddle(slug, riddle)
+  else if (parseRiddleDraft(all)) console.warn(`   ปริศนาธรรมใช้ไม่ได้ — ${riddleProblem(parseRiddleDraft(all))} (ข้าม Story ของคลิปนี้)`)
   // ปกคลิปต่อท้ายคำสั่ง Flow — สร้างเป็นภาพสุดท้าย (5_images.mjs ตัด brief ที่หัว SHOT LIST แล้วใส่ปกเองอีกที)
   const titleFile = join(projectDir(slug, 'script'), 'title.txt')
   const title = existsSync(titleFile) ? readFileSync(titleFile, 'utf8').trim() : slug
