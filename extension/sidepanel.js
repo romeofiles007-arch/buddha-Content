@@ -202,7 +202,7 @@ async function selectTopic(t) {
 $('askScript').addEventListener('click', async () => {
   $('scriptRawBox').hidden = true
   S.minutes = Math.min(60, Math.max(1, Number($('minutes').value) || 1))
-  const opts = { language: S.language, targetMinutes: S.minutes, wordsPerMinute: WORDS_PER_MINUTE }
+  const opts = { language: S.language, targetMinutes: S.minutes, wordsPerMinute: WORDS_PER_MINUTE, engage: clip?.engage !== 'off' }
   // โหมดพระสอนธรรม: บทเป็นพระพูดเอง ("อาตมา") ตามกฎของโหมด
   if (selfMode()) opts.profile = { category: 'self', self: { name: selfMonk?.name ?? '' } }
   try {
@@ -1568,6 +1568,18 @@ function renderClipSettings() {
     }
   }
   for (const b of motion.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === clip.motion))
+  // ชวนคุยท้ายคลิป — โปรแกรมในเครื่องรุ่นเก่าไม่ส่งมา → ซ่อน
+  const engage = $('clipEngage')
+  const engageOptions = clip.options.engage ?? []
+  engage.parentElement.hidden = !engageOptions.length
+  if (!engage.childElementCount) {
+    for (const o of engageOptions) {
+      const b = Object.assign(document.createElement('button'), { type: 'button', textContent: o.label })
+      b.dataset.value = o.id
+      engage.append(b)
+    }
+  }
+  for (const b of engage.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === clip.engage))
   // ผู้ช่วยจัดฉาก/Kie — เลือกสัดส่วนของฉากทั้งเรื่อง
   const ai = $('clipAi')
   const aiOptions = clip.options.aiCoverage ?? clip.options.aiClips ?? []
@@ -1650,6 +1662,10 @@ $('clipNarration').addEventListener('click', (e) => {
 $('clipPause').addEventListener('click', (e) => {
   const b = e.target.closest('button')
   if (b && !localBusy()) saveClipSettings({ pause: b.dataset.value })
+})
+$('clipEngage').addEventListener('click', (e) => {
+  const b = e.target.closest('button')
+  if (b && !localBusy()) saveClipSettings({ engage: b.dataset.value })
 })
 $('clipMotion').addEventListener('click', (e) => {
   const b = e.target.closest('button')

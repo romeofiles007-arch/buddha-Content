@@ -899,6 +899,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             // หมวดเนื้อหาที่เลือกในแผงข้าง — ผลิตต่อเนื่องใช้ค่านี้ (เดิมแผงข้างไม่ได้บันทึก ผลิตต่อเนื่องเลยไม่รู้หมวดที่เลือก)
             if (body.genre === 'mix' || GENRES.includes(body.genre)) c.script.genre = body.genre
             if (MOTION_PRESETS[body.motion]) c.render.motion = body.motion
+            // ชวนคุยท้ายคลิป: 'on' (ค่าเริ่มต้น) | 'off' — ใช้กับบทที่เขียนหลังจากนี้
+            if (['on', 'off'].includes(body.engage)) c.script.engage = body.engage === 'on'
             // ม้าน้ำ/Kie: 'off' หรือเปอร์เซ็นต์ของฉากทั้งเรื่อง
             const aiCoverage = body.aiCoverage ?? body.aiClips // aiClips รองรับ extension รุ่นเก่า
             if (aiCoverage === 'off') c.clips = { ...(c.clips ?? {}), provider: 'off' }
@@ -931,6 +933,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           subtitles: SUBTITLE_STYLES[c.render.subtitles?.style] ? c.render.subtitles.style : 'off',
           pause: PAUSE_PRESETS[c.tts.pause] ? c.tts.pause : 'normal',
           motion: MOTION_PRESETS[c.render.motion] ? c.render.motion : 'off',
+          engage: c.script.engage === false ? 'off' : 'on',
           aiCoverage,
           aiClips: aiCoverage,
           kieTier: clips.tier,
@@ -942,6 +945,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             aiClips: aiCoverageOptions,
             kieTier: Object.entries(KIE_TIERS).map(([id, t]) => ({ id, label: t.label, name: t.name, credits: t.credits, detail: t.detail })),
             motion: Object.entries(MOTION_PRESETS).map(([id, m]) => ({ id, label: m.label })),
+            engage: [{ id: 'on', label: 'ชวนคุย' }, { id: 'off', label: 'ไม่ชวน' }],
             subtitles: Object.entries(SUBTITLE_STYLES).map(([id, s]) => ({ id, label: s.label })),
             pause: Object.entries(PAUSE_PRESETS).map(([id, p]) => ({ id, label: p.label })),
           },

@@ -537,7 +537,7 @@ function scriptThemeRule(theme) {
 - ตัวอย่างชีวิตในบทต้องอยู่ในด้านชีวิตนี้ ห้ามพาไปเรื่องพ่อแม่ ลูก หลาน ถ้าด้านชีวิตไม่ใช่ครอบครัว\n`
 }
 
-export function scriptPrompt(blueprint, title, { language = 'th', targetMinutes = 10, wordsPerMinute = 150, profile = null, theme = null } = {}) {
+export function scriptPrompt(blueprint, title, { language = 'th', targetMinutes = 10, wordsPerMinute = 150, profile = null, theme = null, engage = true } = {}) {
   const vo = lang(language)
   return `${blueprint}
 
@@ -561,7 +561,7 @@ ${profile?.category === 'buddha' && language !== 'en' ? `\n${profile.narration =
 - 1 บรรทัด = 1 ช่วงลมหายใจ (ประโยคสั้น 6-14 คำ)
 - ใช้ ... แทนช่วงพักสั้น, เว้นบรรทัดว่างแทนการขึ้นบทใหม่
 - ห้ามใส่ [pause] marker ใดๆ
-- ${profile?.category === 'self' ? SELF_PERSON[language] ?? SELF_PERSON.th : profile?.category === 'buddha' && language !== 'en' && profile.narration === 'story' ? 'เล่าแบบผู้บรรยายสารคดี สุภาพ ไม่ใช้ "คุณ" ลงท้าย "ครับ" ได้เฉพาะประโยคชวนติดตาม' : profile?.category === 'buddha' && language !== 'en' ? 'ไม่ใช้ "คุณ" ไม่ถามคนดู — สอนแบบผู้แสดงธรรม ใช้ "เรา" ได้เมื่อพูดถึงการปฏิบัติ (เช่น "เมื่อเราตั้งใจภาวนา…") · แบบ ค พระพุทธเจ้าเรียกพระองค์ว่า "เรา"/"ตถาคต" และเรียกผู้ฟังว่า "ภิกษุทั้งหลาย"/"เธอ" ได้' : vo.person}`
+- ${profile?.category === 'self' ? SELF_PERSON[language] ?? SELF_PERSON.th : profile?.category === 'buddha' && language !== 'en' && profile.narration === 'story' ? 'เล่าแบบผู้บรรยายสารคดี สุภาพ ไม่ใช้ "คุณ" ลงท้าย "ครับ" ได้เฉพาะประโยคชวนติดตาม' : profile?.category === 'buddha' && language !== 'en' ? 'ไม่ใช้ "คุณ" ไม่ถามคนดู — สอนแบบผู้แสดงธรรม ใช้ "เรา" ได้เมื่อพูดถึงการปฏิบัติ (เช่น "เมื่อเราตั้งใจภาวนา…") · แบบ ค พระพุทธเจ้าเรียกพระองค์ว่า "เรา"/"ตถาคต" และเรียกผู้ฟังว่า "ภิกษุทั้งหลาย"/"เธอ" ได้' : vo.person}${engage ? `\n${engageRule(language)}` : ''}`
 }
 
 /**
@@ -614,6 +614,22 @@ const LENGTH_NOTE = /^(ความยาว|ยาว|ครบ|ประมา
 // ขึ้นต้นด้วยกริยาของคนแก้บท ไม่ใช่ภาษาเล่าเรื่อง — "ตัดความโกรธทิ้งไป" ไม่โดน เพราะต้องเป็น "ตัดให้…"
 const EDIT_NOTE = /^(ตัดให้|ปรับให้|ปรับความยาว|เรียบเรียงใหม่|เขียนใหม่ให้|ฉบับ(ปรับ|ใหม่|แก้|ตัด)|ยาวประมาณ|จำนวน(คำ|ตัวอักษร)|รวม(ประมาณ)?\s*~?\d[\d,]*\s*(ตัวอักษร|คำ)|หากต้องการ|ถ้าต้องการ|ต้องการให้(ปรับ|เพิ่ม|ตัด|แก้)|อยากให้(ปรับ|เพิ่ม|ตัด|แก้)|word count|let me know|if you('d)? like|want me to|字数)/i
 const isNote = (t) => t.length <= 80 && (LENGTH_NOTE.test(t) || EDIT_NOTE.test(t))
+
+/** ตัดคำนำ/คำปิดท้าย/markdown ที่โมเดลชอบแถมมา ให้เหลือ narration ล้วนตาม OUTPUT 2 */
+/**
+ * ชวนคุยท้ายคลิป — ผู้ใช้ (8 พ.ย. 2026): "มีแต่คนดู ไม่มีใครตอบอะไรเลย" · ปิดได้ในกล่องตั้งค่าคลิป (script.engage = false)
+ * คำถามต้องเกี่ยวกับเรื่องของคลิปนี้ ถามความเห็นหรือประสบการณ์ ให้คนดูอยากพิมพ์ตอบ
+ */
+export function engageRule(language = 'th') {
+  const examples = {
+    th: '"ถ้าเป็นคุณ จะทำอย่างไร?" · "ใครเคยเจอเหตุการณ์แบบนี้บ้าง? เล่าให้ฟังในคอมเมนต์หน่อย"',
+    en: '"What would you do?" · "Has this ever happened to you? Tell us in the comments."',
+    zh: '"如果是你，你会怎么做？" · "你遇到过这种事吗？在评论区说说吧。"',
+  }
+  return `- ปิดท้ายบทด้วยประโยคชวนคุย 1–2 บรรทัด ให้คนดูอยากพิมพ์ตอบในคอมเมนต์ — ถามความเห็นหรือประสบการณ์ที่เกี่ยวกับเรื่องนี้ตรงๆ เช่น ${examples[language] ?? examples.th}
+  · ใช้ภาษาของ narration · เปลี่ยนคำถามให้เข้ากับเรื่อง ไม่ต้องใช้ตัวอย่างตรงตัว · น้ำเสียงเข้ากับคลิป (สุภาพ ไม่เร่งเร้า)
+  · ข้อนี้มีผลเหนือข้อ "ไม่ถามคนดู" หรือ "ห้ามมีคำปิดท้าย" ด้านบน เฉพาะประโยคชวนคุยท้ายบทนี้ · ห้ามขอไลก์/กดติดตาม/แชร์`
+}
 
 /** ตัดคำนำ/คำปิดท้าย/markdown ที่โมเดลชอบแถมมา ให้เหลือ narration ล้วนตาม OUTPUT 2 */
 export function cleanScript(text) {
