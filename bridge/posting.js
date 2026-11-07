@@ -1127,7 +1127,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     const queue = loadQueue()
     const picked = queue.filter((q) => q.status === 'review')
     // คลิปที่ตั้งเวลาไว้แล้วแต่ยังไม่โพสต์ ก็แบ่งเพจใหม่ด้วย (ผู้ใช้สั่ง "แบ่งกันระหว่าง 2 เพจ") — เวลาที่เลือกเองไม่แตะ
-    const waiting = queue.filter((q) => q.status === 'scheduled' && q.targetsEdited)
+    const waiting = queue.filter((q) => q.status === 'scheduled')
     if (!picked.length && !waiting.length) return 0
     for (const q of picked) {
       q.auto = 'now'
