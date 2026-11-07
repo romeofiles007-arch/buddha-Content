@@ -36,7 +36,7 @@ const posting = createPosting({
     Promise.resolve().then(() => { job.status = 'done'; job.result = { meta: { ok: true, published: true, username: 'whytakorn' } } })
     return job
   },
-  deps: { listVideos: async () => [], tiktokPollMs: 1, tiktokTimeoutMs: 1000, facebookUpload: async (x) => { calls.push(`fb:${x.pageId}`); return { postId: 'p', url: `https://www.facebook.com/${x.pageId}/videos/1` } } },
+  deps: { tiktokVerify: async () => ({ status: 'ok' }), listVideos: async () => [], tiktokPollMs: 1, tiktokTimeoutMs: 1000, facebookUpload: async (x) => { calls.push(`fb:${x.pageId}`); return { postId: 'p', url: `https://www.facebook.com/${x.pageId}/videos/1` } } },
 })
 const request = async (path, data) => { body = data; await posting.handle({ method: 'POST', headers: { host: '127.0.0.1:1', 'x-bridge-token': 'test' } }, {}, new URL(path, 'http://127.0.0.1:1')); return response }
 const byTitle = () => Object.fromEntries(P.loadQueue().map((q) => [q.title, q]))

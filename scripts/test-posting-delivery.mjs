@@ -24,7 +24,7 @@ function harness({ fb = async () => ({ postId: '1', url: 'https://www.facebook.c
     calls.push('tk'); const job = { id: 'job-' + calls.length, agent, kind, payload, status: 'running' }; jobs.set(job.id, job)
     tk.then(() => { job.status = 'done'; job.result = { meta: { ok: true, published: true, username: 'romeo' } } })
     return job
-  }, port: 1, token: 'test', log() {}, scheduler: false, readBody: async () => body, json: (_res, code, data) => { response = { code, data } }, deps: { listVideos: async () => [], tiktokPollMs: 1, tiktokTimeoutMs: 1000, facebookUpload: async x => { calls.push('fb'); return fb(x) }, youtubeUpload: async x => { calls.push('yt'); return yt(x) } } })
+  }, port: 1, token: 'test', log() {}, scheduler: false, readBody: async () => body, json: (_res, code, data) => { response = { code, data } }, deps: { tiktokVerify: async () => ({ status: 'ok' }), listVideos: async () => [], tiktokPollMs: 1, tiktokTimeoutMs: 1000, facebookUpload: async x => { calls.push('fb'); return fb(x) }, youtubeUpload: async x => { calls.push('yt'); return yt(x) } } })
   return { posting, calls, request: async (path, data) => { body = data; await posting.handle({ method: data ? 'POST' : 'GET', headers: { host: '127.0.0.1:1', 'x-bridge-token': 'test' } }, {}, new URL(path, 'http://127.0.0.1:1')); return response } }
 }
 test('all three platforms begin before any slow destination completes', async () => {

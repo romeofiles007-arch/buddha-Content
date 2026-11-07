@@ -6,7 +6,7 @@ import { test } from 'node:test'
 const domSource = readFileSync(new URL('../extension/tiktok-dom.js', import.meta.url), 'utf8')
 const driverSource = readFileSync(new URL('../extension/content-tiktok.js', import.meta.url), 'utf8')
 function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, cancellation = false, cancelDuringAccount = false, resetAi = false, replaceCaption = false, stuckCaption = false, tip = false, stuckTip = false, delayedStudio = false, cdnAvatar = false, studioSwitch = false, ambiguousSwitch = false, aiConsent = false, replacePost = false, processing = false, contentEditable = false, caption = 'คำบรรยาย #ธรรมะ' } = {}) {
-  let listener, uploads = 0, clicks = 0, progress = 0, accountReads = 0, menuOpen = false, onCancel, rerendered = false, readyChecks = 0
+  let captionSets = 0, listener, uploads = 0, clicks = 0, progress = 0, accountReads = 0, menuOpen = false, onCancel, rerendered = false, readyChecks = 0
   const results = [], memory = new Map()
   const node = (extra = {}) => ({ textContent: '', getClientRects: () => [{}], getAttribute: () => null, matches: () => false, focus() {}, click() {}, dispatchEvent() {}, ...extra })
   class Textarea { constructor() { this._value = '' } get value() { return this._value } set value(v) { this._value = v } }
@@ -62,7 +62,7 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
     URL, console, document, location: { href: 'https://www.tiktok.com/tiktokstudio/upload' },
     HTMLTextAreaElement: Textarea, Event: class {},
     sessionStorage: { getItem: k => memory.get(k) ?? null, setItem: (k, v) => memory.set(k, v) },
-    chrome: { runtime: { onMessage: { addListener: fn => { listener = fn } }, sendMessage: async message => { if(message.type==='TIKTOK_SET_CAPTION'){editor.innerText=caption;return {ok:true}} uploads++; return { ok: true } } } },
+    chrome: { runtime: { onMessage: { addListener: fn => { listener = fn } }, sendMessage: async message => { if(message.type==='TIKTOK_SET_CAPTION'){editor.innerText=caption;captionSets++;return {ok:true}} uploads++; return { ok: true } } } },
     bridgeHelpers: {
       heartbeat: (_id, cancel) => { onCancel = cancel; return () => {} }, sleep: async () => { if (cancelDuringAccount) onCancel() },
       waitFor: async (fn, { label }) => { for (let i = 0; i < 3; i++) { const value = await fn(); if (value) { if (cancelDuringAccount && label === 'ชื่อบัญชี TikTok') onCancel(); if (label === 'TikTok อัปโหลดเสร็จและพร้อมโพสต์') { if (resetAi) ai.checked = false; if (replaceCaption) rerendered = true } return value } } throw new Error(`รอ ${label} เกินเวลา`) },
@@ -75,13 +75,20 @@ function fixture({ signedIn = 'romeo', missingPrivacy = false, confirm = true, c
   runInNewContext(domSource, ctx)
   runInNewContext(driverSource, ctx)
   const message = { type: 'RUN_JOB', job: { id: 'fixture-job', kind: 'tiktok-post', payload: { username: 'romeo', caption, privacy: 'private', aigc: true } } }
-  return { invoke: () => new Promise(resolve => listener(message, {}, resolve)), results, replaced: () => replacement.value, tip: () => ({ open: tipOpen, clicks: tipClicks }), state: () => ({ uploads, clicks, caption: contentEditable?editor.innerText:editor.value, privacy: privacy.value, aigc: ai.checked }) }
+  return { invoke: () => new Promise(resolve => listener(message, {}, resolve)), results, replaced: () => replacement.value, tip: () => ({ open: tipOpen, clicks: tipClicks }), sets: () => captionSets, state: () => ({ uploads, clicks, caption: contentEditable?editor.innerText:editor.value, privacy: privacy.value, aigc: ai.checked }) }
 }
 
 test('React-owned caption editors use browser text input without replacing their DOM children',async()=>{
   const f=fixture({contentEditable:true});await f.invoke()
   assert.equal(f.results[0].ok,true,f.results[0].error)
   assert.equal(f.state().caption,'คำบรรยาย #ธรรมะ')
+  assert.equal(f.state().clicks,1)
+})
+
+test('caption is entered again after processing even when the box already looks right (TikTok posted the file name 7 Nov 2026)',async()=>{
+  const f=fixture({contentEditable:true});await f.invoke()
+  assert.equal(f.results[0].ok,true,f.results[0].error)
+  assert.equal(f.sets(),2,'กรอกครั้งแรก + กรอกซ้ำก่อนกดโพสต์')
   assert.equal(f.state().clicks,1)
 })
 

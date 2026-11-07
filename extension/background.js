@@ -184,7 +184,51 @@ async function handleJob(job) {
   }
 }
 
+// ตรวจหลังโพสต์ว่า TikTok ใช้คำบรรยายของเราจริง (ไม่ใช่ชื่อไฟล์) — อ่านหน้ารายการโพสต์เท่านั้น ไม่กดอะไร
+const TIKTOK_POSTS_URL = 'https://www.tiktok.com/tiktokstudio/content'
+async function verifyTikTokCaption(payload) {
+  const tab = await chrome.tabs.create({ url: TIKTOK_POSTS_URL, active: false })
+  const loaded = () => new Promise((resolve) => {
+    const listener = (id, info) => { if (id === tab.id && info.status === 'complete') { chrome.tabs.onUpdated.removeListener(listener); resolve() } }
+    chrome.tabs.onUpdated.addListener(listener)
+    setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve() }, 30_000)
+  })
+  try {
+    await loaded()
+    const deadline = Date.now() + 75_000
+    let reloaded = false
+    for (;;) {
+      const [found] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        args: [payload],
+        func: ({ caption, stems }) => {
+          const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
+          const lines = String(document.body?.innerText ?? '').split('\n').map(norm).filter(Boolean)
+          const bad = lines.find((line) => stems.some((stem) => stem && line === norm(stem)))
+          if (bad) return { status: 'filename', sample: bad.slice(0, 120) }
+          const prefix = norm(caption).slice(0, 40)
+          const good = prefix && lines.find((line) => line.startsWith(prefix))
+          if (good) return { status: 'ok', sample: good.slice(0, 120) }
+          return null
+        },
+      }).catch(() => [])
+      if (found?.result) return { ok: true, ...found.result }
+      if (Date.now() > deadline) return { ok: true, status: 'unknown' }
+      // รายการโพสต์อาจยังไม่มีโพสต์ใหม่ — โหลดหน้าใหม่หนึ่งครั้งกลางทาง
+      if (!reloaded && Date.now() > deadline - 45_000) { reloaded = true; await chrome.tabs.reload(tab.id).catch(() => {}); await loaded() }
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+  } finally {
+    await chrome.tabs.remove(tab.id).catch(() => {})
+  }
+}
+
 async function runJob(job, agent) {
+  if (agent === 'tiktok' && job.kind === 'tiktok-verify') {
+    const meta = await verifyTikTokCaption(job.payload).catch((err) => ({ ok: false, error: String(err.message) }))
+    await postReliable('/result', { id: job.id, meta })
+    return
+  }
   if (agent === 'tiktok' && job.kind === 'tiktok-inspect' && job.payload.preserve === true) {
     const tabs = await chrome.tabs.query({ url: AGENTS.tiktok.pattern })
     const snapshots = []

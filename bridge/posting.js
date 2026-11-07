@@ -7,7 +7,7 @@
  * งาน AI ตรวจเข้าคิว ChatGPT เดียวกับขั้นอื่น (ทุกงานเปิดแชตใหม่ จึงไม่ปนกัน) และตรวจเองเฉพาะตอนคิว ChatGPT ว่าง — ไม่หน่วงการทำคลิป
  * bridge ต้องเปิดอยู่ตอนถึงเวลาโพสต์ (คนโพสต์คือเครื่องนี้)
  */
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, linkSync, copyFileSync } from 'node:fs'
 import { join, resolve, sep, basename } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { ROOT } from '../pipeline/lib/config.mjs'
@@ -21,7 +21,7 @@ import {
 } from '../pipeline/lib/posting.mjs'
 import { facebookPageInfo, facebookUpload, facebookStory, facebookPhotoStory, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
 import { listVideos } from './videos.js'
-import { runTikTokJob, tiktokUsername } from '../pipeline/lib/tiktok-browser.mjs'
+import { runTikTokJob, tiktokUsername, tiktokUploadName, verifyTikTokCaption, tiktokFailure } from '../pipeline/lib/tiktok-browser.mjs'
 import { prepareRiddleStory } from '../pipeline/lib/riddle.mjs'
 import { createDeliveryLedger, stageDelivery, stageCover, deliveryDestination, importDeliveryHistory } from '../pipeline/lib/delivery-ledger.mjs'
 
@@ -548,7 +548,24 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         if (kind === 'facebook') {
           out = await fb.upload({ pageId: account.pageId, token: account.token, file, title: item.post.title, description: text, cover: cover?.file ?? null })
         } else if (kind === 'tiktok') {
-          out = await runTikTokJob({ jobs, enqueue, payload: { username: account.username, privacy: account.privacy ?? 'private', aigc: account.aigc !== false, file, cover: !!cover, caption: text || item.post.title }, onStart: job => mutateItem(id, it => { it.tiktokJobId = job.id }) }, { timeoutMs: deps.tiktokTimeoutMs, pollMs: deps.tiktokPollMs })
+          const caption = text || item.post.title
+          const uploadName = tiktokUploadName(item.post.title || item.title)
+          let tiktokJob = null
+          try {
+            out = await runTikTokJob({ jobs, enqueue, payload: { username: account.username, privacy: account.privacy ?? 'private', aigc: account.aigc !== false, file, uploadName, cover: !!cover, caption }, onStart: job => { tiktokJob = job; mutateItem(id, it => { it.tiktokJobId = job.id }) } }, { timeoutMs: deps.tiktokTimeoutMs, pollMs: deps.tiktokPollMs })
+          } finally {
+            if (tiktokJob) rmSync(namedUploadDir(tiktokJob), { recursive: true, force: true }) // ไฟล์ชื่อโพสต์เป็นแค่ลิงก์/สำเนาชั่วคราว
+          }
+          // 7 พ.ย. 2026: ระบบบอกโพสต์สำเร็จ แต่ TikTok ใช้ชื่อไฟล์ (UUID) เป็นคำบรรยาย → ตรวจในรายการโพสต์ของ Studio ก่อนนับว่าสำเร็จ
+          const flat = s => String(s ?? '').replace(/\s+/g, ' ').trim()
+          const stems = [basename(file, '.mp4'), uploadName.replace(/\.mp4$/, '')].filter(s => flat(s) && flat(s) !== flat(caption))
+          const check = await (deps.tiktokVerify ?? verifyTikTokCaption)({ jobs, enqueue, caption, stems }, { pollMs: deps.tiktokPollMs }).catch(() => ({ status: 'unknown' }))
+          if (check.status === 'filename') {
+            // โพสต์ขึ้นแล้ว → จดว่าคลิปนี้ลง TikTok แล้ว (กฎห้ามโพสต์ซ้ำ) แต่รายงานเป็นไม่สำเร็จ ให้คนแก้คำบรรยายเอง
+            recordPosted(clipKey(item), key, { name: account.name, at: Date.now(), url: out.url ?? null, destination, title: item.title, captionMissing: true })
+            throw tiktokFailure(`โพสต์ขึ้น TikTok แล้ว แต่คำบรรยายไม่เข้า — TikTok ใช้ "${check.sample}" แทน · เปิด TikTok Studio → โพสต์ → แก้ไข แล้ววางคำบรรยายเอง (ระบบไม่โพสต์ซ้ำ)`, true)
+          }
+          if (check.status !== 'ok') log(`โพสต์อัตโนมัติ: "${item.title}" บน ${account.name} ตรวจคำบรรยายในรายการโพสต์ TikTok ไม่ได้ — ดูใน TikTok Studio อีกที`)
         } else if (kind === 'youtube') {
           const { clientId, clientSecret } = accounts.settings.google
           if (!account.refreshToken) throw new Error('ช่องนี้ยังไม่ได้เชื่อมต่อ')
@@ -808,7 +825,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         if (item.deliverySnapshot && (!resolve(file).startsWith(resolve(POSTING_DIR, 'staging') + sep) || !/^[a-f0-9-]{36}\.mp4$/.test(basename(file)))) return json(res, 409, { error: 'ไฟล์ส่ง TikTok ไม่ตรงกับงานนี้' }), true
         const cover = item.deliverySnapshot?.cover
         const coverOk = cover && resolve(cover).startsWith(resolve(POSTING_DIR, 'staging') + sep) && /^[a-f0-9-]{36}\.jpg$/.test(basename(cover)) && existsSync(cover)
-        return json(res, 200, { file, ...(coverOk ? { cover } : {}), username: job.payload.username, caption: job.payload.caption }), true
+        return json(res, 200, { file: namedUpload(file, job), ...(coverOk ? { cover } : {}), username: job.payload.username, caption: job.payload.caption }), true
       }
       if (req.method === 'GET' && path === '/api/posting') return json(res, 200, await view()), true
       // เบาๆ สำหรับแจ้งเตือน (background ถามทุกนาที) + บรรทัด "โพสต์ล่าสุด" — ไม่ดึงคลัง/ไม่ไล่คิวแบบ view()
@@ -1139,6 +1156,22 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
    * ไม่ทำระหว่างกำลังโพสต์ (คิวกำลังเปลี่ยน)
    */
   /** เปลี่ยนเวลาโพสต์ (กลาง/ของเพจ) → คลิปที่ตั้งตามช่องเดิมย้ายไปช่องว่างแรกตามเวลาใหม่ · ไม่ย้ายคลิปข้ามเพจ */
+  /** ไฟล์วิดีโอชื่อเดียวกับโพสต์สำหรับ TikTok (staging/tiktok-<งาน>/<ชื่อโพสต์>.mp4) — ทำไม่ได้ก็ใช้ไฟล์เดิม */
+  const namedUploadDir = (job) => join(POSTING_DIR, 'staging', `tiktok-${String(job.id).replace(/[^a-zA-Z0-9-]/g, '')}`)
+  function namedUpload(file, job) {
+    const name = String(job.payload.uploadName ?? '')
+    if (!name.endsWith('.mp4') || /[\\/]/.test(name) || !existsSync(file)) return file
+    const dir = namedUploadDir(job)
+    const target = join(dir, name)
+    try {
+      if (!existsSync(target)) {
+        mkdirSync(dir, { recursive: true })
+        try { linkSync(file, target) } catch { copyFileSync(file, target) }
+      }
+      return target
+    } catch { return file }
+  }
+
   /** ตรวจโทเค็นกับ Facebook ก่อนบันทึก · ได้ User token มา → แลกเป็น Page token ของเพจนี้ (โพสต์ด้วย User token ไม่ได้) */
   async function checkPage(pageId, token) {
     let page

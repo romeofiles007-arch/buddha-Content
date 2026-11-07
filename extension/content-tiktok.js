@@ -97,9 +97,11 @@
       const expectedCaption = String(job.payload.caption).replace(/\s+/g, ' ').trim()
       // TikTok เติมชื่อไฟล์ลงช่องคำบรรยายเองหลังประมวลผลวิดีโอ (4 พ.ย. 2026 ได้ "ชื่อไฟล์+คำบรรยาย")
       // → กรอกทับใหม่ (เลือกทั้งหมดแล้วพิมพ์) จนกว่าจะตรง สูงสุด 3 รอบ
-      const ensureCaption = async () => {
+      // force: กรอกใหม่แม้ช่องดูตรงแล้ว — 7 พ.ย. 2026 ช่องบนจอตรง แต่ TikTok โพสต์ด้วยชื่อไฟล์ (ค่าในฟอร์มของ TikTok
+      // ถูกทับด้วยชื่อไฟล์ตอนประมวลผลเสร็จ โดยหน้าจอไม่เปลี่ยน) → กรอกซ้ำหลังประมวลผลเสร็จ ให้ค่าล่าสุดในฟอร์มเป็นคำบรรยายของเรา
+      const ensureCaption = async ({ force = false } = {}) => {
         for (let round = 0; round < 3; round++) {
-          if (captionText() === expectedCaption) return
+          if (captionText() === expectedCaption && !(force && round === 0)) return
           const editor = await wait(findEditor, 'ช่องคำบรรยาย TikTok', 30_000)
           editor.focus()
           if (editor.tagName === 'TEXTAREA') {
@@ -179,7 +181,7 @@
       await wait(publishReady, 'TikTok อัปโหลดเสร็จและพร้อมโพสต์', 10 * 60_000)
       // TikTok อาจเติมชื่อไฟล์ทีหลังตอนวิดีโอประมวลผลเสร็จ → ตรวจ/กรอกคำบรรยายอีกรอบก่อนโพสต์
       phase = 'caption'
-      await ensureCaption()
+      await ensureCaption({ force: true })
       phase = 'settings'
       // กล่องแนะนำของ TikTok ("ดูตัวอย่างวิดีโอบนโทรศัพท์ … เข้าใจแล้ว") บังปุ่มโพสต์ — 4 พ.ย. 2026 กดโพสต์แล้วไม่ไปไหน
       // ต้องปิดให้หมดก่อนกดโพสต์ ปิดไม่ได้ = หยุดก่อนโพสต์ (ลองใหม่ได้ ไม่เสี่ยงโพสต์ซ้ำ)

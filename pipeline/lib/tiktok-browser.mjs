@@ -8,6 +8,36 @@ export function tiktokFailure(message, needsVerification = true) {
   return Object.assign(new Error(message), { needsVerification })
 }
 
+/** ชื่อไฟล์ที่ TikTok เห็นตอนอัปโหลด — TikTok เอาชื่อไฟล์ (ไม่มีนามสกุล) ไปใส่ช่องคำบรรยายเอง จึงใช้ชื่อโพสต์แทน UUID */
+export function tiktokUploadName(title) {
+  const clean = String(title ?? '').normalize('NFC').replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim()
+  const cut = [...clean].slice(0, 80).join('').replace(/[ .]+$/, '')
+  return `${cut || 'video'}.mp4`
+}
+
+/**
+ * หลังโพสต์: เปิดหน้ารายการโพสต์ใน Studio แล้วดูว่าโพสต์ใหม่ใช้คำบรรยายของเรา หรือ TikTok ใช้ชื่อไฟล์แทน
+ * คืน { status: 'ok' | 'filename' | 'unknown', sample? } — ตรวจไม่ได้ = unknown (ไม่นับว่าพลาด)
+ */
+export async function verifyTikTokCaption({ jobs, enqueue, caption, stems }, { timeoutMs = 3 * 60_000, pollMs = 500 } = {}) {
+  const job = enqueue('tiktok', 'tiktok-verify', { caption, stems, noRetry: true })
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const current = jobs.get(job.id)
+    if (current) current.watchedAt = Date.now()
+    if (!current || current.cancelled || current.status === 'error') return { status: 'unknown' }
+    if (current.status === 'done') {
+      const meta = current.result?.meta
+      return ['ok', 'filename'].includes(meta?.status) ? { status: meta.status, sample: String(meta.sample ?? '') } : { status: 'unknown' }
+    }
+    if (Date.now() >= deadline) {
+      Object.assign(current, { cancelled: true, status: 'error', error: 'ตรวจคำบรรยาย TikTok เกินเวลา' })
+      return { status: 'unknown' }
+    }
+    await new Promise(resolve => setTimeout(resolve, pollMs))
+  }
+}
+
 export async function runTikTokJob({ jobs, enqueue, payload, onStart }, { timeoutMs = 15 * 60_000, pollMs = 500 } = {}) {
   const job = enqueue('tiktok', 'tiktok-post', { ...payload, noRetry: true })
   onStart?.(job)

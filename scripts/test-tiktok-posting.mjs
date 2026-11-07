@@ -26,7 +26,7 @@ after(() => {
 const account = { id: 'one', username: 'romeo', name: 'Romeo', privacy: 'public', aigc: true }
 const accounts = () => ({ settings: { autoCheck: false }, facebook: [], youtube: [], tiktok: [{ ...account }] })
 const due = extra => ({ ...P.newItem({ slug, file: `${slug}.mp4`, title: 'คลิป', post: { title: 'ชื่อ', description: 'คำบรรยาย' }, targets: ['tk:one'] }), status: 'scheduled', scheduleAt: Date.now() - 1000, ...extra })
-function harness(reply = { ok: true, published: true, username: 'romeo', url: 'https://www.tiktok.com/@romeo/video/1234567' }) {
+function harness(reply = { ok: true, published: true, username: 'romeo', url: 'https://www.tiktok.com/@romeo/video/1234567' }, verify = async () => ({ status: 'ok' })) {
   const jobs = new Map(), calls = []
   let body, response
   const posting = createPosting({
@@ -37,7 +37,7 @@ function harness(reply = { ok: true, published: true, username: 'romeo', url: 'h
       return job
     }, json: (_r, code, data) => { response = { code, data } }, readBody: async () => body,
     port: 1, token: 'test', log: () => {}, scheduler: false,
-    deps: { listVideos: async () => [], tiktokPollMs: 1, tiktokTimeoutMs: 100, youtubeUpload: async () => { throw new Error('TikTok must never call YouTube') } },
+    deps: { tiktokVerify: verify, listVideos: async () => [], tiktokPollMs: 1, tiktokTimeoutMs: 100, youtubeUpload: async () => { throw new Error('TikTok must never call YouTube') } },
   })
   return { posting, calls, jobs, request: async (path, data) => {
     body = data
@@ -109,6 +109,37 @@ test('scheduled TikTok posts run a non-retryable browser job and require a publi
   assert.equal(q.results['tk:one'].ok, true)
   assert.equal(q.results['tk:one'].url, 'https://www.tiktok.com/@romeo/video/1234567')
   await h.posting.tick(); assert.equal(h.calls.length, 1)
+})
+
+test('TikTok uses the file name as caption → reported as failed, platform locked, never reposted', async () => {
+  P.saveAccounts(accounts()); P.saveQueue([due()])
+  const seen = []
+  const h = harness(undefined, async (args) => { seen.push(args); return { status: 'filename', sample: '6b9cc68e-edae-4fca-bc46-12505118e9e5' } })
+  await h.posting.tick()
+  const [q] = P.loadQueue()
+  assert.equal(q.status, 'failed')
+  assert.equal(q.results['tk:one'].ok, false)
+  assert.equal(q.results['tk:one'].needsVerification, true)
+  assert.match(q.results['tk:one'].error, /คำบรรยายไม่เข้า.*6b9cc68e/)
+  assert.ok(P.loadPosted()[P.clipKey(q)]?.tk, 'คลิปนี้ถูกจดว่าลง TikTok แล้ว (ห้ามโพสต์ซ้ำ)')
+  assert.equal(seen[0].caption, h.calls[0].payload.caption)
+  assert.ok(seen[0].stems.length >= 1 && seen[0].stems.every(s => !/[\/]/.test(s)))
+  assert.match(h.calls[0].payload.uploadName, /^(?:ชื่อ|คลิป)\.mp4$/) // ชื่อโพสต์ ไม่ใช่ UUID
+  assert.equal((await h.request('/api/posting/retry', { id: q.id })).code, 409)
+  await h.posting.tick(); assert.equal(h.calls.length, 1)
+})
+
+test('caption check that cannot read the list does not fail a published post', async () => {
+  P.saveAccounts(accounts()); P.saveQueue([due()])
+  const h = harness(undefined, async () => ({ status: 'unknown' })); await h.posting.tick()
+  assert.equal(P.loadQueue()[0].status, 'posted')
+})
+
+test('upload file name follows the post title and is safe for Windows', async () => {
+  const { tiktokUploadName } = await import('../pipeline/lib/tiktok-browser.mjs')
+  assert.equal(tiktokUploadName('ทำไม? ใจ: "ร้อน" / เย็น*'), 'ทำไม ใจ ร้อน เย็น.mp4')
+  assert.equal(tiktokUploadName('   '), 'video.mp4')
+  assert.equal([...tiktokUploadName('ก'.repeat(200)).replace(/.mp4$/, '')].length, 80)
 })
 
 test('an upload-only response stays blocked, including the former user acknowledgement override', async () => {

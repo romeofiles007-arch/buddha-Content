@@ -176,4 +176,21 @@ await test('read-only TikTok inspection preserves the uploaded form; posting alw
   }
 })
 
+await test('ตรวจคำบรรยายหลังโพสต์: อ่านรายการโพสต์ในแท็บแยก แยกชื่อไฟล์/คำบรรยาย แล้วปิดแท็บ', async () => {
+  for (const [page, want] of [
+    ['Posts\n6b9cc68e-edae-4fca-bc46-12505118e9e5\nNov 7, 11:40 PM\nเก่า... คำบรรยายอื่น', 'filename'],
+    ['Posts\nเช้าวันหนึ่ง... ไม่มีโทรศัพท์ให้หยิบ แต่ทำไมใจกลับกระวนกระวาย? ความอยาก\nNov 7', 'ok'],
+  ]) {
+    const { ctx, calls } = loadBackground({ tabs: [{ id: 5, windowId: 1, url: 'about:blank' }], windows: [{ id: 1 }], focused: 1 })
+    ctx.document = { body: { innerText: page } }
+    ctx.chrome.tabs.remove = async (id) => { calls.push(['tabs.remove', id]) }
+    ctx.chrome.scripting.executeScript = async ({ func, args }) => [{ result: func(...args) }]
+    let posted
+    ctx.fetch = async (url, init) => { if (String(url).endsWith('/result')) posted = JSON.parse(init.body); return { ok: true, json: async () => ({ ok: true }) } }
+    await ctx.handleJob({ id: 'v1', agent: 'tiktok', kind: 'tiktok-verify', payload: { caption: 'เช้าวันหนึ่ง...\nไม่มีโทรศัพท์ให้หยิบ แต่ทำไมใจกลับกระวนกระวาย?\nความอยาก', stems: ['6b9cc68e-edae-4fca-bc46-12505118e9e5'] } })
+    assert.equal(posted?.meta?.status, want)
+    assert.ok(calls.some(c => c[0] === 'tabs.create' && c[1]?.url === 'https://www.tiktok.com/tiktokstudio/content' && c[1]?.active === false), 'เปิดหน้ารายการโพสต์ในแท็บเบื้องหลัง')
+    assert.ok(calls.some(c => c[0] === 'tabs.remove' && c[1] === 5), 'ปิดแท็บตรวจเสมอ')
+  }
+})
 console.log(`\nผ่าน ${passed} ข้อ`)
