@@ -291,14 +291,16 @@ ART STYLE:
 - Slightly imperfect sketchy lines (drawn fast with a marker), gentle and friendly
 
 CHARACTERS — 2 modes (the system says which one each clip uses; use ONE mode for every character in the clip):
-A) STICK MODE (default — no reference character image attached):
-- Simple stick figures with large circular heads
+A) SIMPLE MODE (default — no reference character image attached):
+- Simple doodle characters with large circular heads and a small rounded body (bean/pill-shaped torso)
+- Arms and legs are thick rounded tubes with volume — outlined on both sides with a bold line and filled with color, simple round mitten hands and small rounded feet
+- NEVER stick figures: no single-line arms, no single-line legs, no stick limbs
 - Dot eyes, expressive thick brow lines
-- Sometimes fully colored heads/bodies
+- Fully colored heads/bodies/limbs
   (red = angry/hot-headed, white = neutral, soft sky-blue/white glow = calm/peaceful mind)
-- Props/costume pieces drawn on the stick body (scarf, office lanyard, phone, alms bowl) to tell characters apart
+- Props/costume pieces drawn on the body (scarf, office lanyard, phone, alms bowl) to tell characters apart
 B) FULL-BODY MODE (a reference character image is attached):
-- Full-body cartoon characters — NOT stick figures: solid torso, shoulders, arms and legs with volume
+- Full-body cartoon characters — NOT stick figures, NO single-line limbs: solid torso, shoulders, arms and legs with volume
 - Slightly big head (about 1/4–1/3 of body height), simple hands with fingers, shoes
 - Clothing drawn clearly: modern Thai everyday clothes, office wear, ancient Indian dress for Buddha-era stories
 - Simple readable faces: dot or small oval eyes, expressive thick brows, clear mouth shapes
@@ -385,11 +387,11 @@ USAGE RULES:
 - พระพุทธเจ้าและพระสงฆ์ใช้กฎ SACRED FIGURES เสมอ
 ```
 
-**ตัวอย่าง (โปรเจกต์ "ลูกศรดอกที่สอง" — STICK MODE):**
+**ตัวอย่าง (โปรเจกต์ "ลูกศรดอกที่สอง" — SIMPLE MODE):**
 
 ```
 @seeker   = คนทำงานวัยหนุ่มที่กำลังทุกข์ใจ (ตัวหลัก)
-  - Slim stick figure, round white head
+  - Slim doodle body, round white head, thick tube arms and legs (outlined + color-filled)
   - Light-blue shirt with office lanyard
   - Holds a smartphone; head turns red when angry
 

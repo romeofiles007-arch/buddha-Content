@@ -114,7 +114,7 @@ export const BUDDHA_NARRATIONS = {
  * ลายเส้นของภาพ (ตั้งค่าคลิป → "ลายเส้น") — random = สุ่มต่อคลิป บันทึกไว้ใน profile
  *   doodle     — การ์ตูน 2D doodle ตาม VISUAL STYLE DNA ของ Blueprint (เดิม)
  *   watercolor — ภาพวาดสีน้ำแบบจิตรกรรมไทยพุทธกาล (คลิปตัวอย่าง "ย้อนรอยพุทธกาล")
- *   body / bodyFlow = แบบตัวละครที่ใช้แทน FULL-BODY/STICK MODE (character.mjs)
+ *   body / bodyFlow = แบบตัวละครที่ใช้แทน FULL-BODY/SIMPLE MODE (character.mjs)
  * พ.ย. 2026 เอา "ภาพวาดจีน" ออก — ผู้ใช้: ไม่ได้รับความนิยม ดูล้าหลัง ภาพมีขอบขาวเหมือนภาพบนกระดาษ ไกลตัว
  * (โปรไฟล์คลิปเก่าที่เป็น 'chinese' อ่านเป็น watercolor — ดู RETIRED_ART_STYLES)
  */
