@@ -120,6 +120,27 @@ async function openTab(match, key) {
  * แผงข้างแค่แสดงความคืบหน้า (งานจริงรันในโปรแกรมในเครื่อง) ซ่อนบนแท็บ Flow จึงไม่กระทบงาน
  * ต้องเรียกก่อนโหลดหน้า Flow เพื่อให้ Flow วาดช่องพิมพ์แบบกว้างตั้งแต่แรก
  */
+/**
+ * Flow ซ่อนปุ่ม Agent เมื่อหน้ากว้างไม่ถึง ~1000px — แผงข้างยังบีบแท็บ Flow ได้ (เปิดแผงทั้งหน้าต่าง/ผู้ใช้เปิดเอง
+ * หรือแท็บบัญชีที่เลือกไว้ไม่ได้โหลดใหม่หลังซ่อนแผง) → ซูมแท็บนี้ออกให้หน้ากว้างพอ แผงข้างยังเปิดดูความคืบหน้าได้
+ * ซูมเฉพาะแท็บนี้ (per-tab) ไม่กระทบแท็บ Flow อื่นหรือการซูมของผู้ใช้ · หน้ากว้างพออยู่แล้วไม่แตะเลย
+ */
+const FLOW_MIN_WIDTH = 1040
+async function widenFlowTab(tabId) {
+  const [probe] = await chrome.scripting.executeScript({ target: { tabId }, func: () => window.innerWidth }).catch(() => [])
+  const width = Number(probe?.result) || 0
+  if (!width || width >= FLOW_MIN_WIDTH) return { width }
+  const zoom = await chrome.tabs.getZoom(tabId).catch(() => 1)
+  const full = width * zoom // ความกว้างของหน้าที่ซูม 100%
+  const want = Math.max(0.5, Math.floor((full / FLOW_MIN_WIDTH) * 20) / 20) // ทีละ 5% ปัดลงให้กว้างเกินเกณฑ์
+  if (want >= zoom - 0.001) return { width, zoom } // ซูมออกได้แค่นี้แล้ว
+  await chrome.tabs.setZoomSettings(tabId, { mode: 'automatic', scope: 'per-tab' }).catch(() => {})
+  await chrome.tabs.setZoom(tabId, want).catch(() => {})
+  await new Promise((r) => setTimeout(r, 1500)) // ให้ Flow วาดช่องพิมพ์แบบกว้างใหม่
+  console.log(`หน้า Flow แคบ ${width}px → ซูมแท็บ ${Math.round(want * 100)}% (กว้าง ≈ ${Math.round(full / want)}px)`)
+  return { width: Math.round(full / want), zoom: want }
+}
+
 async function keepFlowInTab(tab) {
   await chrome.sidePanel.setOptions({ tabId: tab.id, enabled: false }).catch(() => {})
   // แท็บ Flow ที่รุ่นก่อนย้ายไปอยู่หน้าต่างแยกตัวเดียว → ย้ายกลับมาเป็นแท็บท้ายสุดของหน้าต่างหลัก (หน้าต่างที่ว่างแล้วปิดเอง)
@@ -291,6 +312,7 @@ async function runJob(job, agent) {
       await loadInTab(tab.id, navigation.url, 3000)
     } else await chrome.tabs.update(tab.id, { active: true })
     await reloadIfTranslated(tab.id, navigation.url, 3000, { preserveContext: !navigation.navigate })
+    await widenFlowTab(tab.id) // หลังโหลด เพราะซูมแบบ per-tab ถูกล้างเมื่อเปลี่ยนหน้า
   }
 
   // ChatGPT: แชตใหม่ = โหลดหน้าแรกใหม่ (แบบเดียวกับแผงข้าง) — กดปุ่ม New chat จาก content script ไม่ได้ผลกับหน้ารุ่นใหม่ (ต.ค. 2026)
@@ -524,6 +546,14 @@ async function checkExtensionUpdate() {
   chrome.runtime.reload()
 }
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === 'FLOW_WIDEN') {
+    if (!_sender.tab?.id || !/^https:\/\/flow\.google\.com\//.test(_sender.tab.url ?? '')) {
+      sendResponse({ ok: false, error: 'คำขอไม่ได้มาจากแท็บ Google Flow' })
+      return
+    }
+    widenFlowTab(_sender.tab.id).then((r) => sendResponse({ ok: true, ...r })).catch((error) => sendResponse({ ok: false, error: error.message }))
+    return true
+  }
   if (msg.type === 'FLOW_ACCOUNT_IDENTITY') {
     if (!_sender.tab?.id || !/^https:\/\/flow\.google\.com\//.test(_sender.tab.url ?? '')) {
       sendResponse({ ok: false, error: 'คำขอไม่ได้มาจากแท็บ Google Flow' })

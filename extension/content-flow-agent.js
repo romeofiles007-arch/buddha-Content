@@ -155,15 +155,26 @@ const agentOn = () => SEL.agentChip()?.getAttribute('aria-pressed') === 'true'
  * เปิด/ปิดโหมด Agent แล้วตรวจผล — ปุ่มถูกวาดใหม่ทุกครั้งที่สลับ (element เปลี่ยนตัว)
  * ลำดับ pointer+mouse event บางครั้งไม่ติด ส่วน .click() บางครั้งไม่ติด → สลับวิธีแล้วลองซ้ำ
  */
+/**
+ * ปุ่ม Agent ในช่องพิมพ์ — Flow ซ่อนปุ่มนี้เมื่อหน้ากว้างไม่ถึง ~1000px (หน้าแบบมือถือ เช่นแผงข้างของ Chrome บีบแท็บ)
+ * หน้าแคบ → ขอ background ซูมแท็บ Flow ออก (แท็บนี้แท็บเดียว) หน้าเลยกว้างพอ ไม่ต้องให้ผู้ใช้ปิดแผงข้างเอง
+ */
+async function agentChip() {
+  const find = () => (visible(SEL.agentChip()) ? SEL.agentChip() : null)
+  if (!find() && window.innerWidth < 1000) await chrome.runtime.sendMessage({ type: 'FLOW_WIDEN' }).catch(() => null)
+  try {
+    return await waitFor(find, { label: 'ปุ่ม Agent' })
+  } catch (err) {
+    if (window.innerWidth < 1000) {
+      throw new Error(`หน้า Google Flow แคบเกินไป (${window.innerWidth}px) ซูมหน้าออกแล้วยังไม่พอ Flow จึงซ่อนปุ่ม Agent — ปิดแผงข้างของ Chrome บนแท็บ Flow หรือขยายหน้าต่าง Chrome ให้กว้างขึ้น แล้วกดทำต่อ`)
+    }
+    throw err
+  }
+}
+
 async function setAgent(on) {
   for (let attempt = 0; attempt < 6 && agentOn() !== on; attempt++) {
-    const chip = await waitFor(() => (visible(SEL.agentChip()) ? SEL.agentChip() : null), { label: 'ปุ่ม Agent' }).catch((err) => {
-      // Flow ซ่อนปุ่ม Agent เมื่อหน้าแคบแบบมือถือ (เช่นแผงข้างของ Chrome กว้างจนบีบแท็บ)
-      if (window.innerWidth < 1000) {
-        throw new Error(`หน้า Google Flow แคบเกินไป (${window.innerWidth}px) Flow จึงซ่อนปุ่ม Agent — ปิดแผงข้างของ Chrome บนแท็บ Flow หรือขยายหน้าต่าง Chrome ให้กว้างกว่า 1000px แล้วกดทำต่อ`)
-      }
-      throw err
-    })
+    const chip = await agentChip()
     if (attempt % 2 === 0) chip.click()
     else realClick(chip)
     await waitFor(() => agentOn() === on, { timeout: 2500, label: 'สลับโหมด Agent' }).catch(() => null)

@@ -193,4 +193,37 @@ await test('ตรวจคำบรรยายหลังโพสต์: อ
     assert.ok(calls.some(c => c[0] === 'tabs.remove' && c[1] === 5), 'ปิดแท็บตรวจเสมอ')
   }
 })
+await test('หน้า Flow แคบ (แผงข้างบีบเหลือ 778px) → ซูมแท็บนี้ออกจนกว้างพอมีปุ่ม Agent · หน้ากว้างพอไม่แตะซูม', async () => {
+  const run = async (width, zoom = 1) => {
+    const { ctx, calls } = loadBackground({ tabs: [{ id: 7, windowId: 1, url: 'https://flow.google.com/u/2/project/x' }], windows: [{ id: 1 }], focused: 1 })
+    ctx.chrome.scripting.executeScript = async ({ func }) => [{ result: func.toString().includes('innerWidth') ? width : false }]
+    ctx.chrome.tabs.getZoom = async () => zoom
+    ctx.chrome.tabs.setZoomSettings = async (...a) => { calls.push(['tabs.setZoomSettings', ...a]) }
+    ctx.chrome.tabs.setZoom = async (...a) => { calls.push(['tabs.setZoom', ...a]) }
+    const result = JSON.parse(JSON.stringify(await ctx.widenFlowTab(7)))
+    return { result, calls }
+  }
+  const narrow = await run(778)
+  assert.deepEqual(args(narrow.calls, 'tabs.setZoomSettings'), [7, { mode: 'automatic', scope: 'per-tab' }])
+  assert.deepEqual(args(narrow.calls, 'tabs.setZoom'), [7, 0.7])
+  assert.ok(narrow.result.width >= 1040, `กว้างหลังซูม ${narrow.result.width}px`)
+
+  const wide = await run(1280)
+  assert.ok(!names(wide.calls).includes('tabs.setZoom'), 'หน้ากว้างพอ ไม่ซูม')
+
+  // ซูมไว้แล้ว 70% แต่ยังแคบ (แผงกว้างขึ้นอีก) → ซูมเพิ่มจากความกว้างจริงที่ 100%
+  const again = await run(900, 0.7)
+  assert.deepEqual(args(again.calls, 'tabs.setZoom'), [7, 0.6])
+
+  // แคบมากจนซูมต่ำสุด 50% ก็ไม่พอ → ไม่ซูมซ้ำ ให้ตัวขับแจ้งผู้ใช้
+  const tiny = await run(500, 0.5)
+  assert.ok(!names(tiny.calls).includes('tabs.setZoom'))
+})
+
+await test('ตัวขับ Flow: ไม่เจอปุ่ม Agent ตอนหน้าแคบ → ขอ background ซูมหน้าก่อนแจ้งผู้ใช้', () => {
+  const driver = readFileSync(join(EXT, 'content-flow-agent.js'), 'utf8')
+  assert.match(driver, /sendMessage\(\{ type: 'FLOW_WIDEN' \}\)/)
+  assert.match(bgSource, /msg\.type === 'FLOW_WIDEN'[\s\S]{0,200}flow\\\.google\\\.com/, 'รับคำขอจากแท็บ Flow เท่านั้น')
+})
+
 console.log(`\nผ่าน ${passed} ข้อ`)
