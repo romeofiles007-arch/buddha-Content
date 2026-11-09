@@ -35,7 +35,7 @@ import { readCharacter, updateCharacter, addCharacterImage, removeCharacterImage
 import { readSelfMonk, updateSelfMonk, addSelfMonkImage, removeSelfMonkImage, selfMime, selfMonkReady, SELF_NOT_READY, SELF_DIR, MAX_SELF_IMAGES } from '../pipeline/lib/self_monk.mjs'
 import { PAUSE_PRESETS, MOTION_PRESETS } from '../pipeline/lib/ffmpeg.mjs'
 import { SUBTITLE_STYLES } from '../pipeline/lib/subtitles.mjs'
-import { clipSettings, CLIP_COVERAGES } from '../pipeline/lib/clips.mjs'
+import { clipSettings, CLIP_COVERAGES, firstCountOf, FIRST_COUNT_MAX } from '../pipeline/lib/clips.mjs'
 import { KIE_TIERS, kieTier } from '../pipeline/lib/kie.mjs'
 import { clipCost } from '../pipeline/lib/usage.mjs'
 import { readAsrTimeline, writeAsrTimeline, parseSegmentText } from '../pipeline/lib/asr.mjs'
@@ -901,14 +901,16 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             if (MOTION_PRESETS[body.motion]) c.render.motion = body.motion
             // ชวนคุยท้ายคลิป: 'on' (ค่าเริ่มต้น) | 'off' — ใช้กับบทที่เขียนหลังจากนี้
             if (['on', 'off'].includes(body.engage)) c.script.engage = body.engage === 'on'
-            // ม้าน้ำ/Kie: 'off' หรือเปอร์เซ็นต์ของฉากทั้งเรื่อง
+            // ม้าน้ำ/Kie: 'off' · เปอร์เซ็นต์ของฉากทั้งเรื่อง · 'first' = N ภาพแรก (จำนวนจาก firstCount)
             const aiCoverage = body.aiCoverage ?? body.aiClips // aiClips รองรับ extension รุ่นเก่า
             if (aiCoverage === 'off') c.clips = { ...(c.clips ?? {}), provider: 'off' }
+            else if (aiCoverage === 'first') c.clips = { ...(c.clips ?? {}), provider: 'kie', pick: 'first' }
             else if (CLIP_COVERAGES.includes(Number(aiCoverage))) {
-              c.clips = { ...(c.clips ?? {}), provider: 'kie', coveragePercent: Number(aiCoverage) }
+              c.clips = { ...(c.clips ?? {}), provider: 'kie', pick: 'percent', coveragePercent: Number(aiCoverage) }
               delete c.clips.maxPerVideo
               delete c.clips._maxPerVideo
             }
+            if (body.firstCount !== undefined) c.clips = { ...(c.clips ?? {}), firstCount: firstCountOf(body.firstCount) }
             if (KIE_TIERS[body.kieTier]) c.clips = { ...(c.clips ?? {}), tier: body.kieTier }
             if (SUBTITLE_STYLES[body.subtitles]) c.render.subtitles = { ...(c.render.subtitles ?? {}), style: body.subtitles }
             if (PAUSE_PRESETS[body.pause]) {
@@ -919,12 +921,13 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         }
         const c = loadConfig()
         const clips = clipSettings(c)
-        const aiCoverage = clips.enabled ? String(clips.coveragePercent) : 'off'
+        const aiCoverage = !clips.enabled ? 'off' : clips.pick === 'first' ? 'first' : String(clips.coveragePercent)
         // ให้ผู้ใช้ปิด/เปิดการสร้างคลิปวิดีโอด้วย Kie ได้จากปุ่มเดียวกัน
         // ค่า off ต้องอยู่ใน options ด้วย ไม่เช่นนั้น config รองรับแต่หน้า UI เลือกปิดไม่ได้
         const aiCoverageOptions = [
           { id: 'off', label: 'ปิด' },
           ...CLIP_COVERAGES.map((n) => ({ id: String(n), label: `${n}%` })),
+          { id: 'first', label: 'ภาพแรก' },
         ]
         return json(res, 200, {
           orientation: c.render.orientation === 'portrait' ? 'portrait' : 'landscape',
@@ -936,6 +939,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           engage: c.script.engage === false ? 'off' : 'on',
           aiCoverage,
           aiClips: aiCoverage,
+          firstCount: clips.firstCount,
+          firstCountMax: FIRST_COUNT_MAX,
           kieTier: clips.tier,
           kie: { hasKey: hasKey('KIE_API_KEY'), ...kieTier(clips.tier) },
           options: {

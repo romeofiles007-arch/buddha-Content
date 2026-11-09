@@ -29,7 +29,7 @@ import { ensureProfile } from './lib/clip_profile.mjs'
 import { reviseLengthPrompt, paceOf, categoryOf } from '../extension/prompts.js'
 import { selfMonkReady, SELF_NOT_READY } from './lib/self_monk.mjs'
 import { hasCover } from './lib/cover.mjs'
-import { clipSettings, clipTarget, clipsDir, collectClips, scenes } from './lib/clips.mjs'
+import { clipSettings, clipTarget, clipScopeLabel, clipsDir, collectClips, scenes } from './lib/clips.mjs'
 import { kieKey, kieTier, kieBalance } from './lib/kie.mjs'
 import { clipSource, postPrompt, parsePost, savePost, readPost } from './lib/post.mjs'
 import { exportForAutoPost } from './lib/autopost.mjs'
@@ -473,7 +473,7 @@ async function clipsDepartment() {
   const settings = clipSettings(config)
   if (!settings.enabled) return dept('clips', { status: 'done', detail: 'ปิด Kie — ใช้ภาพนิ่งซูม/เลื่อนกล้องแล้วตัดต่อ' })
   kieKey()
-  const target = clipTarget(imageCoverage().scenes, settings.coveragePercent)
+  const target = clipTarget(imageCoverage().scenes, settings)
   const before = collectClips(slug).size
   progress('clips', Math.min(before, target), target)
   // เครดิตไม่พอ Kie จะปฏิเสธทุกฉาก — บอกให้ชัดแทนการขึ้น 0/N เงียบๆ
@@ -484,7 +484,7 @@ async function clipsDepartment() {
     console.warn(`   ⚠️ ${msg}`)
     return dept('clips', { status: 'done', detail: msg })
   }
-  dept('clips', { status: 'working', detail: `ม้าน้ำใช้ Kie (${kieTier(settings.tier).label} · ${kieTier(settings.tier).name}) ขยับ ${settings.coveragePercent}% ของเรื่อง (${target} ฉากสำคัญจากภาพ Flow)` })
+  dept('clips', { status: 'working', detail: `ม้าน้ำใช้ Kie (${kieTier(settings.tier).label} · ${kieTier(settings.tier).name}) ขยับ ${clipScopeLabel(settings)} (${target} ฉากจากภาพ Flow)` })
   let clipLog = ''
   const run = await step('5b_clips.mjs', [slug], {
     onText: (chunk) => {
@@ -496,7 +496,7 @@ async function clipsDepartment() {
   const after = collectClips(slug).size
   progress('clips', Math.min(after, target), target)
   if (!run.ok) console.warn(`   Kie ทำคลิปไม่สำเร็จ: ${lastLine(run.tail)} — ฉากที่ไม่ได้คลิปใช้ภาพเดิม`)
-  dept('clips', { status: 'done', detail: `คลิปขยับ ${Math.min(after, target)}/${target} ฉาก (${settings.coveragePercent}% ของเรื่อง)${!run.ok ? ' · ฉากที่เหลือใช้ภาพเดิม' : ''}` })
+  dept('clips', { status: 'done', detail: `คลิปขยับ ${Math.min(after, target)}/${target} ฉาก (${clipScopeLabel(settings)})${!run.ok ? ' · ฉากที่เหลือใช้ภาพเดิม' : ''}` })
 }
 
 // ── แผนก 6: ตัดต่อ ──

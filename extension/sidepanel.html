@@ -43,6 +43,10 @@
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
   .seg button { border: 0; background: var(--bg); color: var(--muted); padding: 8px 11px; font: inherit; font-size: 13px; cursor: pointer; }
   .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  /* แอนิเมชัน: 7 ตัวเลือก ขึ้นบรรทัดใหม่ได้ และยืดให้เต็มแถว ไม่เหลือช่องโหว่ */
+  #clipAi { display: flex; flex-wrap: wrap; }
+  #clipAi button { flex: 1 1 auto; }
+  #clipFirstRow { margin: 4px 0 2px; }
   .field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
   .field input { width: 58px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); font: inherit; }
   .primary { border: 0; background: var(--accent); color: var(--accent-ink); padding: 10px 16px; border-radius: 9px; font: inherit; font-weight: 600; cursor: pointer; }
@@ -552,8 +556,9 @@
       <summary data-agent-label="ผู้ช่วยจัดฉาก · Kie API"><span class="blockTitle">แอนิเมชัน</span> <span id="kieModeBadge" class="kieBadge">ปิด</span><svg class="blockCaret" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
       <p class="hint">หลัง Google Flow วาดภาพ ผู้ช่วยจัดฉากเลือกฉากสำคัญ ส่งภาพไป Kie แล้วส่งคลิปให้แผนกตัดต่อ</p>
       <div class="pick">สร้างแอนิเมชัน
-        <div class="seg" id="clipAi" role="group" aria-label="เปิดหรือปิด Kie API และเลือกสัดส่วนฉาก" aria-describedby="clipAiHint"></div>
+        <div class="seg" id="clipAi" role="group" aria-label="เปิดหรือปิด Kie API และเลือกสัดส่วนฉาก หรือทำเฉพาะภาพแรก" aria-describedby="clipAiHint"></div>
       </div>
+      <label class="field" id="clipFirstRow" for="clipFirstCount" hidden>ทำแอนิเมชัน <input type="number" id="clipFirstCount" min="1" max="50" step="1" value="1" inputmode="numeric" /> ภาพแรกของคลิป</label>
       <p class="hint" id="clipAiHint"></p>
       <div id="kieOptions" hidden>
         <div class="pick">โมเดลแอนิเมชัน

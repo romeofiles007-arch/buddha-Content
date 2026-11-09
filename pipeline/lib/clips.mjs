@@ -11,25 +11,44 @@ import { parseTimecodeFilename } from './shotfile.mjs'
  * ลบโฟลเดอร์ clips ทิ้ง = กลับเป็นคลิปแบบเดิมทันที
  */
 export const CLIP_PROVIDERS = { off: 'ปิด', kie: 'Kie API' }
-export const CLIP_COVERAGES = [20, 60, 80, 100]
+export const CLIP_COVERAGES = [10, 20, 60, 80, 100]
 export const CLIP_TIERS = ['cheap', 'mid', 'pro'] // ถูก · พอใช้ · เก่ง (รายละเอียดโมเดลอยู่ใน kie.mjs)
+// โหมดเลือกฉาก: percent = ChatGPT เลือกฉากสำคัญตามสัดส่วน · first = ทำ N ภาพแรกของคลิปตามลำดับ
+export const CLIP_PICKS = ['percent', 'first']
+export const FIRST_COUNT_MAX = 50
+
+export const firstCountOf = (n) => Math.min(FIRST_COUNT_MAX, Math.max(1, Math.round(Number(n)) || 1))
 
 export function clipSettings(config) {
   const c = config.clips ?? {}
   const provider = CLIP_PROVIDERS[c.provider] ? c.provider : 'off'
   const requested = Number(c.coveragePercent)
   const coveragePercent = CLIP_COVERAGES.includes(requested) ? requested : 60
+  const pick = CLIP_PICKS.includes(c.pick) ? c.pick : 'percent'
+  const firstCount = firstCountOf(c.firstCount ?? 1)
   const tier = CLIP_TIERS.includes(c.tier) ? c.tier : 'cheap'
-  return { provider, coveragePercent, tier, enabled: provider !== 'off' }
+  return { provider, coveragePercent, pick, firstCount, tier, enabled: provider !== 'off' }
 }
 
-/** จำนวนฉากที่ต้องทำคลิป โดยปัดขึ้นเพื่อให้ครอบคลุมไม่น้อยกว่าเปอร์เซ็นต์ที่เลือก */
-export function clipTarget(totalScenes, coveragePercent) {
+/**
+ * จำนวนฉากที่ต้องทำคลิป
+ * - เปอร์เซ็นต์ (ตัวเลข หรือ settings โหมด percent): ปัดขึ้นเพื่อให้ครอบคลุมไม่น้อยกว่าที่เลือก
+ * - settings โหมด first: N ภาพแรก (ไม่เกินจำนวนฉากที่มี)
+ */
+export function clipTarget(totalScenes, coverageOrSettings) {
   const total = Math.max(0, Number(totalScenes) || 0)
   if (!total) return 0
-  const percent = CLIP_COVERAGES.includes(Number(coveragePercent)) ? Number(coveragePercent) : 60
+  const s = typeof coverageOrSettings === 'object' && coverageOrSettings ? coverageOrSettings : { pick: 'percent', coveragePercent: coverageOrSettings }
+  if (s.pick === 'first') return Math.min(total, firstCountOf(s.firstCount))
+  const percent = CLIP_COVERAGES.includes(Number(s.coveragePercent)) ? Number(s.coveragePercent) : 60
   return Math.min(total, Math.max(1, Math.ceil(total * percent / 100)))
 }
+
+/** ข้อความสั้นบอกว่าทำแอนิเมชันกี่ฉาก เช่น "10% ของเรื่อง" หรือ "1 ภาพแรก" */
+export const clipScopeLabel = (s) => (s.pick === 'first' ? `${firstCountOf(s.firstCount)} ภาพแรก` : `${s.coveragePercent}% ของเรื่อง`)
+
+/** โหมด first: ช็อตเปิดฉากของ N ฉากแรกตามลำดับเวลา */
+export const firstKeyShots = (shots, count) => scenes(shots).slice(0, count).map((sc) => sc[0])
 
 export function clipsDir(slug) {
   return join(projectDir(slug, 'images'), 'clips')

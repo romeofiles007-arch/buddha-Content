@@ -9,7 +9,9 @@
  *
  * ไม่มีคลิป / Kie เครดิตไม่พอ → ขั้นตัดต่อใช้ภาพเหมือนเดิม คลิปไม่พัง
  *
- *   node pipeline/5b_clips.mjs <slug> [--coverage 20|60|80|100] [--max N] [--redo]
+ *   ตั้งเป็น "ภาพแรก" (config.clips.pick = 'first') → ไม่ถาม ChatGPT ทำ N ภาพแรกของคลิปตามลำดับ
+ *
+ *   node pipeline/5b_clips.mjs <slug> [--coverage 10|20|60|80|100] [--first N] [--max N] [--redo]
  */
 import { readFileSync, existsSync, writeFileSync, mkdirSync, rmSync, renameSync } from 'node:fs'
 import { join, extname } from 'node:path'
@@ -17,7 +19,7 @@ import { loadConfig, projectDir } from './lib/config.mjs'
 import { requireBridge, runJob } from './lib/bridge.mjs'
 import { collectImages } from './lib/shotfile.mjs'
 import { run } from './lib/ffmpeg.mjs'
-import { clipSettings, clipTarget, clipsDir, clipName, collectClips, scenes, pickKeyShots, keyShotRequest, parseKeyShots, motionRequest, parseMotions, motionFor } from './lib/clips.mjs'
+import { clipSettings, clipTarget, clipScopeLabel, firstKeyShots, firstCountOf, CLIP_COVERAGES, clipsDir, clipName, collectClips, scenes, pickKeyShots, keyShotRequest, parseKeyShots, motionRequest, parseMotions, motionFor } from './lib/clips.mjs'
 import { animateWithKie, kieKey, kieTier, fallbackOf } from './lib/kie.mjs'
 
 // SSIM ของเฟรมแรกเทียบภาพต้นฉบับ — AI อาจขยับองค์ประกอบตั้งแต่เฟรมแรก
@@ -35,7 +37,7 @@ async function firstFrameSimilarity(clip, image) {
 
 const [slug, ...rest] = process.argv.slice(2)
 if (!slug) {
-  console.error('ใช้: node pipeline/5b_clips.mjs <slug> [--coverage 20|60|80|100] [--max N] [--redo]')
+  console.error('ใช้: node pipeline/5b_clips.mjs <slug> [--coverage 10|20|60|80|100] [--first N] [--max N] [--redo]')
   process.exit(1)
 }
 
@@ -60,13 +62,18 @@ if (!ready.length) {
   process.exit(1)
 }
 
-const requestedCoverage = rest.includes('--coverage') ? Number(rest[rest.indexOf('--coverage') + 1]) : settings.coveragePercent
-const coverage = [20, 60, 80, 100].includes(requestedCoverage) ? requestedCoverage : settings.coveragePercent
+// --first N / --coverage P จากคำสั่งชนะค่าใน config
+const scope = { ...settings }
+if (rest.includes('--first')) Object.assign(scope, { pick: 'first', firstCount: firstCountOf(rest[rest.indexOf('--first') + 1]) })
+else if (rest.includes('--coverage')) {
+  const requested = Number(rest[rest.indexOf('--coverage') + 1])
+  if (CLIP_COVERAGES.includes(requested)) Object.assign(scope, { pick: 'percent', coveragePercent: requested })
+}
 const sceneTotal = scenes(ready).length
 const max = rest.includes('--max')
   ? Math.max(1, Math.min(sceneTotal, Number(rest[rest.indexOf('--max') + 1]) || 1))
-  : clipTarget(sceneTotal, coverage)
-console.log(`สัดส่วนแอนิเมชัน ${coverage}% ของเรื่อง: ${max}/${sceneTotal} ฉาก`)
+  : clipTarget(sceneTotal, scope)
+console.log(`แอนิเมชัน ${clipScopeLabel(scope)}: ${max}/${sceneTotal} ฉาก`)
 
 const sceneOf = (shot) => scenes(ready).find((sc) => sc.includes(shot)) ?? [shot]
 
@@ -76,8 +83,11 @@ await requireBridge()
 // ChatGPT ไม่ตอบครั้งหนึ่ง (แท็บค้าง/ติด limit) → ข้ามคำถามที่เหลือ ไม่ให้ Kie ต้องรอหมดเวลาซ้ำทีละ 4–6 นาที
 let chatgptDown = false
 const picksFile = join(dir, 'picks.json')
-let keyShots = existsSync(picksFile) ? parseKeyShots(readFileSync(picksFile, 'utf8'), ready, max) : []
-if (keyShots.length < Math.min(max, ready.length)) {
+// โหมดภาพแรก: เลือกตามลำดับเลย ไม่ต้องถาม ChatGPT และไม่ใช้/ไม่ทับ picks.json ของโหมดเปอร์เซ็นต์
+let keyShots = scope.pick === 'first'
+  ? firstKeyShots(ready, max)
+  : existsSync(picksFile) ? parseKeyShots(readFileSync(picksFile, 'utf8'), ready, max) : []
+if (scope.pick !== 'first' && keyShots.length < Math.min(max, ready.length)) {
   try {
     console.log(`ChatGPT อ่านบทเลือกช่วงสำคัญ ${max} ช็อต...`)
     const result = await runJob({

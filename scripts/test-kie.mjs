@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { animateWithKie, KIE_MODEL } from '../pipeline/lib/kie.mjs'
-import { clipSettings } from '../pipeline/lib/clips.mjs'
+import { clipSettings, clipTarget, clipScopeLabel, firstKeyShots } from '../pipeline/lib/clips.mjs'
 
 const oldKey = process.env.KIE_API_KEY
 process.env.KIE_API_KEY = 'test-key-not-sent-to-real-api'
@@ -45,6 +45,30 @@ try {
   assert.equal(clipSettings({ clips: { provider: 'off' } }).enabled, false)
   assert.equal(clipSettings({ clips: { provider: 'kie', coveragePercent: 20 } }).enabled, true)
   assert.equal(clipSettings({ clips: { provider: 'meta-ai' } }).enabled, false)
+
+  // 10% และโหมดภาพแรก
+  assert.equal(clipSettings({ clips: { provider: 'kie', coveragePercent: 10 } }).coveragePercent, 10)
+  assert.equal(clipTarget(30, 10), 3)
+  assert.equal(clipTarget(5, 10), 1) // ปัดขึ้น อย่างน้อย 1 ฉาก
+  assert.equal(clipTarget(30, { pick: 'percent', coveragePercent: 20 }), 6)
+  const first = clipSettings({ clips: { provider: 'kie', pick: 'first' } })
+  assert.equal(first.pick, 'first')
+  assert.equal(first.firstCount, 1) // ค่าตั้งต้น = 1 ภาพแรก
+  assert.equal(clipTarget(30, first), 1)
+  assert.equal(clipTarget(2, { pick: 'first', firstCount: 5 }), 2) // ไม่เกินจำนวนฉากที่มี
+  assert.equal(clipSettings({ clips: { pick: 'first', firstCount: 999 } }).firstCount, 50)
+  assert.equal(clipSettings({ clips: { pick: 'first', firstCount: 'x' } }).firstCount, 1)
+  assert.equal(clipSettings({ clips: { pick: 'weird' } }).pick, 'percent')
+  assert.equal(clipScopeLabel({ pick: 'first', firstCount: 3 }), '3 ภาพแรก')
+  assert.equal(clipScopeLabel({ pick: 'percent', coveragePercent: 10 }), '10% ของเรื่อง')
+  const shots = [
+    { filename: '00_00_00.png', start: 0 },
+    { filename: '00_00_03.png', start: 3, continuation: true },
+    { filename: '00_00_06.png', start: 6 },
+    { filename: '00_00_09.png', start: 9 },
+  ]
+  // ฉากที่มีช็อตต่อเนื่องนับเป็นฉากเดียว — 2 ภาพแรก = ช็อตเปิดของ 2 ฉากแรก
+  assert.deepEqual(firstKeyShots(shots, 2).map((s) => s.filename), ['00_00_00.png', '00_00_06.png'])
   await animateWithKie({ imageFile, outFile, taskFile, prompt: 'ขยับเบาๆ', fetchImpl: fakeFetch, pollMs: 0 })
   assert.equal(readFileSync(outFile).length, 25_000)
   assert.equal(JSON.parse(readFileSync(taskFile)).taskId, 'task_test_1')

@@ -1594,12 +1594,23 @@ function renderClipSettings() {
   }
   for (const b of ai.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === aiCoverage))
   const aiOn = !!aiCoverage && aiCoverage !== 'off'
-  $('clipAiHint').textContent = aiOn
-    ? `เปิดอยู่ — ผู้ช่วยจัดฉากจะส่งภาพประมาณ ${aiCoverage}% ของฉากไป Kie (มีค่าใช้จ่ายต่อฉาก) แล้วตัดต่อกับภาพที่เหลือ`
-    : 'ปิดอยู่ — ทุกฉากใช้ภาพนิ่งซูม/เลื่อนกล้อง แล้วตัดต่อได้ทันที ไม่เรียก Kie'
+  // โหมด "ภาพแรก": ทำ N ภาพแรกของคลิปตามลำดับ — โปรแกรมในเครื่องรุ่นเก่าไม่ส่ง firstCount มา → ไม่มีปุ่มนี้อยู่แล้ว
+  const firstMode = aiCoverage === 'first'
+  const firstCount = Number(clip.firstCount) || 1
+  const firstInput = $('clipFirstCount')
+  $('clipFirstRow').hidden = !firstMode
+  if (clip.firstCountMax) firstInput.max = String(clip.firstCountMax)
+  if (document.activeElement !== firstInput) firstInput.value = String(firstCount)
+  firstInput.disabled = localBusy()
+  const scope = firstMode ? `${firstCount} ภาพแรก` : `${aiCoverage}% ของฉาก`
+  $('clipAiHint').textContent = !aiOn
+    ? 'ปิดอยู่ — ทุกฉากใช้ภาพนิ่งซูม/เลื่อนกล้อง แล้วตัดต่อได้ทันที ไม่เรียก Kie'
+    : firstMode
+      ? `เปิดอยู่ — ผู้ช่วยจัดฉากจะส่ง ${firstCount} ภาพแรกของคลิปไป Kie ตามลำดับ (มีค่าใช้จ่ายต่อฉาก) ภาพที่เหลือใช้ภาพนิ่งซูม/เลื่อนกล้อง`
+      : `เปิดอยู่ — ผู้ช่วยจัดฉากจะส่งภาพประมาณ ${aiCoverage}% ของฉากไป Kie (มีค่าใช้จ่ายต่อฉาก) แล้วตัดต่อกับภาพที่เหลือ`
   $('kieOptions').hidden = !aiOn
   $('clipsSummary').textContent = aiOn
-    ? `ขยับ ${aiCoverage}% ของฉาก · ${clip.kie?.label ?? ''} ${clip.kie?.name ? `(${clip.kie.name} ≈ ${clip.kie.credits} เครดิต/ฉาก)` : ''}${clip.kie?.hasKey ? '' : ' · ยังไม่มี API key'}`
+    ? `ขยับ ${scope} · ${clip.kie?.label ?? ''} ${clip.kie?.name ? `(${clip.kie.name} ≈ ${clip.kie.credits} เครดิต/ฉาก)` : ''}${clip.kie?.hasKey ? '' : ' · ยังไม่มี API key'}`
     : 'ปิดแอนิเมชันอยู่ — เปิดในกล่องผู้ช่วยจัดฉากด้านบนก่อน'
   $('startClips').dataset.off = String(!aiOn || !clip.kie?.hasKey)
   // ระดับโมเดล: ถูก · พอใช้ · เก่ง
@@ -1626,7 +1637,7 @@ function renderClipSettings() {
       textContent: `${tier.detail} · ≈ ${tier.credits} เครดิต ($${perClip})/ฉาก · ล้มแล้วสลับโมเดลสำรองให้เอง`,
     }))
   }
-  $('kieModeBadge').textContent = aiOn ? `เปิด ${aiCoverage}%` : 'ปิด'
+  $('kieModeBadge').textContent = !aiOn ? 'ปิด' : firstMode ? `เปิด ${firstCount} ภาพแรก` : `เปิด ${aiCoverage}%`
   $('kieKeyStatus').textContent = clip.kie?.hasKey ? 'บันทึก API key แล้ว · เก็บไว้ในเครื่อง' : 'ยังไม่มี API key — กรอกก่อนเริ่มสร้างแอนิเมชัน'
   const motionLabel = motionOptions.find((o) => o.id === clip.motion)?.label
   const subLabel = clip.options.subtitles.find((o) => o.id === clip.subtitles)?.label
@@ -1674,6 +1685,14 @@ $('clipMotion').addEventListener('click', (e) => {
 $('clipAi').addEventListener('click', (e) => {
   const b = e.target.closest('button')
   if (b && !localBusy()) saveClipSettings({ aiCoverage: b.dataset.value })
+})
+// จำนวนภาพแรก — บันทึกเมื่อพิมพ์เสร็จ (change) ไม่ใช่ทุกตัวอักษร · ค่าเกินช่วงปัดให้อยู่ใน 1–max
+$('clipFirstCount').addEventListener('change', (e) => {
+  if (localBusy()) return
+  const max = Number(e.target.max) || 50
+  const n = Math.min(max, Math.max(1, Math.round(Number(e.target.value)) || 1))
+  e.target.value = String(n)
+  saveClipSettings({ firstCount: n })
 })
 $('kieTier').addEventListener('click', (e) => {
   const b = e.target.closest('button')
@@ -2041,7 +2060,7 @@ async function loadChecklist() {
   // Kie API ทำงานในเครื่อง — ตรวจว่าตั้ง key แล้ว ไม่ต้องเปิดแท็บเว็บ
   const aiCoverage = clip?.aiCoverage ?? clip?.aiClips
   if (aiCoverage && aiCoverage !== 'off') {
-    items.push({ id: 'kie', group: 'ตัวเลือกเสริม', label: `Kie API (แอนิเมชัน ${aiCoverage}% ของเรื่อง)`, need: 'required', status: clip?.kie?.hasKey ? 'ok' : 'missing', detail: clip?.kie?.hasKey ? 'API key พร้อมใช้' : 'ยังไม่มี API key — กรอกในตั้งค่าผู้ช่วยจัดฉาก' })
+    items.push({ id: 'kie', group: 'ตัวเลือกเสริม', label: `Kie API (แอนิเมชัน ${aiCoverage === 'first' ? `${Number(clip?.firstCount) || 1} ภาพแรก` : `${aiCoverage}% ของเรื่อง`})`, need: 'required', status: clip?.kie?.hasKey ? 'ok' : 'missing', detail: clip?.kie?.hasKey ? 'API key พร้อมใช้' : 'ยังไม่มี API key — กรอกในตั้งค่าผู้ช่วยจัดฉาก' })
   }
   if (machine?.items) items.push(...machine.items)
   else if (machine?.error) setStatus('checklistStatus', machine.error, 'error')
