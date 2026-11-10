@@ -32,6 +32,11 @@
 #prodBox .run { flex-wrap: wrap; margin-top: 8px; }
 #prodBox .run button { min-height: 44px; padding: 10px; }
 #prodBox .run .primary { flex: 1 1 160px; }
+#prodBox .prodResume { margin: 4px 0 12px; padding: 12px; border: 1px solid var(--accent); border-radius: 10px; }
+#prodBox .prodResume > strong { display: block; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+#prodBox .prodResumeAt { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--ink); }
+#prodBox .prodResumeAt input { width: 128px; }
+#prodBox .prodResumeAt button { min-height: 44px; padding: 8px 12px; }
 #prodBox #prodStatus { margin: 12px 0 0; }
 #prodBox #prodStatus:empty { display: none; }
 #prodBox .prodHistoryBox { border: 0; padding: 12px 0 0; margin: 12px 0 0; border-top: 1px solid var(--line); }

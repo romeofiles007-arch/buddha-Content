@@ -176,6 +176,30 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     save()
   }
 
+  /** ชุดที่หยุดกลางทาง (ล้มติดกัน / บัญชี Flow เต็ม / กดหยุดเอง) ยังทำไม่ครบ → ทำต่อได้ */
+  const resumable = () => !state.active && (state.batch ?? 0) > 0 && state.made < target()
+
+  /** คลิปล่าสุดของชุดล้มหลังได้ชื่อเรื่องแล้ว → ทำต่อคลิปนั้นจากแผนกที่ค้าง ไม่เริ่มหัวข้อใหม่ */
+  function unfinishedClip() {
+    const last = state.history.filter((h) => h.batch === state.batch).at(-1)
+    if (!last || last.ok || !last.slug || !last.title) return null
+    const status = readJson(join(ROOT, 'projects', last.slug, 'autopilot.json'), null)
+    return status?.status === 'done' ? null : { slug: last.slug, title: last.title, language: last.language }
+  }
+
+  /** ทำต่อชุดเดิม — นับจำนวนคลิปต่อจากเดิม · at = 'HH:MM' ตั้งเวลาทำต่อ (ไม่ใส่ = ทำต่อเลย) */
+  function resume(at, now = Date.now()) {
+    state.active = true
+    state.run = null
+    state.failsInRow = 0
+    state.resume = unfinishedClip()
+    state.nextAt = at ? nextTimeAt(at, now) : now
+    const n = `คลิป ${state.made + 1}${settings.count ? `/${settings.count}` : ''}`
+    const what = state.resume ? `"${state.resume.title}" ต่อจากที่ค้าง` : n
+    say(at ? `ตั้งเวลาทำต่อ ${fmt(state.nextAt)} — ${what}` : `ทำต่อ — ${what}`)
+    save()
+  }
+
   function stop() {
     if (state.run && runner.snapshot()?.status === 'running' && runner.snapshot()?.startedAt === state.run.startedAt) runner.stop()
     state.active = false
@@ -237,13 +261,13 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     if (!result.ok && /FLOW_ACCOUNTS_EXHAUSTED/.test(result.error ?? '')) {
       state.active = false
       state.nextAt = null
-      say('หยุด — บัญชี Flow ติดลิมิตครบแล้วหรือยืนยันบัญชีใหม่ไม่ได้ รอโควต้าคืนแล้วกดทำต่อคลิปเดิม')
+      say('หยุด — บัญชี Flow ติดลิมิตครบแล้วหรือยืนยันบัญชีใหม่ไม่ได้ รอโควต้าคืนแล้วกดทำต่อ (หรือตั้งเวลาทำต่อ) ระบบทำคลิปเดิมต่อจากที่ค้าง')
     } else if (state.made >= target()) {
       completeBatch(now)
     } else if (state.failsInRow >= MAX_FAILS_IN_ROW) {
       state.active = false
       state.nextAt = null
-      say(`หยุด — คลิปล้มติดกัน ${MAX_FAILS_IN_ROW} ครั้ง (ล่าสุด: ${result.error ?? '-'}) ตรวจดูแล้วกดเริ่มใหม่`)
+      say(`หยุด — คลิปล้มติดกัน ${MAX_FAILS_IN_ROW} ครั้ง (ล่าสุด: ${result.error ?? '-'}) ตรวจดูแล้วกดทำต่อ หรือตั้งเวลาทำต่อ`)
     } else {
       state.nextAt = now + randomDelayMs(settings)
       say(`${result.ok ? `ได้ ${name}` : `${name} ไม่สำเร็จ — ข้าม`} · คลิปถัดไป ${fmt(state.nextAt)}`)
@@ -283,10 +307,16 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
       return save()
     }
     const clip = pickClip(settings, config)
-    const run = runner.start('autopilot', null, { autoTopic: true, genre: clip.genre, language: clip.language, titleLanguage: clip.titleLanguage, minutes: clip.minutes, env: clip.env, quiet: true })
+    // ทำต่อคลิปที่ค้าง: สั่งด้วยชื่อเรื่องเดิม autopilot ข้ามแผนกที่เสร็จแล้วเอง (หมวด/ลายเส้นอยู่ในโปรไฟล์ของคลิปแล้ว)
+    const again = state.resume
+    state.resume = null
+    if (again) Object.assign(clip, { language: again.language ?? clip.language, titleLanguage: again.language ?? clip.titleLanguage })
+    const run = again
+      ? runner.start('autopilot', again.slug, { title: again.title, genre: clip.genre, language: clip.language, titleLanguage: clip.titleLanguage, minutes: clip.minutes, env: clip.env, quiet: true })
+      : runner.start('autopilot', null, { autoTopic: true, genre: clip.genre, language: clip.language, titleLanguage: clip.titleLanguage, minutes: clip.minutes, env: clip.env, quiet: true })
     state.run = { startedAt: run.startedAt, language: clip.language }
     const n = state.made + 1
-    say(`เริ่มคลิป ${n}${settings.count ? `/${settings.count}` : ''} (${{ th: 'ไทย', zh: 'จีน', en: 'อังกฤษ' }[clip.language]})`)
+    say(`${again ? `ทำต่อ "${again.title}" · ` : ''}เริ่มคลิป ${n}${settings.count ? `/${settings.count}` : ''} (${{ th: 'ไทย', zh: 'จีน', en: 'อังกฤษ' }[clip.language]})`)
     save()
   }
 
@@ -349,7 +379,10 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
 
   function view() {
     const { history, targets, pages } = postInfo()
-    return { settings, state: { ...state, history }, postTargets: targets, postPages: pages, languages: LANGUAGES, now: Date.now() }
+    const canResume = resumable()
+    const clip = canResume ? unfinishedClip() : null
+    const resume = canResume ? { next: state.made + 1, title: clip?.title ?? null } : null
+    return { settings, state: { ...state, history }, resume, postTargets: targets, postPages: pages, languages: LANGUAGES, now: Date.now() }
   }
 
   async function handle(req, res, path) {
@@ -368,6 +401,16 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
       if (body.settings) settings = cleanSettings(body.settings, settings)
       if (categoryOf(loadConfig().script.genre)?.id === 'self' && !selfMonkReady()) return json(res, 400, { error: SELF_NOT_READY }), true
       startBatch()
+      tick()
+      return json(res, 200, view()), true
+    }
+    if (path === '/api/production/resume') {
+      if (state.active) return json(res, 409, { error: 'กำลังผลิตอยู่แล้ว' }), true
+      if (!resumable()) return json(res, 400, { error: 'ไม่มีชุดที่หยุดค้าง — กดเริ่มผลิตแทน' }), true
+      const at = body.at == null || body.at === '' ? null : String(body.at)
+      if (at && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(at)) return json(res, 400, { error: 'เลือกเวลาทำต่อให้ครบ' }), true
+      if (categoryOf(loadConfig().script.genre)?.id === 'self' && !selfMonkReady()) return json(res, 400, { error: SELF_NOT_READY }), true
+      resume(at ? at.padStart(5, '0') : null)
       tick()
       return json(res, 200, view()), true
     }

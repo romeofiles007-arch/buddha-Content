@@ -415,6 +415,19 @@
         <strong id="prodPlanTitle"></strong>
         <p class="hint" id="prodPlanDetail"></p>
       </div>
+      <!-- ชุดที่หยุดกลางทาง: ทำต่อเลย / ตั้งเวลาทำต่อ — นับจำนวนคลิปต่อจากเดิม (bridge/production.js → resume) -->
+      <div class="prodResume" id="prodResumeBox" hidden>
+        <strong id="prodResumeTitle">ชุดนี้หยุดค้างไว้</strong>
+        <p class="hint" id="prodResumeHint"></p>
+        <div class="run">
+          <button type="button" class="primary" id="prodResume" data-icon="next">ทำต่อ</button>
+        </div>
+        <div class="prodResumeAt">
+          <label for="prodResumeTime">หรือทำต่อเวลา</label>
+          <input type="time" id="prodResumeTime" value="22:00" />
+          <button type="button" class="ghost" id="prodResumeAt" data-icon="clock">ตั้งเวลาทำต่อ</button>
+        </div>
+      </div>
       <div class="run">
         <button class="primary" id="prodGo" disabled>เริ่มผลิต</button>
         <button class="stop" id="prodStop" disabled>หยุดผลิต</button>

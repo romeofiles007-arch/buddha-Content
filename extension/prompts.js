@@ -418,17 +418,60 @@ ${avoid.length ? `\nห้ามซ้ำหรือคล้ายกับห
 ห้ามมีคำนำหรือคำอธิบายนอกตาราง ตอบเป็นข้อความในแชตเท่านั้น อย่าสร้างไฟล์`
 }
 
+/** หัวตาราง → ตำแหน่งคอลัมน์ { title, genre, theme, hook, search, visual, score, why } (ไม่มีคอลัมน์ไหน = ไม่มี key) */
+function headerColumns(cells) {
+  const tests = [
+    ['hook', /hook|ดึงดูด/i],
+    ['search', /search|ค้นหา|คนสนใจ/i],
+    ['visual', /visual|เล่าด้วยภาพ/i],
+    ['why', /why|เหตุผล|reason/i],
+    ['theme', /theme|ธีม|ด้านชีวิต|หลักธรรม/i],
+    ['genre', /genre|แนว|หมวด/i],
+    ['score', /score|คะแนน|viral/i],
+    ['title', /title|ชื่อ|หัวข้อ/i],
+  ]
+  const map = {}
+  cells.forEach((cell, i) => {
+    const hit = tests.find(([key, re]) => map[key] == null && re.test(cell))
+    if (hit) map[hit[0]] = i
+  })
+  return map
+}
+
 /** ตารางหัวข้อที่มีคะแนน → [{ n, title, genre, hook, search, visual, score, why }] เรียงคะแนนมากไปน้อย */
 export function parseScoredTopics(text) {
   const rows = []
+  const num = (v) => {
+    const n = Number(String(v ?? '').match(/\d+(?:\.\d+)?/)?.[0])
+    return Number.isFinite(n) ? n : null
+  }
+  // คอลัมน์ตามหัวตาราง — ChatGPT บางรอบตัดตารางเหลือ "# | Video Title | Genre | คะแนน Viral" (พ.ย. 2026)
+  // ถ้าอ่านตามตำแหน่งอย่างเดียว แถวสั้นกว่า 6 ช่องถูกทิ้งหมด → แผนกคิดหัวข้อล้ม 3 รอบติด
+  let header = null
   for (const line of String(text).split(/\r?\n/)) {
     // ChatGPT แสดงตารางเป็น <table> → innerText คั่นด้วย tab · ข้อความดิบคั่นด้วย |
     const cells = line.includes('|') ? line.split('|').map((c) => c.trim()).filter((c, i, a) => !(c === '' && (i === 0 || i === a.length - 1))) : line.split('\t').map((c) => c.trim())
-    if (cells.length < 6 || !/^\d+$/.test(cells[0])) continue
-    const num = (v) => {
-      const n = Number(String(v).match(/\d+(?:\.\d+)?/)?.[0])
-      return Number.isFinite(n) ? n : null
+    if (!/^\d+$/.test(cells[0] ?? '')) {
+      if (cells.length >= 3 && cells.some((c) => /title|ชื่อ|หัวข้อ/i.test(c))) header = headerColumns(cells)
+      continue
     }
+    if (header && header.title != null && cells.length < 6) {
+      const at = (key) => (header[key] != null ? cells[header[key]] ?? '' : '')
+      const title = at('title').replace(/^\*\*|\*\*$/g, '').trim()
+      if (!title) continue
+      const h = num(at('hook'))
+      const s = num(at('search'))
+      const v = num(at('visual'))
+      let total = num(at('score'))
+      if (total != null && total <= 10 && /\/\s*10\b/.test(at('score'))) total *= 10
+      if (total == null && h != null && s != null && v != null) total = Math.round(((h + s + v) / 30) * 100)
+      // ไม่มีคอลัมน์ Theme → ดูหลักธรรมจากชื่อเรื่อง (ด้านชีวิตเดาจากชื่อไม่แม่น เว้นไว้)
+      const themeText = at('theme')
+      const theme = themeText ? parseTheme(themeText) : { area: null, dhamma: parseTheme(title).dhamma ?? null }
+      rows.push({ n: Number(cells[0]), title, genre: at('genre'), ...(theme.area || theme.dhamma ? { theme } : {}), hook: h, search: s, visual: v, score: total ?? 0, why: at('why') })
+      continue
+    }
+    if (cells.length < 6) continue
     // คอลัมน์ Genre อยู่หลังชื่อ — คำตอบรุ่นเก่าไม่มี (คอลัมน์ที่ 3 เป็นตัวเลข)
     // ห้ามใช้ num() ตัดสิน — ชื่อหมวด "หมวด 1 · ..." มีตัวเลข เคยถูกนับเป็นคะแนน Hook ทั้งคอลัมน์เลื่อน (หมวดหาย คะแนนผิด)
     const isNumber = (v) => /^\s*\d+(?:\.\d+)?\s*(?:\/\s*\d+)?\s*$/.test(v ?? '')

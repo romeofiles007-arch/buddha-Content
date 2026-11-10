@@ -3398,6 +3398,7 @@ setInterval(() => loadUpdate(), 10 * 60_000)
 // ── 🏭 ผลิตต่อเนื่อง — โปรแกรมในเครื่องเป็นคนคุมเวลา (ปิดแผงนี้ได้) แผงนี้แค่ตั้งค่า/ดูสถานะ ──
 let prod = null
 let prodFilled = false
+let prodResumeTimeSet = false // ช่องเวลาทำต่อ: ใส่เวลาเริ่มผลิตที่ตั้งไว้ให้ครั้งแรกครั้งเดียว ไม่ทับค่าที่ผู้ใช้เลือก
 const PROD_LANG = { th: 'ไทย', zh: 'จีน', en: 'อังกฤษ' }
 const prodTime = (t) => new Date(t).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: new Date(t).toDateString() === new Date().toDateString() ? undefined : 'numeric', month: new Date(t).toDateString() === new Date().toDateString() ? undefined : 'short' })
 
@@ -3573,6 +3574,27 @@ function renderProd() {
   $('prodGo').disabled = st.active || prodCommandBusy
   $('prodStop').disabled = !st.active || prodCommandBusy
   if (st.active) $('prodGo').textContent = st.run ? 'กำลังผลิต' : 'ตั้งเวลาไว้แล้ว'
+  // ชุดที่หยุดค้าง (ล้มติดกัน / Flow เต็ม / กดหยุดเอง): ทำต่อ หรือตั้งเวลาทำต่อ — นับจำนวนคลิปต่อจากเดิม
+  // ปุ่มเริ่มผลิตยังอยู่ แต่กลายเป็นปุ่มรองที่เริ่มชุดใหม่นับจาก 0
+  const r = !st.active ? prod.resume : null
+  $('prodResumeBox').hidden = !r
+  $('prodGo').className = r ? 'ghost' : 'primary'
+  if (r) {
+    const of = s.count ? `/${s.count}` : ''
+    $('prodResumeTitle').textContent = `ชุดนี้หยุดค้างไว้ · เสร็จแล้ว ${st.made}${of}${st.failed ? ` · ไม่สำเร็จ ${st.failed}` : ''}`
+    $('prodResumeHint').textContent = r.title
+      ? `ทำ "${r.title}" ต่อจากแผนกที่ค้าง (งานที่เสร็จแล้วไม่ทำซ้ำ) แล้วผลิตคลิปที่เหลือต่อ`
+      : `เริ่มคลิป ${r.next}${of} ต่อจากเดิม · คลิปที่เสร็จแล้วยังนับอยู่`
+    $('prodResume').textContent = r.title ? 'ทำต่อคลิปที่ค้าง' : `ทำต่อ (คลิป ${r.next}${of})`
+    if (!prodResumeTimeSet) {
+      prodResumeTimeSet = true
+      $('prodResumeTime').value = s.time
+    }
+    $('prodGo').textContent += ' · ชุดใหม่'
+    $('prodBadge').textContent = `หยุดค้าง ${st.made}${of} — ทำต่อได้`
+  }
+  $('prodResume').disabled = !r || prodCommandBusy
+  $('prodResumeAt').disabled = !r || prodCommandBusy
 }
 
 let prodRequest = 0, prodAppliedRequest = 0
@@ -3642,6 +3664,13 @@ $('prodGo').addEventListener('click', async () => {
   await prodCommand('/api/production/start', { settings: f })
 })
 $('prodStop').addEventListener('click', () => prodCommand('/api/production/stop', {}))
+$('prodResume').addEventListener('click', () => prodCommand('/api/production/resume', {}))
+$('prodResumeAt').addEventListener('click', () => {
+  const at = $('prodResumeTime').value
+  if (!/^\d{2}:\d{2}$/.test(at)) return prodValidation(Object.assign(new Error('เลือกเวลาทำต่อให้ครบ'), { field: 'prodResumeTime' }), true)
+  $('prodResumeTime').removeAttribute('aria-invalid')
+  prodCommand('/api/production/resume', { at })
+})
 async function prodCommand(path, body) {
   if (prodCommandBusy) return
   if (path.endsWith('/start')) {
@@ -3659,6 +3688,10 @@ async function prodCommand(path, body) {
       $('prodSaveState').classList.remove('error')
       $('prodSaveState').textContent = 'บันทึกและเปิดผลิตแล้ว'
     }
+    if (ok && path.endsWith('/resume')) {
+      $('prodSaveState').classList.remove('error')
+      $('prodSaveState').textContent = body.at ? `ตั้งเวลาทำต่อ ${body.at} น. แล้ว` : 'ทำต่อชุดเดิมแล้ว'
+    }
   } finally { prodCommandBusy = false; renderProd() }
 }
 $('prodReadyPlay').addEventListener('click', () => prodCall('/api/production/open', { what: 'play', index: 0 }))
@@ -3669,7 +3702,8 @@ chrome.runtime.sendMessage({ type: 'ENSURE_APP' }).then((app) => app?.ok && api(
   if (!p) return
   prod = p
   renderProd()
-  if (p.state.active) $('prodBox').open = true
+  // กำลังผลิต หรือชุดหยุดค้างเพราะมีปัญหา (ไม่ใช่กดหยุดเอง) → เปิดกล่องให้เห็นปุ่มทำต่อ
+  if (p.state.active || (p.resume && p.state.message !== 'หยุดแล้ว')) $('prodBox').open = true
 }).catch(() => {})
 setInterval(() => {
   if (prod?.state.active || $('prodBox').open) prodCall('/api/production')
