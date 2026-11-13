@@ -37,21 +37,30 @@ export async function flowIdentity(chrome, tabId, { diagnose = false } = {}) {
   // 2026-11-04 Flow's new layout: also look in child frames and in image/menu controls, but only
   // controls (never page text such as prompts) whose name ties an email to an account/profile.
   return withDebugger(chrome, tabId, async command => {
-    const frames = [null]
-    try {
-      const { frameTree } = await command('Page.getFrameTree')
-      const walk = tree => { for (const child of tree.childFrames ?? []) { frames.push(child.frame.id); walk(child) } }
-      walk(frameTree)
-    } catch {}
+    const snapshot = async () => {
+      const frames = [null]
+      try {
+        const { frameTree } = await command('Page.getFrameTree')
+        const walk = tree => { for (const child of tree.childFrames ?? []) { frames.push(child.frame.id); walk(child) } }
+        walk(frameTree)
+      } catch {}
+      const trees = []
+      for (const frameId of frames) {
+        try { trees.push((await command('Accessibility.getFullAXTree', frameId ? { frameId } : {})).nodes ?? []) } catch {}
+      }
+      return trees
+    }
+    const trees = await snapshot()
     const seen = []
-    for (const frameId of frames) {
-      let nodes = []
-      try { ({ nodes } = await command('Accessibility.getFullAXTree', frameId ? { frameId } : {})) } catch { continue }
+    for (const nodes of trees) {
       const labels = nodes.filter(n => !n.ignored && CONTROL_ROLES.includes(n.role?.value)).map(n => n.name?.value ?? '')
       const hit = labels.find(label => /(?:Google Account|บัญชี Google).*@/i.test(label)) ?? labels.find(label => ACCOUNT_WORDS.test(label) && Q.emailOf(label))
       if (hit) return Q.emailOf(hit)
       seen.push(...labels.filter(label => ACCOUNT_WORDS.test(label)))
     }
+    const email = await accountPanelIdentity(command, trees, snapshot, async () => (await chrome.tabs.get(tabId)).url === tab.url)
+    // A manual account change/navigation while the panel was read invalidates the result.
+    if (email && (await chrome.tabs.get(tabId)).url === tab.url) return email
     if (diagnose) {
       const masked = [...new Set(seen)].slice(0, 5).map(label => label.replace(/[^\s@()]+@/g, '***@').slice(0, 80))
       throw new Error(`ไม่พบปุ่มบัญชี Google บนหน้า Flow${masked.length ? ` (ปุ่มที่เกี่ยวกับบัญชีที่เห็น: ${masked.join(' | ')})` : ' (ไม่เห็นปุ่มบัญชีเลย — หน้า Flow อาจยังโหลดไม่เสร็จหรือออกจากระบบอยู่)'}`)
@@ -61,6 +70,60 @@ export async function flowIdentity(chrome, tabId, { diagnose = false } = {}) {
 }
 const CONTROL_ROLES = ['button', 'link', 'img', 'image', 'menuitem', 'menuitemradio', 'tab']
 const ACCOUNT_WORDS = /account|บัญชี|profile|โปรไฟล์|signed in|ลงชื่อเข้าใช้/i
+
+/** New Flow avatar labels contain no email. Read only its named account dialog,
+ * never arbitrary page text or the Google account chooser. Restore only panels we opened. */
+async function accountPanelIdentity(command, initialTrees, snapshot, stillCurrent) {
+  const panels = trees => trees.flatMap(nodes => nodes.filter(n => !n.ignored && n.role?.value === 'dialog' && /^(?:Account settings|การตั้งค่าบัญชี)$/i.test(n.name?.value ?? '')).map(panel => ({ nodes, panel })))
+  const descendants = ({ nodes, panel }) => {
+    const byId = new Map(nodes.map(n => [n.nodeId, n]))
+    return nodes.filter(n => {
+      const visited = new Set()
+      for (let p = n; p && !visited.has(p.nodeId); p = byId.get(p.parentId)) {
+        if (p.nodeId === panel.nodeId) return true
+        visited.add(p.nodeId)
+      }
+      return false
+    })
+  }
+  const click = async node => {
+    const { object } = await command('DOM.resolveNode', { backendNodeId: node.backendDOMNodeId })
+    await command('Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true, functionDeclaration: 'function() { this.click(); return true }' })
+  }
+  let trees = initialTrees
+  let opened = false
+  let openedPanelId
+  const panelId = panel => panel.backendDOMNodeId ?? panel.nodeId
+  if (!panels(trees).length) {
+    const buttons = trees.flat().filter(n => !n.ignored && n.role?.value === 'button' && /^(?:Account details|รายละเอียดบัญชี)$/i.test(n.name?.value ?? '') && n.backendDOMNodeId)
+    if (buttons.length !== 1) return ''
+    await click(buttons[0])
+    opened = true
+  }
+  try {
+    for (let tick = 0; tick < 10; tick++) {
+      if (opened) trees = await snapshot()
+      const found = panels(trees)
+      if (found.length > 1) return ''
+      if (found.length === 1) {
+        if (opened) openedPanelId = panelId(found[0].panel)
+        const emails = [...new Set(descendants(found[0]).filter(n => !n.ignored && n.role?.value === 'StaticText').map(n => (n.name?.value ?? '').trim()).filter(s => Q.emailOf(s) === s.toLowerCase()).map(Q.emailOf))].filter(Boolean)
+        return emails.length === 1 ? emails[0] : ''
+      }
+      if (!opened) return ''
+      await sleep(200)
+    }
+    return ''
+  } finally {
+    if (opened && openedPanelId != null && await stillCurrent()) {
+      const found = panels(await snapshot())
+      if (found.length === 1 && panelId(found[0].panel) === openedPanelId && await stillCurrent()) {
+        const close = descendants(found[0]).filter(n => !n.ignored && n.role?.value === 'button' && /^(?:Close account (?:panel|settings)|ปิดแผงบัญชี)$/i.test(n.name?.value ?? '') && n.backendDOMNodeId)
+        if (close.length === 1) await click(close[0])
+      }
+    }
+  }
+}
 
 async function withDebugger(chrome, tabId, fn) {
   const target = { tabId }
@@ -96,8 +159,9 @@ async function chooserAccounts(chrome, tabId, selectEmail) {
 }
 
 /** Diagnostic inventory in a disposable tab; never change the selected Flow account/project. */
-export async function inspectFlowAccounts({ chrome, tabId, heartbeat = async () => {} }) {
+export async function inspectFlowAccounts({ chrome, tabId, payload = {}, heartbeat = async () => {} }) {
   const email = await flowIdentity(chrome, tabId)
+  if (payload.identityOnly === true) return { email, version: chrome.runtime.getManifest().version }
   const tab = await chrome.tabs.create({ url: CHOOSER, active: false })
   try {
     for (let tick = 0; tick < 30; tick++) {

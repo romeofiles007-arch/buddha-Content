@@ -44,7 +44,7 @@ test('a limited content job reports structured quota without a terminal error or
   const account={getAttribute:()=> 'Google Account: A (a@x.com)'}
   const alert={innerText:"You've reached your daily image generation limit",getBoundingClientRect:()=>({width:100})}
   const document={documentElement:{className:''},querySelector:()=>null,querySelectorAll:selector=>selector==='button[aria-label], a[aria-label]'?[account]:selector.startsWith('[role="alert"]')?[alert]:[]}
-  const ctx=vm.createContext({document,Date,setTimeout:fn=>queueMicrotask(fn),location:{pathname:'/',href:'https://flow.google.com/'},MutationObserver:class{observe(){}},chrome:{
+  const ctx=vm.createContext({document,Date,setInterval:()=>0,clearInterval(){},setTimeout:fn=>queueMicrotask(fn),location:{pathname:'/',href:'https://flow.google.com/'},MutationObserver:class{observe(){}},chrome:{
     runtime:{getManifest:()=>({version:'1.0.22'}),onMessage:{addListener:fn=>listener=fn},sendMessage:async msg=>{if(msg.type==='FLOW_ACCOUNT_IDENTITY')return ++identityReads===1?{ok:false,email:''}:{ok:true,email:'a@x.com'};sent.push(msg);return {ok:true}}},
     storage:{local:{get:async()=>({}),set:async()=>{}}},
   }})
@@ -63,7 +63,7 @@ test('initial project quota saves recoverable named images before reporting the 
   const alert={innerText:"You've reached your daily image generation limit",getBoundingClientRect:()=>({width:100})}
   const tile={getAttribute:()=> '00_00_00.png SHOT 01',querySelector:()=>({dataset:{mediaId:'saved'},src:'https://flow.google.com/image'})}
   const document={documentElement:{className:'',style:{}},querySelector:()=>null,querySelectorAll:selector=>selector==='button[aria-label], a[aria-label]'?[account]:selector.startsWith('[role="alert"]')?[alert]:selector==='flow-grid-tile-container'?[tile]:[]}
-  const ctx=vm.createContext({document,Date,console,Event:class{},window:{dispatchEvent(){}},setTimeout:fn=>{queueMicrotask(fn)},btoa:value=>Buffer.from(value,'binary').toString('base64'),
+  const ctx=vm.createContext({document,Date,console,Event:class{},window:{dispatchEvent(){}},setInterval:()=>0,clearInterval(){},setTimeout:fn=>{queueMicrotask(fn)},btoa:value=>Buffer.from(value,'binary').toString('base64'),
     fetch:async()=>({ok:true,blob:async()=>({})}),createImageBitmap:async()=>({width:1,height:1}),OffscreenCanvas:class{getContext(){return {drawImage(){}}}async convertToBlob(){return {arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer}}},
     location:{pathname:'/project/a',href:'https://flow.google.com/project/a'},MutationObserver:class{observe(){}},chrome:{
       runtime:{getManifest:()=>({version:'1.0.21'}),onMessage:{addListener:fn=>listener=fn},sendMessage:async msg=>{if(msg.type==='FLOW_ACCOUNT_IDENTITY')return {ok:true,email:'a@x.com'};sent.push(msg);return {ok:true}}},
