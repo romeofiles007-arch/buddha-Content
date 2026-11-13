@@ -13,7 +13,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdir
 import { join, extname, basename } from 'node:path'
 import { ROOT } from './config.mjs'
 import { readProfile, profileImages, refDir } from './clip_profile.mjs'
-import { ART_STYLES, selfMonkName } from '../../extension/prompts.js'
+import { ART_STYLES, figureStyle, selfMonkName } from '../../extension/prompts.js'
 import { readSelfMonk, SELF_DIR } from './self_monk.mjs'
 
 export const CHARACTER_DIR = join(ROOT, 'characters', 'current')
@@ -107,9 +107,10 @@ export function characterAttachments(c = activeCharacter()) {
   }))
 }
 
-/** กฎตัวละครสำหรับ ChatGPT รอบแรก — แทนตัวละครตัวอย่างของ Blueprint */
-export function characterRule(c = activeCharacter()) {
+/** กฎตัวละครสำหรับ ChatGPT รอบแรก — แทนตัวละครตัวอย่างของ Blueprint (ตัวละครหลักตามลายเส้นของคลิป) */
+export function characterRule(c = activeCharacter(), profile = null) {
   if (!c) return ''
+  const figure = figureStyle(profile)
   const lines = ['- ตัวละครหลักของคลิปนี้กำหนดไว้แล้ว — ใช้ตัวละครนี้แทนตัวละครตัวอย่างใน Blueprint (กฎอื่นของ Blueprint ใช้เหมือนเดิม)']
   if (c.selfMonk) {
     lines.push(c.images.length
@@ -120,13 +121,13 @@ export function characterRule(c = activeCharacter()) {
     return lines.join('\n')
   }
   if (c.monk) {
-    lines.push(`- รูปที่แนบ ${c.images.length} รูปคือภาพจริงของ${c.monk}: เขียน Character Bible ของ @monk ตามใบหน้า รูปร่าง วัย สีจีวร และอัฐบริขารในรูป เป็นการ์ตูนเต็มตัวอย่างเคารพตามกฎ SACRED FIGURES`)
+    lines.push(`- รูปที่แนบ ${c.images.length} รูปคือภาพจริงของ${c.monk}: เขียน Character Bible ของ @monk ตามใบหน้า รูปร่าง วัย สีจีวร และอัฐบริขารในรูป เป็น${figure}อย่างเคารพตามกฎ SACRED FIGURES`)
     lines.push('- ตัวละครอื่น (ญาติโยม ลูกศิษย์ คนดู) ออกแบบให้เข้ากับสไตล์เดียวกัน')
     return lines.join('\n')
   }
   if (c.buddha) {
     lines.push(`- รูปที่แนบ ${c.images.length} รูปคือพระพุทธรูปไทย ใช้เป็นแบบของ @buddha: พระพักตร์สงบ อมยิ้มเล็กน้อย ขมวดพระเกศาและพระรัศมีเปลว พระกรรณยาว จีวรห่มเฉียงสีเหลืองทอง และรัศมีสีทองรอบพระเศียร`)
-    lines.push('- วาด @buddha เป็นการ์ตูนเต็มตัวที่มีชีวิต ยืน เดิน นั่ง และแสดงธรรมได้ตามเรื่อง (ไม่ใช่รูปปั้น เว้นแต่ฉากนั้นเป็นพระพุทธรูปจริงๆ) อย่างเคารพตามกฎ SACRED FIGURES · ใช้หน้าตาเดียวกันทุกช็อต')
+    lines.push(`- ทำ @buddha เป็น${figure}ที่มีชีวิต ยืน เดิน นั่ง และแสดงธรรมได้ตามเรื่อง (ไม่ใช่รูปปั้น เว้นแต่ฉากนั้นเป็นพระพุทธรูปจริงๆ) อย่างเคารพตามกฎ SACRED FIGURES · ใช้หน้าตาเดียวกันทุกช็อต`)
     lines.push('- พระสาวก ชาวบ้าน และกษัตริย์ในพุทธกาล ออกแบบให้เข้ากับสไตล์เดียวกัน')
     return lines.join('\n')
   }
@@ -155,11 +156,12 @@ export function bodyStyleFlowNote(c = activeCharacter(), profile = null) {
     : 'ตัวละครทุกตัวเป็นการ์ตูน doodle หัวกลมโต แขนขาเป็นทรงหลอดมีความหนา มีเส้นขอบและลงสีเต็ม ห้ามวาดเป็นตัวก้าง ห้ามแขนขาเป็นเส้นขีดเดียว'
 }
 
-/** ข้อความต่อท้ายคำสั่ง Flow เมื่อแนบรูปตัวละคร */
-export function characterFlowNote(c = activeCharacter()) {
+/** ข้อความต่อท้ายคำสั่ง Flow เมื่อแนบรูปตัวละคร (ตัวละครหลักตามลายเส้นของคลิป) */
+export function characterFlowNote(c = activeCharacter(), profile = null) {
   if (!c?.images.length) return ''
-  if (c.selfMonk) return `รูปที่แนบคือภาพจริงของ${c.selfMonk} พระผู้สอนในคลิป (ตัวละคร @monk) — วาดเป็นการ์ตูนเต็มตัวหน้าเหมือนท่าน ห่มจีวร อย่างเคารพ ล็อกใบหน้า วัย รูปร่าง และสีจีวรตามรูปในทุกภาพ ห้ามวาดล้อเลียน`
-  if (c.monk) return `รูปที่แนบคือภาพจริงของ${c.monk} (ตัวละคร @monk) — วาดเป็นการ์ตูนเต็มตัวอย่างเคารพ ล็อกใบหน้า วัย รูปร่าง และสีจีวรตามรูปในทุกภาพ ห้ามวาดล้อเลียน`
-  if (c.buddha) return 'รูปที่แนบคือพระพุทธรูป ใช้เป็นแบบของพระพุทธเจ้า (@buddha) — วาดเป็นการ์ตูนเต็มตัวที่มีชีวิตอย่างเคารพ พระพักตร์สงบ พระเกศาขมวด จีวรเหลืองทอง มีรัศมีทองรอบพระเศียร หน้าตาเดียวกันทุกภาพ ห้ามวาดล้อเลียน'
+  const figure = figureStyle(profile)
+  if (c.selfMonk) return `รูปที่แนบคือภาพจริงของ${c.selfMonk} พระผู้สอนในคลิป (ตัวละคร @monk) — ทำเป็น${figure}หน้าเหมือนท่าน ห่มจีวร อย่างเคารพ ล็อกใบหน้า วัย รูปร่าง และสีจีวรตามรูปในทุกภาพ ห้ามล้อเลียน`
+  if (c.monk) return `รูปที่แนบคือภาพจริงของ${c.monk} (ตัวละคร @monk) — ทำเป็น${figure}อย่างเคารพ ล็อกใบหน้า วัย รูปร่าง และสีจีวรตามรูปในทุกภาพ ห้ามล้อเลียน`
+  if (c.buddha) return `รูปที่แนบคือพระพุทธรูป ใช้เป็นแบบของพระพุทธเจ้า (@buddha) — ทำเป็น${figure}ที่มีชีวิตอย่างเคารพ พระพักตร์สงบ พระเกศาขมวด จีวรเหลืองทอง มีรัศมีทองรอบพระเศียร หน้าตาเดียวกันทุกภาพ ห้ามล้อเลียน`
   return 'รูปที่แนบคือตัวละครหลัก ล็อกหน้าตา ทรงผม สี และชุดตามรูปนี้ในทุกภาพ'
 }

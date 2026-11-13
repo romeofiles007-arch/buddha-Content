@@ -121,7 +121,7 @@ export function orientationRule(config = loadConfig()) {
 export function flowPrompt(agentBrief, config = loadConfig(), slug = null) {
   const portrait = orientationOf(config) === 'portrait'
   const character = activeCharacter(slug)
-  const charNote = characterFlowNote(character)
+  const charNote = characterFlowNote(character, readProfile(slug))
   return `สร้างรูป ตามนี้ อย่าลืม lock ตัวละครต่างๆ ด้วยนะ
 เริ่มสร้างภาพทุกช็อตทันทีจนครบ ไม่ต้องสรุปแผน Storyboard และไม่ต้องถามยืนยันก่อน
 ${bodyStyleFlowNote(character, readProfile(slug))}${shared.ART_STYLES[readProfile(slug)?.artStyle]?.flow ? `\n${shared.ART_STYLES[readProfile(slug).artStyle].flow}` : ''}${charNote ? `\n${charNote}` : ''}${portrait ? '\nทุกภาพเป็นแนวตั้ง 9:16 จัดองค์ประกอบแนวตั้ง ตัวละครอยู่กลางภาพ' : ''}

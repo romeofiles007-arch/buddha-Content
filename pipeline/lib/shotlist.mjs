@@ -98,8 +98,8 @@ export function nextRoundPrompt(config, slug, { title, timecodeText }) {
   if (!bible) {
     // ตัวละครของฉัน: กำหนด Character Bible จากรูป/คำอธิบายที่ผู้ใช้ให้ แทนตัวละครตัวอย่างของ Blueprint
     const character = activeCharacter(slug)
-    const charRule = characterRule(character)
     const profile = readProfile(slug)
+    const charRule = characterRule(character, profile)
     const catRule = categoryRule(profile, 'image')
     return {
       round,
