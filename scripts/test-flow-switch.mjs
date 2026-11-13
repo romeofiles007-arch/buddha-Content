@@ -63,14 +63,14 @@ test('the last identity attempt explains what account controls were visible, wit
 
 // Flow 2026-11-13: the avatar is now only "Account details". The current email lives
 // inside the account settings dialog, not on that control or elsewhere in page text.
-function accountPanelChrome({open=false, email='fosavooka@gmail.com', ambiguous=false, navigate=false, replace=false}={}) {
+function accountPanelChrome({open=false, email='fosavooka@gmail.com', ambiguous=false, navigate=false, replace=false, avatar='รายละเอียดบัญชี'}={}) {
   const clicked=[]
   let reads=0
   const node=(nodeId,role,name,parentId,backendDOMNodeId)=>({nodeId,role:{value:role},name:{value:name},parentId,backendDOMNodeId})
   const chrome={runtime:{},tabs:{get:async()=>({url:navigate && clicked.length ? 'https://flow.google.com/u/0/' : 'https://flow.google.com/u/2/?pli=1'})},scripting:{executeScript:async()=>[{result:''}]},debugger:{attach:(_t,_v,cb)=>cb(),detach:(_t,cb)=>cb(),sendCommand:(_t,method,p,cb)=>{
     if(method==='Page.getFrameTree') return cb({frameTree:{frame:{id:'main'}}})
     if(method==='Accessibility.getFullAXTree') { reads++; return cb({nodes:[
-      node('page','RootWebArea','Google Flow'), node('avatar','button','รายละเอียดบัญชี','page',10),
+      node('page','RootWebArea','Google Flow'), node('avatar','button',avatar,'page',10),
       node('prompt','StaticText','Google Account: other@x.com','page'),
       ...(open ? [node('panel','dialog','การตั้งค่าบัญชี','page',replace && reads>2 ? 60 : 50),node('email','StaticText',email,'panel'),node('close','button','ปิดแผงบัญชี','panel',20),
         ...(ambiguous ? [node('other','StaticText','another@x.com','panel')] : [])] : [])]}) }
@@ -115,4 +115,39 @@ test('cleanup cannot close a replacement account panel opened after our identity
   await flowIdentity(f.chrome,7)
   assert.deepEqual(f.clicked,['10'])
   assert.equal(f.isOpen(),true)
+})
+
+// Flow 2026-11-13 (หน้าโปรเจกต์ของผู้ใช้จริง): ปุ่มรูปโปรไฟล์ไม่มีชื่อที่บอกบัญชีเลย
+// AX tree จึงไม่เห็นปุ่มบัญชี — อ่านอีเมลของบัญชี /u/N/ จากข้อมูลของหน้าเว็บเองแทน
+const wizChrome = (values, nodes = []) => ({
+  runtime: {},
+  tabs: { get: async () => ({ url: 'https://flow.google.com/u/2/project/p1' }) },
+  scripting: { executeScript: async (opts) => [{ result: opts.world === 'MAIN' ? values : '' }] },
+  debugger: { attach: (_t, _v, cb) => cb(), detach: (_t, cb) => cb(), sendCommand: (_t, method, _p, cb) => {
+    if (method === 'Page.getFrameTree') return cb({ frameTree: { frame: { id: 'main' } } })
+    if (method === 'Accessibility.getFullAXTree') return cb({ nodes })
+    assert.fail(method)
+  } },
+})
+
+test('the signed-in account is read from the page itself when no account control can be found', async () => {
+  assert.equal(await flowIdentity(wizChrome(['th', 'me@x.com', 'me@x.com', '1']), 7), 'me@x.com')
+})
+
+test('page data holding more than one email is never guessed between', async () => {
+  assert.equal(await flowIdentity(wizChrome(['a@x.com', 'b@x.com']), 7), '')
+  assert.equal(await flowIdentity(wizChrome([])), '')
+  assert.equal(await flowIdentity(wizChrome(['not an email'])), '')
+})
+
+test('a readable account control still wins over the page data', async () => {
+  const chrome = wizChrome(['page@x.com'], [{ role: { value: 'button' }, name: { value: 'Google Account: B (b@x.com)' } }])
+  chrome.scripting.executeScript = async (opts) => [{ result: opts.world === 'MAIN' ? [] : 'Google Account: B (b@x.com)' }]
+  assert.equal(await flowIdentity(chrome, 7), 'b@x.com')
+})
+
+test('the account panel also opens from an avatar named only "Google Account"', async () => {
+  const f = accountPanelChrome({ avatar: 'Google Account' })
+  assert.equal(await flowIdentity(f.chrome, 7), 'fosavooka@gmail.com')
+  assert.deepEqual(f.clicked, ['10', '20'])
 })

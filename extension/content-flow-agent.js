@@ -29,7 +29,12 @@ const FLOW_LAST_PROMPT_KEY = 'flowLastPromptAt'
 const Q = globalThis.DhammaFlowQuota
 let expectedAccount = ''
 const accountEmail = () => Q.emailOf(Q.profileLabel(document))
-async function verifiedAccountEmail() {
+/**
+ * อีเมลของบัญชี Flow ที่เปิดอยู่
+ * required = true  → ต้องยืนยันให้ได้ (มีบัญชีที่ตั้งใจใช้อยู่แล้ว เช่นหลังสลับบัญชีเพราะโควต้าหมด)
+ * required = false → อ่านไม่ได้ก็ทำงานต่อโดยไม่ล็อกบัญชี (รอบแรกของคลิป ยังไม่มีบัญชีที่ต้องเทียบ)
+ */
+async function verifiedAccountEmail({ required = true } = {}) {
   let detail = ''
   for (let attempt = 0; attempt < 10; attempt++) {
     // รอบสุดท้ายขอรายละเอียดว่าเห็นอะไรบนหน้า — ใช้แก้ตอนหน้า Flow เปลี่ยน
@@ -37,6 +42,12 @@ async function verifiedAccountEmail() {
     if (result?.ok && result.email) return result.email
     if (result?.error) { detail = ` (${result.error})`; break }
     await sleep(1000)
+  }
+  // ไม่มีบัญชีที่ต้องยืนยัน → อ่านไม่ได้ก็ทำต่อ ดีกว่าหยุดทั้งคลิปเพราะปุ่มบัญชีบนหน้า Flow เปลี่ยนรูปแบบ
+  // (ระหว่างทำงานยังตรวจข้อความ "โควต้าหมด" บนหน้า Flow เหมือนเดิม — ดู checkAccountQuota)
+  if (!required) {
+    console.warn(`[dhamma-auto] อ่านบัญชี Google Flow ไม่ได้${detail} — ทำต่อโดยไม่ล็อกบัญชี (ถ้าใช้หลายบัญชีสลับโควต้า ให้รีเฟรชหน้า Flow แล้วเริ่มใหม่)`)
+    return ''
   }
   throw new Error(`FLOW_ACCOUNTS_EXHAUSTED: อ่านบัญชี Google Flow ปัจจุบันไม่ได้ — หยุดก่อนสร้างภาพ${detail}`)
 }
@@ -69,7 +80,7 @@ async function waitFor(fn, { timeout = 20_000, interval = 250, label = 'หน�
   const deadline = Date.now() + timeout
   for (;;) {
     if (jobCancelled) throw new JobCancelled() // กดหยุดแล้ว — เลิกทันทีแม้อยู่ระหว่างรอนาน
-    if (running && expectedAccount) checkAccountQuota()
+    if (running) checkAccountQuota() // อ่านบัญชีไม่ได้ก็ยังต้องจับข้อความโควต้าหมดบนหน้า Flow
     const value = fn()
     if (value) return value
     if (Date.now() > deadline) throw new Error(`รอ ${label} ไม่เจอ (${Math.round(timeout / 1000)} วิ) — หน้า Google Flow อาจเปลี่ยน`)
@@ -860,7 +871,8 @@ async function renameProject(title) {
 
 async function runImageJob(job) {
   const { prompt, shots, model = 'Nano Banana 2 Lite', aspect = '16:9', attachments = [], projectTitle } = job.payload
-  const email = await verifiedAccountEmail()
+  // รอบแรกของคลิปไม่มีบัญชีที่ต้องเทียบ — อ่านบัญชีไม่ได้ก็สร้างภาพต่อได้ (ไม่ล็อกบัญชีรอบนั้น)
+  const email = await verifiedAccountEmail({ required: !!job.payload.expectedAccount })
   expectedAccount = job.payload.expectedAccount || email
   const expected = shots.length
   const wanted = new Set(shots.map((s) => s.filename))

@@ -28,11 +28,38 @@ export async function rotateAccount({ currentEmail, payload, store, list, select
   return { email: Q.emailOf(next.email), previousEmail: current }
 }
 
+/**
+ * Flow รุ่น พ.ย. 2026: ปุ่มรูปโปรไฟล์มุมขวาบนไม่มีทั้งอีเมลและคำว่า account/profile ในชื่อปุ่ม
+ * หน้าเว็บของ Google เก็บอีเมลของบัญชี /u/N/ ที่ล็อกอินอยู่ไว้ใน WIZ_global_data ของหน้าเอง
+ * อ่านเฉพาะค่าที่เป็น "อีเมลล้วน" ในนั้น และต้องได้อีเมลเดียวเท่านั้น (เจอหลายอัน = ไม่เดา)
+ * ไม่อ่านข้อความอื่นในหน้า ไม่แตะคุกกี้ รหัสผ่าน หรือช่องล็อกอิน
+ */
+async function pageAccountEmail(chrome, tabId) {
+  try {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        const data = globalThis.WIZ_global_data
+        if (!data || typeof data !== 'object') return []
+        return Object.values(data).filter(v => typeof v === 'string' && v.length < 120 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))
+      },
+    })
+    const emails = [...new Set((Array.isArray(r?.result) ? r.result : []).map(Q.emailOf).filter(Boolean))]
+    return emails.length === 1 ? emails[0] : ''
+  } catch {
+    return ''
+  }
+}
+
 export async function flowIdentity(chrome, tabId, { diagnose = false } = {}) {
   const tab = await chrome.tabs.get(tabId)
   if (!isFlow(tab.url)) return ''
   const [r] = await chrome.scripting.executeScript({ target: { tabId }, func: Q.profileLabel })
   if (Q.emailOf(r?.result)) return Q.emailOf(r.result)
+  // ปุ่มบัญชีอ่านไม่ได้/ไม่มีบนหน้านี้ → ถามจากข้อมูลบัญชีของหน้าเว็บเอง (ใช้ได้กับหน้าย่อยของโปรเจกต์ด้วย)
+  const fromPage = await pageAccountEmail(chrome, tabId)
+  if (fromPage) return fromPage
   // Google renders the profile within a component; closed roots remain visible to accessibility.
   // 2026-11-04 Flow's new layout: also look in child frames and in image/menu controls, but only
   // controls (never page text such as prompts) whose name ties an email to an account/profile.
@@ -63,7 +90,7 @@ export async function flowIdentity(chrome, tabId, { diagnose = false } = {}) {
     if (email && (await chrome.tabs.get(tabId)).url === tab.url) return email
     if (diagnose) {
       const masked = [...new Set(seen)].slice(0, 5).map(label => label.replace(/[^\s@()]+@/g, '***@').slice(0, 80))
-      throw new Error(`ไม่พบปุ่มบัญชี Google บนหน้า Flow${masked.length ? ` (ปุ่มที่เกี่ยวกับบัญชีที่เห็น: ${masked.join(' | ')})` : ' (ไม่เห็นปุ่มบัญชีเลย — หน้า Flow อาจยังโหลดไม่เสร็จหรือออกจากระบบอยู่)'}`)
+      throw new Error(`ไม่พบปุ่มบัญชี Google บนหน้า Flow${masked.length ? ` (ปุ่มที่เกี่ยวกับบัญชีที่เห็น: ${masked.join(' | ')})` : ' (ไม่เห็นปุ่มบัญชีเลย — หน้า Flow อาจยังโหลดไม่เสร็จ ออกจากระบบอยู่ หรือเป็นหน้าที่ไม่มีแถบบัญชี · ลองรีเฟรชหน้า Flow หรือกดรูปโปรไฟล์มุมขวาบนหนึ่งครั้งแล้วปิด)'}`)
     }
     return ''
   })
@@ -95,7 +122,8 @@ async function accountPanelIdentity(command, initialTrees, snapshot, stillCurren
   let openedPanelId
   const panelId = panel => panel.backendDOMNodeId ?? panel.nodeId
   if (!panels(trees).length) {
-    const buttons = trees.flat().filter(n => !n.ignored && n.role?.value === 'button' && /^(?:Account details|รายละเอียดบัญชี)$/i.test(n.name?.value ?? '') && n.backendDOMNodeId)
+    // ชื่อปุ่มเปิดแผงบัญชีเปลี่ยนตามรุ่นของ Flow — รับหลายแบบ แต่ต้องเจอปุ่มเดียวเท่านั้น (เจอหลายปุ่ม = ไม่กดมั่ว)
+    const buttons = trees.flat().filter(n => !n.ignored && n.role?.value === 'button' && /^(?:Account details|รายละเอียดบัญชี|Google Account|บัญชี Google)(?:$|[\s:：(])/i.test(n.name?.value ?? '') && n.backendDOMNodeId)
     if (buttons.length !== 1) return ''
     await click(buttons[0])
     opened = true
