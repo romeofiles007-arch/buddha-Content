@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { ROOT, loadConfig, slugify } from './config.mjs'
 import { recentThemes, themeOf } from './topics.mjs'
 import { characterFlowNote, bodyStyleRule, bodyStyleFlowNote, activeCharacter } from './character.mjs'
+import { SHOT_VARIETY_RULE } from './continuity.mjs'
 import { readProfile } from './clip_profile.mjs'
 
 import * as shared from '../../extension/prompts.js'
@@ -59,6 +60,7 @@ ${table}
 - ช็อตที่กำกับว่า "ภาพต่อเนื่อง" ให้เป็น mini-sequence ของช็อตก่อนหน้า ไม่ใช่ฉากใหม่
 - ใส่ pattern interrupt ทุก 15-30 วิ ตามกฎ 6
 - ตัวละครทุกตัวต้องมี @TAG และห้ามเปลี่ยนรูปร่าง/สี/อุปกรณ์ข้ามช็อต
+${SHOT_VARIETY_RULE}
 ${bodyStyleRule(activeCharacter(slug), readProfile(slug))}${shared.categoryRule(readProfile(slug), 'image') ? `\n${shared.categoryRule(readProfile(slug), 'image')}` : ''}
 - Env ต้องเป็นฉากที่มีรายละเอียดตาม BACKGROUNDS ใน Style Bible (สถานที่ + ของประกอบฉาก 3–6 ชิ้น + แสง/บรรยากาศ + โทนสี) ห้ามเขียนแค่ "พื้นหลังสีเรียบ"
 - แสงและโทนสีของ Env เลือกตาม COLOR MOOD ใน Style Bible ให้ตรงอารมณ์ของบรรทัดนั้น — โทนหลักเย็นสบายตา ห้ามบรรยายฉากเป็นแสงทอง/โทนเหลืองทั้งภาพ

@@ -381,7 +381,8 @@ async function artDepartment() {
     const next = nextRoundPrompt(config, slug, context)
     if (!next) break
     progress('art', merged.withPrompt, merged.total)
-    dept('art', { status: 'working', attempts: round + 1, detail: `รอบ ${next.round}: ขอ prompt ${next.batch} ช็อต (มีแล้ว ${merged.withPrompt}/${merged.total})` })
+    const what = next.redo ? `ขอเขียนภาพใหม่ ${next.batch} ช็อตที่ซ้ำกับช็อตข้างเคียง` : `ขอ prompt ${next.batch} ช็อต (มีแล้ว ${merged.withPrompt}/${merged.total})`
+    dept('art', { status: 'working', attempts: round + 1, detail: `รอบ ${next.round}: ${what}` })
     const text = await askChatGPT(next.prompt, `กำกับภาพ รอบ ${next.round} (${next.batch} ช็อต)`, {
       attachments: next.attachCharacter ? characterAttachments(activeCharacter(slug)) : undefined,
     })
@@ -393,6 +394,8 @@ async function artDepartment() {
   merged = mergeRounds(slug)
   if (merged.withPrompt < merged.total) throw new Error(`prompt ภาพยังไม่ครบ ${merged.withPrompt}/${merged.total}`)
   if (!merged.hasBible) console.warn('   เตือน: ไม่พบ Style/Character Bible ในคำตอบ — ภาพอาจไม่ต่อเนื่อง')
+  if (merged.continuityNote) console.warn(`   เตือน: ${merged.continuityNote}`)
+  if (merged.problems?.length) console.warn(`   ยังมีช็อตที่ภาพซ้ำกับข้างเคียง ${merged.problems.length} ช็อต (ขอเขียนใหม่ไปแล้วช็อตละครั้ง)`)
   dept('art', { status: 'done', detail: `prompt ภาพครบ ${merged.total} ช็อต` })
 }
 

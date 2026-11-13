@@ -17,6 +17,7 @@ import { coverRequest, parseCover, saveCoverPrompt, readCoverPrompt, coverShot, 
 import { riddleRequest, parseRiddle, parseRiddleDraft, riddleProblem, saveRiddle } from './riddle.mjs'
 import { themeOf } from './topics.mjs'
 import { orientationOf } from './prompts.mjs'
+import { continuityProblems, continuityReport, SHOT_VARIETY_RULE } from './continuity.mjs'
 
 export const SHOTS_PER_ROUND = 40
 const SHOT_LIST_MARK = /^\s*=+\s*SHOT LIST\s*=+\s*$/m
@@ -28,6 +29,7 @@ export function shotlistFiles(slug) {
     rounds: join(dir, 'rounds'),
     slots: join(dir, 'slots.json'),
     shots: join(dir, 'shots.json'),
+    redone: join(dir, 'redone.json'),
     brief: join(dir, 'agent_brief.txt'),
     raw: join(dir, 'output5_raw.txt'),
   }
@@ -45,7 +47,22 @@ export function readRounds(slug) {
 export function resetRounds(slug) {
   const f = shotlistFiles(slug)
   rmSync(f.rounds, { recursive: true, force: true })
-  for (const file of [f.shots, f.brief, f.raw]) rmSync(file, { force: true })
+  for (const file of [f.shots, f.brief, f.raw, f.redone]) rmSync(file, { force: true })
+}
+
+/** ช็อตที่เคยขอให้เขียนใหม่แล้ว — ขอซ้ำช็อตละครั้งเดียว กันวนขอไม่จบ */
+function readRedone(slug) {
+  try {
+    return new Set(JSON.parse(readFileSync(shotlistFiles(slug).redone, 'utf8')))
+  } catch {
+    return new Set()
+  }
+}
+
+function markRedone(slug, filenames) {
+  const all = readRedone(slug)
+  for (const name of filenames) all.add(name)
+  writeFileSync(shotlistFiles(slug).redone, JSON.stringify([...all], null, 2))
 }
 
 /** Style Bible + Character Bible + Rules = ทุกอย่างก่อนบรรทัด "=== SHOT LIST ===" ของรอบแรก */
@@ -74,6 +91,7 @@ const outputRules = (language) => `- ตอบเป็นข้อความ�
 - ช็อตที่กำกับว่า "ภาพต่อเนื่อง" ให้เป็น mini-sequence ของช็อตก่อนหน้า ไม่ใช่ฉากใหม่
 - ใส่ pattern interrupt ทุก 15-30 วิ ตามกฎ 6
 - ตัวละครทุกตัวต้องมี @TAG และห้ามเปลี่ยนรูปร่าง/สี/อุปกรณ์ข้ามช็อต
+${SHOT_VARIETY_RULE}
 ${imageLanguageRule(language)}`
 
 /**
@@ -85,7 +103,8 @@ export function nextRoundPrompt(config, slug, { title, timecodeText }) {
   const slots = JSON.parse(readFileSync(f.slots, 'utf8'))
   const raws = readRounds(slug)
   const { shots, missing } = parseShotList(raws.join('\n\n'), slots)
-  if (!missing.length) return null
+  // ครบทุกช็อตแล้ว — เหลือแค่ช็อตที่ภาพซ้ำกับช็อตข้างเคียง ขอเขียนใหม่ช็อตละครั้ง
+  if (!missing.length) return redoRoundPrompt(config, slug, { title }, { shots, raws })
 
   const missingSet = new Set(missing)
   const batch = slots.filter((s) => missingSet.has(s.filename)).slice(0, SHOTS_PER_ROUND)
@@ -154,6 +173,49 @@ ${OUTPUT_RULES}${orientationRule(config) ? `\n${orientationRule(config)}` : ''}$
   }
 }
 
+/**
+ * รอบ "เขียนใหม่" — ช็อตที่ตัวละครชุดเดิมและระยะภาพกลุ่มเดิมติดกันหลายช็อต (ภาพออกมาเหมือนกันทั้งแถว)
+ * ขอช็อตละครั้งเดียว (จำไว้ใน redone.json) — ไม่มีอะไรต้องแก้แล้ว = null คือจบขั้นนี้
+ */
+function redoRoundPrompt(config, slug, { title }, { shots, raws }) {
+  const done = readRedone(slug)
+  const problems = continuityProblems(shots).filter((p) => !done.has(p.filename))
+  if (!problems.length) return null
+  const byName = new Map(shots.map((s) => [s.filename, s]))
+  const order = shots.map((s) => s.filename)
+  const language = clipLanguage(config, slug)
+  const lines = problems.map((p) => {
+    const s = byName.get(p.filename)
+    const prev = byName.get(order[order.indexOf(p.filename) - 1])
+    return [
+      slotLine(s),
+      `  ของเดิม: ${s.prompt}`,
+      `  ต้องแก้เพราะ: ${p.reason}`,
+      prev?.prompt ? `  ช็อตก่อนหน้า (ห้ามซ้ำกับช็อตนี้): ${prev.prompt}` : null,
+    ].filter(Boolean).join('\n')
+  })
+  markRedone(slug, problems.map((p) => p.filename))
+  return {
+    round: raws.length + 1,
+    batch: problems.length,
+    remaining: 0,
+    redo: true,
+    prompt: `เขียน shot ใหม่เฉพาะ ${problems.length} ช็อตด้านล่างของคลิป "${title}" — ภาพชุดนี้ซ้ำกับช็อตข้างเคียงจนคลิปดูไม่ต่อเนื่อง
+
+ใช้ Style Bible และ Character Bible เดิมเท่านั้น ห้ามแก้ ห้ามเพิ่มตัวละครใหม่:
+${bibleOf(raws)}
+
+ช็อตที่ต้องเขียนใหม่ (ห้ามเพิ่ม ห้ามลด ห้ามแก้ชื่อไฟล์):
+${lines.join('\n\n')}
+
+ข้อกำหนดของ output:
+- ขึ้นต้นคำตอบด้วยบรรทัด "=== SHOT LIST ===" แล้วตามด้วยเฉพาะช็อตข้างบนนี้ ห้ามเขียนช็อตอื่น
+- แต่ละช็อตต้องเปลี่ยนระยะภาพให้ต่างจากช็อตก่อนหน้า (wide / medium / close-up / macro) และเปลี่ยนมุมกล้องกับสิ่งที่อยู่ในเฟรมให้คนดูเห็นของใหม่ — ยังอยู่ฉากเดิมและเล่าบรรทัดเดิมเหมือนเดิม
+- บรรทัดไหนพูดถึงคนหรือคำสอน ให้ดึงตัวละครหลักเข้ามาอยู่ในภาพแทนภาพธรรมชาติล้วน
+${outputRules(language)}${orientationRule(config) ? `\n${orientationRule(config)}` : ''}${categoryRule(readProfile(slug), 'image') ? `\n${categoryRule(readProfile(slug), 'image')}` : ''}`,
+  }
+}
+
 /** เก็บคำตอบของรอบ แล้วรวมทุกรอบเป็น shots.json + agent_brief.txt */
 export function saveRound(slug, raw) {
   const f = shotlistFiles(slug)
@@ -196,10 +258,14 @@ export function mergeRounds(slug) {
   writeFileSync(f.raw, all, 'utf8')
   writeFileSync(f.shots, JSON.stringify(shots, null, 2))
   writeFileSync(f.brief, agentBrief, 'utf8')
+  // ช็อตที่ภาพซ้ำกับข้างเคียง (ขอเขียนใหม่ในรอบถัดไป) + สรุปไว้ขึ้น log
+  const problems = continuityProblems(shots)
   return {
     total: slots.length,
     withPrompt: shots.length - missing.length,
     missing,
+    problems,
+    continuityNote: continuityReport(shots),
     hasBible: head.length > 0,
     coverPrompt: readCoverPrompt(slug),
     rounds: raws.length,
