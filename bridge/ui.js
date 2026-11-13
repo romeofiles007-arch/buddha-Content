@@ -33,6 +33,7 @@ import { autopilotProgress } from '../pipeline/lib/progress.mjs'
 import { ensureProfile } from '../pipeline/lib/clip_profile.mjs'
 import { readCharacter, updateCharacter, addCharacterImage, removeCharacterImage, clearCharacter, characterAttachments, activeCharacter, CHARACTER_DIR } from '../pipeline/lib/character.mjs'
 import { readSelfMonk, updateSelfMonk, addSelfMonkImage, removeSelfMonkImage, selfMime, selfMonkReady, SELF_NOT_READY, SELF_DIR, MAX_SELF_IMAGES } from '../pipeline/lib/self_monk.mjs'
+import { readMyBuddha, updateMyBuddha, addMyBuddhaImage, removeMyBuddhaImage, MY_BUDDHA_DIR, MAX_MY_BUDDHA_IMAGES } from '../pipeline/lib/my_buddha.mjs'
 import { PAUSE_PRESETS, MOTION_PRESETS } from '../pipeline/lib/ffmpeg.mjs'
 import { SUBTITLE_STYLES } from '../pipeline/lib/subtitles.mjs'
 import { clipSettings, CLIP_COVERAGES, firstCountOf, FIRST_COUNT_MAX } from '../pipeline/lib/clips.mjs'
@@ -884,6 +885,23 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         if (req.method === 'POST' && path === '/api/self-monk/image/delete') {
           const { name } = await readBody(req)
           return json(res, 200, view(removeSelfMonkImage(String(name)))), true
+        }
+      }
+
+      // ── พระพุทธเจ้าของฉัน (หมวด 1) — ภาพอ้างอิงที่ผู้ใช้เลือกเอง แทนพระพุทธรูปจากวิกิพีเดีย · เก็บที่ characters/buddha/ ──
+      if (path === '/api/my-buddha' || path.startsWith('/api/my-buddha/')) {
+        const view = (m) => ({
+          ...m,
+          ready: m.images.length > 0,
+          max: MAX_MY_BUDDHA_IMAGES,
+          previews: m.images.map((name) => ({ name, dataUrl: `data:${selfMime(name)};base64,${readFileSync(join(MY_BUDDHA_DIR, name)).toString('base64')}` })),
+        })
+        if (req.method === 'GET' && path === '/api/my-buddha') return json(res, 200, view(readMyBuddha())), true
+        if (req.method === 'POST' && path === '/api/my-buddha') return json(res, 200, view(updateMyBuddha(await readBody(req)))), true
+        if (req.method === 'POST' && path === '/api/my-buddha/image') return json(res, 200, view(addMyBuddhaImage(await readBody(req)))), true
+        if (req.method === 'POST' && path === '/api/my-buddha/image/delete') {
+          const { name } = await readBody(req)
+          return json(res, 200, view(removeMyBuddhaImage(String(name)))), true
         }
       }
 

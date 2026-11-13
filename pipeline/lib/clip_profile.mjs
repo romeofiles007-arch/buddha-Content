@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto'
 import { ROOT, loadConfig } from './config.mjs'
 import { categoryOf, monkInTitle, ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS } from '../../extension/prompts.js'
 import { readSelfMonk, selfMonkReady, SELF_NOT_READY } from './self_monk.mjs'
+import { readMyBuddha, MY_BUDDHA_DIR } from './my_buddha.mjs'
 
 const UA = { 'user-agent': 'DhammaAuto/1.0 (personal Dhamma video tool; Wikimedia API)' }
 const WIKI_API = 'https://th.wikipedia.org/w/api.php'
@@ -206,8 +207,24 @@ async function buddhaCache(log) {
   return images
 }
 
-/** คัดลอกภาพพระพุทธรูปไปไว้ในคลิป */
+/** ภาพอ้างอิงพระพุทธเจ้าที่ผู้ใช้เลือกเอง (กล่อง "พระพุทธเจ้าของฉัน") — คัดลอกเข้าคลิปเป็น buddha_1..n */
+function myBuddhaRefs(slug, log) {
+  const mine = readMyBuddha()
+  if (!mine.images.length) return null
+  mkdirSync(refDir(slug), { recursive: true })
+  const images = mine.images.map((file, i) => {
+    const name = `buddha_${i + 1}${extname(file).toLowerCase()}`
+    copyFileSync(join(MY_BUDDHA_DIR, file), join(refDir(slug), name))
+    return { file: name, name: 'ภาพที่เลือกไว้เอง', source: 'my-buddha' }
+  })
+  log(`   ภาพอ้างอิงพระพุทธเจ้า ${images.length} รูป (ภาพที่เลือกไว้เองในแผงข้าง)`)
+  return { fetchedAt: Date.now(), mine: true, ...(mine.description ? { note: mine.description } : {}), images }
+}
+
+/** คัดลอกภาพพระพุทธรูปไปไว้ในคลิป — ผู้ใช้เลือกภาพเองไว้ ใช้ภาพนั้นก่อนเสมอ */
 async function fetchBuddha(slug, log) {
+  const mine = myBuddhaRefs(slug, log)
+  if (mine) return mine
   const images = await buddhaCache(log)
   for (const i of images) copyFileSync(join(BUDDHA_CACHE, i.file), join(refDir(slug), i.file))
   log(`   ภาพอ้างอิงพระพุทธเจ้า ${images.length} รูป (${images.map((i) => i.name).join(', ')})`)

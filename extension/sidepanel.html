@@ -262,6 +262,21 @@
     <p class="hint" id="selfHint" style="margin:4px 0 0"></p>
   </section>
 
+  <!-- พระพุทธเจ้าของฉัน (หมวด 1) — แนบภาพอ้างอิงเอง แทนพระพุทธรูปที่ระบบโหลดจากวิกิพีเดีย -->
+  <section class="selfMonkBox" id="myBuddhaBox" aria-labelledby="myBuddhaTitle" hidden>
+    <h2 id="myBuddhaTitle">🪷 พระพุทธเจ้าของฉัน</h2>
+    <p class="hint" style="margin:0 0 8px">ใช้กับหมวด 1 (พุทธประวัติ &amp; พุทธพจน์) — แนบภาพพระพุทธรูป/ภาพพระพุทธเจ้าที่อยากให้เป็น แล้วทุกคลิปใหม่จะวาดตามภาพนี้ · ไม่แนบ = ระบบโหลดพระพุทธรูปไทยจากวิกิพีเดียให้เอง</p>
+    <div class="pasteZone" id="buddhaPaste" tabindex="0" role="button" aria-describedby="buddhaHint">
+      📋 คลิกตรงนี้แล้วกด <kbd>Ctrl</kbd>+<kbd>V</kbd> วางภาพพระพุทธเจ้าที่อยากได้
+      <span class="sub">หรือ <label class="linkish">เลือกไฟล์<input type="file" id="buddhaFile" accept="image/png,image/jpeg,image/webp" multiple hidden /></label> · 1–4 รูป เห็นพระพักตร์ชัด</span>
+    </div>
+    <ul class="charThumbs" id="buddhaThumbs"></ul>
+    <label class="pick" style="margin-top:8px">รายละเอียดเพิ่มเติม
+      <textarea id="buddhaDesc" rows="2" maxlength="1000" placeholder="ไม่บังคับ เช่น จีวรสีกรักเข้ม พระพักตร์อิ่มเอิบ รัศมีเปลวทรงไทย"></textarea>
+    </label>
+    <p class="hint" id="buddhaHint" style="margin:4px 0 0"></p>
+  </section>
+
   <!-- ฉากวัดและตัวละคร 12 เฟรมอยู่ในส่วนขยาย -->
   <section class="studioHero" id="studioHero" aria-label="สถานะทีมงาน">
     <div class="heroBanner">

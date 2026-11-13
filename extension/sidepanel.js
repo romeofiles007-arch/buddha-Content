@@ -16,6 +16,7 @@ import { scheduleFromFields, scheduleFields, scheduleCopy } from './production-s
 
 /** พระของฉัน (โหมดพระสอนธรรม) — ประกาศไว้บนสุด เพราะ render() ช่วงโหลดแรกอ่านค่านี้ */
 let selfMonk = null
+let myBuddha = null
 
 initIcons()
 
@@ -1403,6 +1404,7 @@ function renderTopicMode() {
   $('genreBox').hidden = false
   applyCategoryTheme(S.genre)
   renderSelfMonk()
+  renderMyBuddha()
   $('topicGenre').disabled = busy || localBusy()
   $('topicGenre').value = categoryGenre(S.genre)
   $('topicAutoHint').hidden = mode !== 'auto'
@@ -1458,6 +1460,7 @@ $('topicGenre').addEventListener('change', async () => {
   applyCategoryTheme(S.genre)
   await save()
   renderSelfMonk()
+  renderMyBuddha()
   renderProdGenre()
   await syncGenre()
 })
@@ -1942,6 +1945,86 @@ localApp()
   .then((data) => {
     selfMonk = data
     renderSelfMonk()
+  })
+  .catch(() => {})
+
+// ── 🪷 พระพุทธเจ้าของฉัน (หมวด 1) — ภาพอ้างอิงที่เลือกเอง ใช้แทนพระพุทธรูปที่ระบบโหลดจากวิกิพีเดีย ──
+function renderMyBuddha() {
+  const box = $('myBuddhaBox')
+  // โหมดพระสอนธรรมไม่มีตัวละคร @buddha — ซ่อนไว้
+  box.hidden = selfMode()
+  if (box.hidden) return
+  const hint = $('buddhaHint')
+  if (!myBuddha) {
+    hint.textContent = 'เปิดโปรแกรมในเครื่องก่อน แล้วภาพที่บันทึกไว้จะแสดงตรงนี้'
+    hint.className = 'hint'
+    return
+  }
+  const list = $('buddhaThumbs')
+  list.textContent = ''
+  for (const p of myBuddha.previews) {
+    const li = document.createElement('li')
+    const del = Object.assign(document.createElement('button'), { type: 'button', textContent: '✕', title: 'ลบรูปนี้' })
+    del.setAttribute('aria-label', 'ลบภาพอ้างอิงพระพุทธเจ้ารูปนี้')
+    del.addEventListener('click', () => buddhaCall('/api/my-buddha/image/delete', { name: p.name }))
+    li.append(Object.assign(document.createElement('img'), { src: p.dataUrl, alt: 'ภาพอ้างอิงพระพุทธเจ้า' }), del)
+    list.append(li)
+  }
+  if (document.activeElement !== $('buddhaDesc')) $('buddhaDesc').value = myBuddha.description
+  hint.textContent = myBuddha.ready
+    ? `ใช้ภาพที่เลือกไว้ ${myBuddha.images.length} รูป — คลิปใหม่หมวด 1 จะวาดพระพุทธเจ้าตามภาพนี้ (คลิปเดิมยังใช้ภาพที่แนบไว้แล้ว)`
+    : 'ยังไม่ได้เลือกเอง — ระบบจะโหลดพระพุทธรูปไทย (ชินราช · ศรีศากยมุนี · สิหิงค์) จากวิกิพีเดียให้เอง'
+  hint.className = `hint${myBuddha.ready ? ' ok' : ''}`
+}
+
+async function buddhaCall(path, body) {
+  try {
+    myBuddha = await api(await localApp(), path, body)
+  } catch (err) {
+    $('buddhaHint').textContent = err.message
+    $('buddhaHint').className = 'hint status err'
+    return
+  }
+  renderMyBuddha()
+}
+
+async function addBuddhaFiles(files) {
+  const images = [...files].filter((f) => /^image\/(png|jpeg|webp)$/.test(f.type))
+  if (!images.length) return
+  $('buddhaHint').textContent = 'กำลังบันทึกรูป…'
+  for (const f of images) await buddhaCall('/api/my-buddha/image', await imageToUpload(f))
+}
+
+$('buddhaPaste').addEventListener('paste', async (e) => {
+  const files = [...(e.clipboardData?.files ?? [])]
+  if (!files.length) return
+  e.preventDefault()
+  await addBuddhaFiles(files)
+})
+$('buddhaPaste').addEventListener('click', (e) => {
+  if (!e.target.closest('label')) $('buddhaPaste').focus()
+})
+$('buddhaPaste').addEventListener('dragover', (e) => {
+  e.preventDefault()
+  $('buddhaPaste').classList.add('drag')
+})
+$('buddhaPaste').addEventListener('dragleave', () => $('buddhaPaste').classList.remove('drag'))
+$('buddhaPaste').addEventListener('drop', async (e) => {
+  e.preventDefault()
+  $('buddhaPaste').classList.remove('drag')
+  await addBuddhaFiles(e.dataTransfer?.files ?? [])
+})
+$('buddhaFile').addEventListener('change', async (e) => {
+  await addBuddhaFiles(e.target.files)
+  e.target.value = ''
+})
+$('buddhaDesc').addEventListener('change', () => buddhaCall('/api/my-buddha', { description: $('buddhaDesc').value }))
+
+localApp()
+  .then((app) => api(app, '/api/my-buddha'))
+  .then((data) => {
+    myBuddha = data
+    renderMyBuddha()
   })
   .catch(() => {})
 

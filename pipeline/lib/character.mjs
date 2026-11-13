@@ -87,7 +87,15 @@ export function activeCharacter(slug) {
     return { enabled: true, description: `พระเกจิของคลิปนี้: ${profile.monk.name} (ตัวละคร @monk)`, images: refs.map((f) => basename(f)), dir: refDir(slug), monk: profile.monk.name }
   }
   if (refs.length && profile.buddha) {
-    return { enabled: true, description: 'พระพุทธเจ้า (ตัวละคร @buddha) — อ้างอิงจากพระพุทธรูป', images: refs.map((f) => basename(f)), dir: refDir(slug), buddha: true }
+    const mine = !!profile.buddha.mine
+    return {
+      enabled: true,
+      description: `พระพุทธเจ้า (ตัวละคร @buddha) — อ้างอิงจาก${mine ? 'ภาพที่เลือกไว้เอง' : 'พระพุทธรูป'}${profile.buddha.note ? ` · ${profile.buddha.note}` : ''}`,
+      images: refs.map((f) => basename(f)),
+      dir: refDir(slug),
+      buddha: true,
+      buddhaMine: mine,
+    }
   }
   if (profile?.category === 'buddha' || profile?.category === 'monk') return null
   const c = readCharacter()
@@ -126,7 +134,9 @@ export function characterRule(c = activeCharacter(), profile = null) {
     return lines.join('\n')
   }
   if (c.buddha) {
-    lines.push(`- รูปที่แนบ ${c.images.length} รูปคือพระพุทธรูปไทย ใช้เป็นแบบของ @buddha: พระพักตร์สงบ อมยิ้มเล็กน้อย ขมวดพระเกศาและพระรัศมีเปลว พระกรรณยาว จีวรห่มเฉียงสีเหลืองทอง และรัศมีสีทองรอบพระเศียร`)
+    lines.push(c.buddhaMine
+      ? `- รูปที่แนบ ${c.images.length} รูปคือภาพอ้างอิงพระพุทธเจ้าที่เลือกไว้เอง ใช้เป็นแบบของ @buddha: เขียน Character Bible ตามพระพักตร์ พระเกศา พระรัศมี สีและเนื้อจีวรในรูปให้ละเอียด ให้ทุกช็อตเป็นองค์เดียวกับในรูป`
+      : `- รูปที่แนบ ${c.images.length} รูปคือพระพุทธรูปไทย ใช้เป็นแบบของ @buddha: พระพักตร์สงบ อมยิ้มเล็กน้อย ขมวดพระเกศาและพระรัศมีเปลว พระกรรณยาว จีวรห่มเฉียงสีเหลืองทอง และรัศมีสีทองรอบพระเศียร`)
     lines.push(`- ทำ @buddha เป็น${figure}ที่มีชีวิต ยืน เดิน นั่ง และแสดงธรรมได้ตามเรื่อง (ไม่ใช่รูปปั้น เว้นแต่ฉากนั้นเป็นพระพุทธรูปจริงๆ) อย่างเคารพตามกฎ SACRED FIGURES · ใช้หน้าตาเดียวกันทุกช็อต`)
     lines.push('- พระสาวก ชาวบ้าน และกษัตริย์ในพุทธกาล ออกแบบให้เข้ากับสไตล์เดียวกัน')
     return lines.join('\n')
@@ -162,6 +172,8 @@ export function characterFlowNote(c = activeCharacter(), profile = null) {
   const figure = figureStyle(profile)
   if (c.selfMonk) return `รูปที่แนบคือภาพจริงของ${c.selfMonk} พระผู้สอนในคลิป (ตัวละคร @monk) — ทำเป็น${figure}หน้าเหมือนท่าน ห่มจีวร อย่างเคารพ ล็อกใบหน้า วัย รูปร่าง และสีจีวรตามรูปในทุกภาพ ห้ามล้อเลียน`
   if (c.monk) return `รูปที่แนบคือภาพจริงของ${c.monk} (ตัวละคร @monk) — ทำเป็น${figure}อย่างเคารพ ล็อกใบหน้า วัย รูปร่าง และสีจีวรตามรูปในทุกภาพ ห้ามล้อเลียน`
-  if (c.buddha) return `รูปที่แนบคือพระพุทธรูป ใช้เป็นแบบของพระพุทธเจ้า (@buddha) — ทำเป็น${figure}ที่มีชีวิตอย่างเคารพ พระพักตร์สงบ พระเกศาขมวด จีวรเหลืองทอง มีรัศมีทองรอบพระเศียร หน้าตาเดียวกันทุกภาพ ห้ามล้อเลียน`
+  if (c.buddha) return c.buddhaMine
+    ? `รูปที่แนบคือภาพอ้างอิงพระพุทธเจ้าที่เลือกไว้เอง ใช้เป็นแบบของ @buddha — ทำเป็น${figure}ที่มีชีวิตอย่างเคารพ ล็อกพระพักตร์ พระเกศา พระรัศมี และสีจีวรตามรูปในทุกภาพ ห้ามล้อเลียน`
+    : `รูปที่แนบคือพระพุทธรูป ใช้เป็นแบบของพระพุทธเจ้า (@buddha) — ทำเป็น${figure}ที่มีชีวิตอย่างเคารพ พระพักตร์สงบ พระเกศาขมวด จีวรเหลืองทอง มีรัศมีทองรอบพระเศียร หน้าตาเดียวกันทุกภาพ ห้ามล้อเลียน`
   return 'รูปที่แนบคือตัวละครหลัก ล็อกหน้าตา ทรงผม สี และชุดตามรูปนี้ในทุกภาพ'
 }

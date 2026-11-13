@@ -47,7 +47,8 @@ export function updateSelfMonk({ name, description } = {}, dir = SELF_DIR) {
   }, dir)
 }
 
-export function addSelfMonkImage({ type, base64 } = {}, dir = SELF_DIR) {
+/** prefix = คำนำหน้าชื่อไฟล์ ("monk" = พระของฉัน · "buddha" = พระพุทธเจ้าของฉัน — ดู my_buddha.mjs) */
+export function addSelfMonkImage({ type, base64 } = {}, dir = SELF_DIR, prefix = 'monk') {
   const cur = readSelfMonk(dir)
   if (cur.images.length >= MAX_SELF_IMAGES) throw new Error(`ใส่รูปหน้าพระได้สูงสุด ${MAX_SELF_IMAGES} รูป — ลบรูปเก่าก่อน`)
   const ext = Object.entries(MIME).find(([, m]) => m === type)?.[0]
@@ -56,7 +57,7 @@ export function addSelfMonkImage({ type, base64 } = {}, dir = SELF_DIR) {
   if (!buf.length) throw new Error('ไม่มีข้อมูลรูป')
   if (buf.length > 6 * 1024 * 1024) throw new Error('รูปใหญ่เกิน 6MB')
   mkdirSync(dir, { recursive: true })
-  const name = `monk_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}${ext}`
+  const name = `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}${ext}`
   writeFileSync(join(dir, name), buf)
   return write({ ...cur, images: [...cur.images, name] }, dir)
 }
