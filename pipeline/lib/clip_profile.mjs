@@ -9,13 +9,13 @@
  * หมวดมาจาก: แนวที่เลือก/คอลัมน์ Genre ของหัวข้อ → ถ้าไม่รู้ ดูจากชื่อเรื่อง
  * ดึงข้อมูลจากวิกิพีเดียภาษาไทยผ่าน API สาธารณะ (ไม่ต้องใช้ key) — ล้มเหลวก็ทำคลิปต่อได้ แค่ไม่มีภาพอ้างอิง
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, rmSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { ROOT, loadConfig } from './config.mjs'
 import { categoryOf, monkInTitle, ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS } from '../../extension/prompts.js'
 import { readSelfMonk, selfMonkReady, SELF_NOT_READY } from './self_monk.mjs'
-import { readMyBuddha, MY_BUDDHA_DIR } from './my_buddha.mjs'
+import { readMyBuddha, myBuddhaReady, MY_BUDDHA_DIR } from './my_buddha.mjs'
 
 const UA = { 'user-agent': 'DhammaAuto/1.0 (personal Dhamma video tool; Wikimedia API)' }
 const WIKI_API = 'https://th.wikipedia.org/w/api.php'
@@ -212,6 +212,9 @@ function myBuddhaRefs(slug, log) {
   const mine = readMyBuddha()
   if (!mine.images.length) return null
   mkdirSync(refDir(slug), { recursive: true })
+  // ล้างภาพอ้างอิงพระพุทธเจ้าชุดเดิมของคลิปนี้ก่อน (เช่นพระพุทธรูปที่ระบบเคยหามาให้ หรือรูปที่แนบไว้ชุดก่อน)
+  // ไม่งั้นรูปเก่าค้างอยู่ใน 00_ref แล้วถูกแนบไปด้วย — Flow จะได้พระสองแบบในคลิปเดียว
+  for (const f of readdirSync(refDir(slug)).filter((f) => f.startsWith('buddha_'))) rmSync(join(refDir(slug), f), { force: true })
   const images = mine.images.map((file, i) => {
     const name = `buddha_${i + 1}${extname(file).toLowerCase()}`
     copyFileSync(join(MY_BUDDHA_DIR, file), join(refDir(slug), name))
@@ -219,6 +222,16 @@ function myBuddhaRefs(slug, log) {
   })
   log(`   ภาพอ้างอิงพระพุทธเจ้า ${images.length} รูป (ภาพที่เลือกไว้เองในแผงข้าง)`)
   return { fetchedAt: Date.now(), mine: true, ...(mine.description ? { note: mine.description } : {}), images }
+}
+
+/** คลิปนี้ลงภาพไปแล้วหรือยัง — ใช้ตัดสินว่าเปลี่ยนภาพอ้างอิงกลางคันได้ไหม */
+function madeImages(slug) {
+  const dir = join(ROOT, 'projects', slug, '05_images')
+  try {
+    return readdirSync(dir).some((f) => /\.(png|jpe?g|webp)$/i.test(f))
+  } catch {
+    return false
+  }
 }
 
 /** คัดลอกภาพพระพุทธรูปไปไว้ในคลิป — ผู้ใช้เลือกภาพเองไว้ ใช้ภาพนั้นก่อนเสมอ */
@@ -263,7 +276,11 @@ export async function ensureProfile(slug, { title, genre, log = console.log } = 
       log(`   ดึงข้อมูล${profile.monk.name}จากวิกิพีเดียไม่ได้ (${err.message}) — ทำต่อโดยไม่มีภาพอ้างอิง จะลองใหม่รอบหน้า`)
     }
   }
-  if (profile.category === 'buddha' && !profile.buddha?.fetchedAt) {
+  // เพิ่งแนบ "พระพุทธเจ้าของฉัน" ทีหลัง แต่คลิปนี้ยังไม่ได้ลงภาพสักใบ → เปลี่ยนมาใช้ภาพที่แนบแทนพระพุทธรูปที่ระบบหามา
+  // (คลิปที่ลงภาพไปแล้วไม่เปลี่ยนกลางคัน ไม่งั้นได้พระคนละองค์ในคลิปเดียวกัน — คลิปหน้าใช้ภาพที่แนบ)
+  const swapToMine = profile.category === 'buddha' && profile.buddha?.fetchedAt && !profile.buddha.mine && myBuddhaReady() && !madeImages(slug)
+  if (swapToMine) log('   เปลี่ยนมาใช้ภาพอ้างอิงพระพุทธเจ้าที่แนบไว้เอง (แทนพระพุทธรูปที่ระบบหามาให้)')
+  if (profile.category === 'buddha' && (!profile.buddha?.fetchedAt || swapToMine)) {
     mkdirSync(refDir(slug), { recursive: true })
     try {
       profile.buddha = await fetchBuddha(slug, log)

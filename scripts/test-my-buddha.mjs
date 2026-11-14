@@ -2,7 +2,7 @@
 //   node scripts/test-my-buddha.mjs
 // ไม่ต่อเน็ต ไม่แตะภาพของผู้ใช้: ที่เก็บเทสต์ในโฟลเดอร์ชั่วคราว · ขั้นคัดลอกเข้าคลิปทดสอบเฉพาะตอนที่ยังไม่มีภาพของผู้ใช้
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { readMyBuddha, updateMyBuddha, addMyBuddhaImage, removeMyBuddhaImage, myBuddhaReady, MY_BUDDHA_DIR, MAX_MY_BUDDHA_IMAGES } from '../pipeline/lib/my_buddha.mjs'
@@ -94,6 +94,53 @@ await asyncTest('คลิปหมวด 1: ภาพที่แนบเอ�
   } finally {
     rmSync(join(ROOT, 'projects', slug), { recursive: true, force: true })
     // ภาพที่เทสต์ใส่เองเท่านั้นที่ลบ — ภาพของผู้ใช้ไม่ยุ่ง
+    if (!had) for (const n of readMyBuddha().images) removeMyBuddhaImage(n)
+  }
+})
+
+// ── แนบภาพทีหลัง: คลิปที่ทำค้างอยู่ต้องเปลี่ยนมาใช้ภาพที่แนบ ถ้ายังไม่ได้ลงภาพสักใบ ──
+const stale = (slug) => {
+  mkdirSync(refDir(slug), { recursive: true })
+  writeFileSync(join(refDir(slug), 'buddha_9.jpg'), 'ภาพพระพุทธรูปชุดเก่า')
+  writeFileSync(join(refDir(slug), 'profile.json'), JSON.stringify({
+    category: 'buddha',
+    title: 'พระพุทธเจ้าตรัสถึงความไม่เที่ยง',
+    artStyle: 'watercolor',
+    narration: 'teach',
+    buddha: { fetchedAt: 1, images: [{ file: 'buddha_9.jpg', name: 'พระพุทธชินราช' }] },
+  }))
+}
+
+await asyncTest('แนบภาพทีหลัง: คลิปที่ยังไม่ได้ลงภาพ เปลี่ยนมาใช้ภาพที่แนบ และลบพระพุทธรูปชุดเก่าทิ้ง', async () => {
+  const had = myBuddhaReady()
+  if (!had) addMyBuddhaImage(image())
+  const slug = `_test_my_buddha_swap_${process.pid}`
+  try {
+    stale(slug)
+    const profile = await ensureProfile(slug, { title: 'พระพุทธเจ้าตรัสถึงความไม่เที่ยง', log: () => {} })
+    assert.equal(profile.buddha.mine, true)
+    assert.equal(profile.artStyle, 'watercolor', 'ลายเส้นของคลิปต้องไม่ถูกเขียนทับ')
+    assert.ok(!existsSync(join(refDir(slug), 'buddha_9.jpg')), 'พระพุทธรูปชุดเก่ายังค้างอยู่ใน 00_ref')
+    assert.equal(readdirSync(refDir(slug)).filter((f) => f.startsWith('buddha_')).length, readMyBuddha().images.length)
+  } finally {
+    rmSync(join(ROOT, 'projects', slug), { recursive: true, force: true })
+    if (!had) for (const n of readMyBuddha().images) removeMyBuddhaImage(n)
+  }
+})
+
+await asyncTest('คลิปที่ลงภาพไปแล้ว ไม่เปลี่ยนพระกลางคัน (คลิปหน้าถึงใช้ภาพที่แนบ)', async () => {
+  const had = myBuddhaReady()
+  if (!had) addMyBuddhaImage(image())
+  const slug = `_test_my_buddha_keep_${process.pid}`
+  try {
+    stale(slug)
+    mkdirSync(join(ROOT, 'projects', slug, '05_images'), { recursive: true })
+    writeFileSync(join(ROOT, 'projects', slug, '05_images', '00_00_00.png'), 'ภาพที่ลงไปแล้ว')
+    const profile = await ensureProfile(slug, { title: 'พระพุทธเจ้าตรัสถึงความไม่เที่ยง', log: () => {} })
+    assert.notEqual(profile.buddha.mine, true)
+    assert.ok(existsSync(join(refDir(slug), 'buddha_9.jpg')))
+  } finally {
+    rmSync(join(ROOT, 'projects', slug), { recursive: true, force: true })
     if (!had) for (const n of readMyBuddha().images) removeMyBuddhaImage(n)
   }
 })
