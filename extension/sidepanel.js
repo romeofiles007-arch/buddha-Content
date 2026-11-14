@@ -1547,6 +1547,7 @@ function renderClipSettings() {
       b.disabled = localBusy()
     }
   }
+  showRandomOverride(prod?.settings?.random)
   const sel = $('clipSubtitles')
   if (!sel.options.length) for (const o of clip.options.subtitles) sel.append(new Option(o.label, o.id))
   sel.value = clip.subtitles
@@ -3481,6 +3482,16 @@ setInterval(() => loadUpdate(), 10 * 60_000)
 // ── 🏭 ผลิตต่อเนื่อง — โปรแกรมในเครื่องเป็นคนคุมเวลา (ปิดแผงนี้ได้) แผงนี้แค่ตั้งค่า/ดูสถานะ ──
 let prod = null
 let prodFilled = false
+/**
+ * คำเตือนในตั้งค่าคลิป: ติ๊ก "สุ่ม" ข้อไหนไว้ที่ 🏭 ผลิตต่อเนื่อง ข้อนั้นจะถูกสุ่มใหม่ทุกคลิป
+ * ทับค่าที่เลือกไว้ในตั้งค่าคลิป — ไม่บอกไว้จะงงว่าเลือกสีน้ำแล้วทำไมได้ภาพยนตร์สมจริง
+ */
+function showRandomOverride(random) {
+  for (const [id, key] of [['clipArtOverride', 'art'], ['clipNarrationOverride', 'narration']]) {
+    const el = $(id)
+    if (el) el.hidden = !random?.[key]
+  }
+}
 let prodResumeTimeSet = false // ช่องเวลาทำต่อ: ใส่เวลาเริ่มผลิตที่ตั้งไว้ให้ครั้งแรกครั้งเดียว ไม่ทับค่าที่ผู้ใช้เลือก
 const PROD_LANG = { th: 'ไทย', zh: 'จีน', en: 'อังกฤษ' }
 const prodTime = (t) => new Date(t).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: new Date(t).toDateString() === new Date().toDateString() ? undefined : 'numeric', month: new Date(t).toDateString() === new Date().toDateString() ? undefined : 'short' })
@@ -3575,6 +3586,7 @@ function renderProdPages(s) {
 function renderProd() {
   if (!prod) return
   const { settings: s, state: st } = prod
+  showRandomOverride(s.random) // ตั้งค่าคลิปต้องรู้ว่าข้อไหนถูกสุ่มทับ
   if (!prodFilled) {
     prodFilled = true
     const f = scheduleFields(s)

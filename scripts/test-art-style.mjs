@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ART_STYLES, RETIRED_ART_STYLES, FULL_BLEED_RULE, COLOR_MOOD_RULE, figureStyle, categoryRule } from '../extension/prompts.js'
 import { ROOT } from '../pipeline/lib/config.mjs'
-import { readProfile } from '../pipeline/lib/clip_profile.mjs'
+import { readProfile, ensureProfile } from '../pipeline/lib/clip_profile.mjs'
 import { flowPrompt } from '../pipeline/lib/prompts.mjs'
 import { characterRule, characterFlowNote, bodyStyleRule, bodyStyleFlowNote } from '../pipeline/lib/character.mjs'
 
@@ -131,6 +131,37 @@ test('คลิปที่ตั้งลายเส้นภาพยนต�
   } finally {
     rmSync(join(ROOT, 'projects', slug), { recursive: true, force: true })
   }
+})
+
+// ── 🏭 ผลิตต่อเนื่องทับลายเส้นที่เลือกไว้ ──
+// ผู้ใช้ (14 พ.ย. 2026): เลือก "สีน้ำพุทธกาล" ไว้ แต่ได้คลิปภาพยนตร์สมจริง เพราะผลิตต่อเนื่อง
+// ติ๊ก "สุ่ม · ลายเส้นของภาพ" ไว้ (ค่าตั้งต้น) แล้วส่ง CLIP_ART_STYLE=random มาทับทุกคลิป
+await (async () => {
+  const slug = `_test_art_env_${process.pid}`
+  const had = process.env.CLIP_ART_STYLE
+  try {
+    process.env.CLIP_ART_STYLE = 'cinematic'
+    const forced = await ensureProfile(slug, { title: 'ทดสอบลายเส้นของภาพ', log: () => {} })
+    assert.equal(forced.artStyle, 'cinematic', 'ผลิตต่อเนื่องต้องทับลายเส้นที่เลือกในตั้งค่าคลิป')
+    passed++
+    console.log('  ✓ ผลิตต่อเนื่องส่งลายเส้นมาเอง = ทับค่าที่เลือกในตั้งค่าคลิป')
+  } finally {
+    if (had === undefined) delete process.env.CLIP_ART_STYLE
+    else process.env.CLIP_ART_STYLE = had
+    rmSync(join(ROOT, 'projects', slug), { recursive: true, force: true })
+  }
+})()
+
+test('แผงข้างเตือนไว้ว่าผลิตต่อเนื่องกำลังสุ่มลายเส้นทับค่าที่เลือก', () => {
+  const html = readFileSync(join(ROOT, 'extension', 'sidepanel.html'), 'utf8')
+  const js = readFileSync(join(ROOT, 'extension', 'sidepanel.js'), 'utf8')
+  assert.match(html, /id="clipArtOverride"/)
+  assert.match(html, /id="clipNarrationOverride"/)
+  assert.match(html, /ผลิตต่อเนื่อง → สุ่ม ติ๊ก “ลายเส้นของภาพ”/)
+  // คำเตือนต้องอัปเดตทั้งตอนเปิดตั้งค่าคลิป และตอนค่าสุ่มของผลิตต่อเนื่องเปลี่ยน
+  assert.match(js, /showRandomOverride\(prod\?\.settings\?\.random\)/)
+  assert.match(js, /showRandomOverride\(s\.random\)/)
+  assert.match(js, /\['clipArtOverride', 'art'\]/)
 })
 
 console.log(`\nผ่าน ${passed} ข้อ`)
