@@ -69,7 +69,12 @@ if (categoryOf(config.script.genre)?.id === 'self' && !selfMonkReady()) {
 let topicPick = null
 if (autoTopic) {
   const { listDoneTitles, listSeenTitles, addSeenTitles } = await import('./lib/topics.mjs')
+  const { recentTopics, screenTopics, GUARD_WINDOW } = await import('./lib/topic-guard.mjs')
   const done = listDoneTitles()
+  // ตัวกันทำเรื่องซ้ำ: เทียบกับเรื่องที่ทำไปแล้ว 100 เรื่องล่าสุด (ดู lib/topic-guard.mjs)
+  const recent = recentTopics(GUARD_WINDOW)
+  const rejected = [] // หัวข้อที่ถูกตัดเพราะซ้ำ — รอบขอใหม่ส่งไปให้เลี่ยงด้วย
+  let guard = { window: recent.length, judged: false }
   const seen = listSeenTitles()
   console.log('▶ แผนกคิดหัวข้อ')
   console.log(`   แนว: ${!config.script.genre || config.script.genre === 'mix' ? 'สุ่มหลากหลายแนว' : config.script.genre}`)
@@ -79,22 +84,36 @@ if (autoTopic) {
   for (let attempt = 1; attempt <= 3 && !topics.length; attempt++) {
     const result = await runJob({
       agent: 'chatgpt', kind: 'prompt', label: 'คิดหัวข้อ + ให้คะแนน',
-      payload: { prompt: scoredTopicsPrompt(config, { avoid: done, seen }), newChat: true }, timeoutMs: 20 * 60_000,
+      // ส่งให้เลี่ยงเฉพาะ 100 เรื่องล่าสุด (เดิมส่งทุกเรื่องที่เคยทำ — prompt ยาวขึ้นทุกคลิป) + หัวข้อที่เพิ่งถูกตัดเพราะซ้ำ
+      payload: { prompt: scoredTopicsPrompt(config, { avoid: [...recent.map((r) => r.title), ...rejected.map((r) => r.title)], seen }), newChat: true }, timeoutMs: 20 * 60_000,
     }).catch((err) => ({ error: err }))
     const doneSlugs = new Set(done.map(slugify))
-    topics = parseScoredTopics(result?.text ?? '').filter((t) => !doneSlugs.has(slugify(t.title)))
-    if (!topics.length) {
+    const offered = parseScoredTopics(result?.text ?? '').filter((t) => !doneSlugs.has(slugify(t.title)))
+    if (!offered.length) {
       console.warn(`   อ่านตารางหัวข้อไม่ได้${result?.error ? ` (${result.error.message})` : ''} — ลองใหม่ (${attempt}/3)`)
       if (attempt < 3) await new Promise((r) => setTimeout(r, 20_000))
+      continue
     }
+    for (const t of offered) console.log(`   ${String(t.score).padStart(3)} คะแนน · ${t.title}${t.why ? ` — ${t.why}` : ''}`)
+    addSeenTitles(offered.map((t) => t.title)) // รวมข้อที่จะถูกตัด — ครั้งหน้าไม่เสนอซ้ำ
+    // ── ตัวกันทำเรื่องซ้ำ: ChatGPT ตัดสินเนื้อเรื่องเทียบ 100 เรื่องล่าสุด แล้วตัดข้อที่ซ้ำทิ้ง ──
+    console.log(`   ตรวจเรื่องซ้ำกับ ${recent.length} เรื่องล่าสุด…`)
+    const screened = await screenTopics(offered, recent, async (prompt) =>
+      (await runJob({ agent: 'chatgpt', kind: 'prompt', label: 'ตรวจเรื่องซ้ำ', payload: { prompt, newChat: true }, timeoutMs: 10 * 60_000 }))?.text ?? '')
+    for (const r of screened.rejected) console.log(`   ✗ ซ้ำ ตัดออก · ${r.title}${r.sameAs ? ` — เหมือนเรื่อง "${r.sameAs.title}"` : ''}${r.why ? ` (${r.why})` : ''}`)
+    if (!screened.judged && recent.length && screened.fresh.length) console.warn(`   ⚠ ChatGPT ตรวจเรื่องซ้ำไม่สำเร็จ${screened.error ? ` (${screened.error.message})` : ''} — ใช้ผลตรวจชื่อเรื่องในเครื่องอย่างเดียว`)
+    rejected.push(...screened.rejected)
+    guard = { window: recent.length, judged: screened.judged }
+    topics = screened.fresh
+    if (!topics.length) console.warn(`   หัวข้อที่เสนอซ้ำกับเรื่องที่ทำไปแล้วทุกข้อ — ขอชุดใหม่ (${attempt}/3)`)
   }
   if (!topics.length) {
-    console.error('\n❌ หยุดที่แผนกคิดหัวข้อ — ChatGPT ไม่ได้ส่งตารางหัวข้อที่อ่านได้')
+    console.error(rejected.length
+      ? `\n❌ หยุดที่แผนกคิดหัวข้อ — หัวข้อที่ ChatGPT เสนอซ้ำกับ ${recent.length} เรื่องล่าสุดทุกข้อ (ขอใหม่ครบ 3 รอบแล้ว)`
+      : '\n❌ หยุดที่แผนกคิดหัวข้อ — ChatGPT ไม่ได้ส่งตารางหัวข้อที่อ่านได้')
     process.exit(2)
   }
-  for (const t of topics) console.log(`   ${String(t.score).padStart(3)} คะแนน · ${t.title}${t.why ? ` — ${t.why}` : ''}`)
-  addSeenTitles(topics.map((t) => t.title))
-  topicPick = { chosen: topics[0], candidates: topics, at: Date.now() }
+  topicPick = { chosen: topics[0], candidates: topics, at: Date.now(), guard: { ...guard, rejected: rejected.map((r) => ({ title: r.title, sameAs: r.sameAs?.title ?? null, why: r.why, by: r.by })) } }
   title = topics[0].title
   console.log(`   เลือก: ${title} (${topics[0].score} คะแนน)`)
   const theme = topics[0].theme
