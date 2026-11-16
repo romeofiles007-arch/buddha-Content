@@ -12,7 +12,7 @@ import { readSelfMonk, updateSelfMonk, addSelfMonkImage, removeSelfMonkImage, se
 import { characterRule, characterFlowNote, bodyStyleRule } from '../pipeline/lib/character.mjs'
 import { detectCategory } from '../pipeline/lib/clip_profile.mjs'
 import { pickClip, DEFAULT_SETTINGS } from '../bridge/production.js'
-import { CATEGORIES as POST_CATEGORIES, AI_CATEGORIES, qcPrompt } from '../pipeline/lib/posting.mjs'
+import { CATEGORIES as POST_CATEGORIES } from '../pipeline/lib/posting.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const read = (p) => readFileSync(join(ROOT, p), 'utf8')
@@ -105,12 +105,6 @@ test('ผลิตต่อเนื่อง: เลือกโหมดนี
   assert.equal(pickClip(s, cfg(SELF.name)).genre, SELF.name)
   assert.equal(pickClip(s, cfg(GENRES[0])).genre, 'mix')
   assert.equal(pickClip({ ...s, random: { ...s.random, genre: false } }, cfg(GENRES[1])).genre, GENRES[1])
-})
-
-test('AI ตรวจคลิปเลือกโหมดนี้ไม่ได้ และไม่ทับหมวดของคลิปโหมดนี้', () => {
-  assert.ok(!AI_CATEGORIES.includes(SELF.name))
-  assert.ok(!qcPrompt({ title: 't', script: 's', seconds: 60, times: [1, 30] }).includes(SELF.name))
-  assert.match(read('bridge/posting.js'), /!\(item\.category && !AI_CATEGORIES\.includes\(item\.category\)\)/)
 })
 
 test('ต่อสายครบ: ต้องมีรูปก่อนเริ่ม · ส่งหมวดทั้งแบบพิมพ์หัวข้อ · แผงมีกล่องพระของฉัน', () => {

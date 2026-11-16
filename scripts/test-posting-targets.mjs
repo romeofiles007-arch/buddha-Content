@@ -20,7 +20,8 @@ let passed = 0
 let requestBody = {}
 let response
 const posting = createPosting({
-  jobs: new Map(), enqueue: () => { throw new Error('Unexpected AI job') },
+  // ไม่มี AI ตรวจคลิปแล้ว — งาน ChatGPT ที่ยังมีได้คือเขียนชื่อโพสต์ให้คลิปที่ยังไม่มี
+  jobs: new Map(), enqueue: (_agent, _kind, payload) => { if (!/คิดชื่อคลิป/.test(payload?.label ?? '')) throw new Error('Unexpected AI job'); return { id: 'title-job' } },
   json: (_res, code, body) => { response = { code, body } },
   readBody: async () => requestBody,
   port: 1, token: 'test', log: () => {}, scheduler: false,

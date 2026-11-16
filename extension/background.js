@@ -483,7 +483,6 @@ async function checkAutopilot() {
 const POST_ALERT = {
   posted: '📣 โพสต์แล้ว',
   failed: '⚠️ โพสต์ไม่สำเร็จบางที่',
-  held: '🔍 AI ให้คลิปนี้รอคนดูก่อนโพสต์',
 }
 async function checkPosting() {
   const { base, token, enabled } = await settings()
@@ -501,15 +500,15 @@ async function checkPosting() {
       title: POST_ALERT[e.kind] ?? '📣 โพสต์อัตโนมัติ',
       message: `${e.title}\n${e.text}`,
       priority: e.kind === 'posted' ? 0 : 2,
-      requireInteraction: e.kind !== 'posted', // พลาด/รอคนดู ต้องค้างไว้ให้เห็น
+      requireInteraction: e.kind !== 'posted', // โพสต์พลาดต้องค้างไว้ให้เห็น
     })
   }
 }
 
 chrome.notifications?.onClicked.addListener(async (id) => {
   chrome.notifications.clear(id)
-  // แจ้งเตือนของโพสต์อัตโนมัติ → แผงข้างเปิดหน้าโพสต์ที่แท็บ "โพสต์แล้ว" (รอตรวจ ถ้าเป็นคลิปที่ AI ให้รอ)
-  if (id.startsWith('post:')) await chrome.storage.session.set({ openPosting: id.split(':')[1] === 'held' ? 'review' : 'posted' }).catch(() => {})
+  // แจ้งเตือนของโพสต์อัตโนมัติ → แผงข้างเปิดหน้าโพสต์ที่แท็บ "โพสต์แล้ว"
+  if (id.startsWith('post:')) await chrome.storage.session.set({ openPosting: 'posted' }).catch(() => {})
   const win = await chrome.windows.getLastFocused().catch(() => null)
   if (win) chrome.sidePanel.open({ windowId: win.id }).catch(() => {})
 })

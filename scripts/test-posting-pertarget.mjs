@@ -42,7 +42,8 @@ const request = async (path, data) => { body = data; await posting.handle({ meth
 const byTitle = () => Object.fromEntries(P.loadQueue().map((q) => [q.title, q]))
 
 test('ช่องเดียวกัน: สองเพจลงคนละคลิปพร้อมกัน · TikTok ลงคลิปละช่องตามช่องว่างของตัวเอง', async () => {
-  await request('/api/posting/approve-all', {})
+  // ไม่มีขั้นตรวจ/ปุ่มโพสต์ทั้งหมดแล้ว — คลิปที่เข้าคิวได้เพจ (กระจายเอง) และเวลาโพสต์ในรอบทำงานปกติ
+  await posting.tick()
   const q = byTitle()
   const fbOf = (it) => it.targets.find((k) => k.startsWith('fb:'))
   assert.notEqual(fbOf(q['คลิป 1']), fbOf(q['คลิป 2']), 'คลิป 1 กับ 2 อยู่คนละเพจ')

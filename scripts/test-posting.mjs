@@ -40,19 +40,6 @@ await test('แฮชแท็ก + ข้อความโพสต์', () =>
   assert.equal(P.caption({ description: 'บรรยาย', hashtags: ['#a', 'b'] }), 'บรรยาย\n\n#a #b')
 })
 
-await test('อ่านผลตรวจ AI: มี ```json``` / ขึ้นบรรทัดใหม่ในสตริง / ไม่มี verdict', () => {
-  const r = P.parseQc('ผลตรวจ:\n```json\n{"score": 72, "verdict": "fix", "summary": "ภาพ 3\nสะกดผิด", "issues": ["ภาพ 3 สะกดผิด", ""]}\n```')
-  assert.equal(r.score, 72)
-  assert.equal(r.verdict, 'fix')
-  assert.deepEqual(r.issues, ['ภาพ 3 สะกดผิด'])
-  assert.equal(P.parseQc('{"score": 91}').verdict, 'pass')
-  assert.throws(() => P.parseQc('ไม่มี json'), /อ่านผลตรวจ/)
-})
-
-await test('เวลาตัดเฟรม กระจายทั้งคลิป', () => {
-  assert.deepEqual(P.frameTimes(80, 4), [10, 30, 50, 70])
-})
-
 await test('เข้าคิวเอง: เฉพาะคลิปหลักที่เสร็จหลังเปิดโหมด และยังไม่อยู่ในคิว', () => {
   const videos = [
     { slug: 'new', title: 'ใหม่', files: [{ name: 'new.mp4', createdAt: 2000 }] },
@@ -403,21 +390,6 @@ try {
     assert.equal(v.library.length, 0, 'คลิปที่อยู่ในคิวแล้วไม่ขึ้นในรายการเพิ่มจากคลัง')
   })
 
-  await test('AI ตรวจ: ส่ง ChatGPT แชตใหม่พร้อมเฟรม 8 ภาพ แล้วอ่านผลกลับ', async () => {
-    await call('/api/posting/check', { id })
-    assert.equal(enqueued.length, 1)
-    const job = enqueued[0]
-    assert.equal(job.agent, 'chatgpt')
-    assert.equal(job.payload.newChat, true)
-    assert.equal(job.payload.attachments.length, 8)
-    assert.ok(job.payload.prompt.includes('บทพากย์ทดสอบ'))
-    job.status = 'done'
-    job.result = { text: '{"score": 88, "verdict": "pass", "summary": "ดี", "issues": []}' }
-    const v = await call('/api/posting')
-    assert.equal(v.queue[0].ai.status, 'done')
-    assert.equal(v.queue[0].ai.score, 88)
-  })
-
   await test('แก้ข้อความโพสต์ + เลือกปลายทาง (ปลายทางมั่วถูกตัดทิ้ง)', async () => {
     const v0 = await call('/api/posting')
     const fbKey = v0.queue[0].targets.find((k) => k.startsWith('fb:'))
@@ -428,12 +400,13 @@ try {
     assert.deepEqual(v.queue[0].targets, [fbKey, ytKey])
   })
 
-  await test('อนุมัติแบบช่องเวลาถัดไป → ยกเลิกเวลา → กลับไปรอตรวจ', async () => {
+  await test('ตั้งเวลาแบบช่องเวลาถัดไป → ยกเลิกเวลา → พักไว้ ไม่ตั้งเวลาเองซ้ำ', async () => {
     let v = await call('/api/posting/approve', { id, when: 'next' })
     assert.equal(v.queue[0].status, 'scheduled')
     assert.ok(v.queue[0].scheduleAt > Date.now())
     v = await call('/api/posting/unschedule', { id })
     assert.equal(v.queue[0].status, 'review')
+    assert.equal(v.queue[0].hold, true, 'ยกเลิกเวลาเอง = พักไว้')
     await call('/api/posting/approve', { id, when: Date.now() - 3600_000 }, { expect: 400 })
   })
 
@@ -476,7 +449,7 @@ try {
     v = await call('/api/posting/reject', { id: again, reason: 'ภาพเพี้ยน' })
     assert.equal(v.queue[0].status, 'rejected')
     v = await call('/api/posting/restore', { id: again })
-    assert.equal(v.queue[0].status, 'review')
+    assert.equal(v.queue[0].status, 'review') // คลิปนี้ลงครบทุกแพลตฟอร์มไปแล้ว (กฎห้ามโพสต์ซ้ำ) จึงไม่มีปลายทางให้ตั้งเวลาเอง
     await call('/api/posting/add', { slug: '../etc', file: 'x.mp4' }, { expect: 400 })
   })
 
@@ -554,9 +527,9 @@ try {
     assert.equal(driveCalls.length, before)
   })
 
-  await test('หมวด: AI ระบุหมวด → เลือกเพจตามหมวด · เลือกหมวดเอง · ติ๊กเองแล้วไม่ถูกเปลี่ยน · กลับไปเลือกตามหมวด', async () => {
+  await test('หมวด: เลือกหมวด → เลือกเพจตามหมวด · เปลี่ยนหมวดเอง · ติ๊กเองแล้วไม่ถูกเปลี่ยน · กลับไปเลือกตามหมวด', async () => {
     // หมวดของธรรมะ Auto ที่ AI เลือกได้ (เดิมใช้หมวดการ์ตูน "อวกาศ"/"ไดโนเสาร์" — ตั้งชื่อตัวแปรไว้ตามเดิม)
-    const [SPACE, DINO] = P.AI_CATEGORIES
+    const [SPACE, DINO] = P.CATEGORIES
     await call('/api/posting/facebook', { pageId: '7000001', token: 'good-token-dino-page-0001', name: 'เพจไดโนเสาร์' })
     let v = await call('/api/posting/facebook', { pageId: '7000002', token: 'good-token-space-page-002', name: 'เพจอวกาศ' })
     const dinoPage = v.facebook.find((a) => a.pageId === '7000001').id
@@ -572,20 +545,18 @@ try {
     rmSync(join(tmp, 'posted.json'), { force: true })
     await call('/api/posting/remove', { id: v.queue[0].id })
     v = await call('/api/posting/add', { slug: SLUG, file: `${SLUG}.mp4` })
-    const id = v.queue.find((q) => q.status === 'review').id
+    // เพิ่มจากคลังแล้วได้เวลาโพสต์เองทันที — พักไว้ก่อน (ยกเลิกเวลา) เพื่อทดสอบการเลือกเพจตามหมวดของคลิปที่ยังไม่ตั้งเวลา
+    const id = v.queue.find((q) => q.slug === SLUG).id
+    v = await call('/api/posting/unschedule', { id })
     let item = v.queue.find((q) => q.id === id)
+    assert.equal(item.status, 'review')
     assert.deepEqual(item.targets, [`yt:${yt}`])
 
-    // AI ระบุหมวดอวกาศ → เพจอวกาศ + ช่องที่รับทุกหมวด
-    await call('/api/posting/check', { id })
-    const job = enqueued.at(-1)
-    assert.match(job.payload.prompt, /category/)
-    job.status = 'done'
-    job.result = { text: `{"score": 90, "verdict": "pass", "summary": "ดี", "issues": [], "category": "${SPACE}"}` }
-    v = await call('/api/posting')
+    // เลือกหมวดอวกาศ → เพจอวกาศ + ช่องที่รับทุกหมวด (ไม่มี AI ระบุหมวดแล้ว — หมวดมาจากโปรไฟล์ของคลิปหรือเลือกเอง)
+    v = await call('/api/posting/item', { id, category: SPACE })
     item = v.queue.find((q) => q.id === id)
     assert.equal(item.category, SPACE)
-    assert.equal(item.categoryBy, 'ai')
+    assert.equal(item.categoryBy, 'manual')
     assert.deepEqual(item.targets.sort(), [`fb:${spacePage}`, `yt:${yt}`].sort())
 
     // เลือกหมวดเอง → เพจไดโนเสาร์แทน

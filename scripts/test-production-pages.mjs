@@ -78,7 +78,7 @@ test('ต่อสายครบ: production ส่งเพจให้ postin
   const js = readFileSync(join(ROOT, 'extension', 'sidepanel.js'), 'utf8')
   assert.match(prodSrc, /api\.onClipReady\(result\.slug, settings\.autoPost, pages\)/)
   assert.match(server, /onClipReady = \(slug, mode, pages\) => posting\.enqueueAuto\(slug, mode, pages\)/)
-  assert.match(postSrc, /async function enqueueAuto\(slug, mode = 'ai', pages = null\)/)
+  assert.match(postSrc, /async function enqueueAuto\(slug, mode = 'now', pages = null\)/)
   assert.match(postSrc, /item\.targetsEdited = true/)
   assert.match(html, /id="prodPages"[\s\S]*data-value="all"[\s\S]*data-value="split"/)
   assert.match(js, /pageQuota: Object\.fromEntries/)

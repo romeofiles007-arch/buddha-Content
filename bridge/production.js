@@ -34,14 +34,13 @@ export const DEFAULT_SETTINGS = {
   delayMax: 40,
   random: { genre: true, art: true, narration: true, language: false },
   languages: ['th'], // ภาษาที่สุ่มได้ (ใช้เมื่อ random.language)
-  // off | ai = AI ตรวจผ่านแล้วตั้งเวลาโพสต์เอง | now = ตั้งเวลาโพสต์ทันที ไม่ตรวจ
-  // ผู้ใช้ (5 พ.ย. 2026): เริ่มต้นไม่ให้ AI ตรวจ แต่เลือกเปิดได้
+  // off = เก็บในคลัง | now = เข้าคิวแล้วตั้งเวลาโพสต์ทันที · ไม่มีขั้น AI ตรวจแล้ว (ผู้ใช้ 16 พ.ย. 2026) — ค่าเก่า 'ai' นับเป็น 'now'
   autoPost: 'now',
   // โพสต์ลงเพจไหน: all = ระบบกระจายเอง แพลตฟอร์มละ 1 เพจ/ช่องที่รับหมวดของคลิป (กฎห้ามโพสต์ซ้ำ) · split = แบ่งคลิปตามจำนวนที่ตั้งต่อเพจ (คลิปละเพจเดียว)
   postPages: 'all',
   pageQuota: {}, // { "fb:<id>" | "yt:<id>": จำนวนคลิปต่อชุด } ใช้เมื่อ postPages = split
 }
-const AUTO_POST = ['off', 'ai', 'now']
+const AUTO_POST = ['off', 'now']
 const POST_PAGES = ['all', 'split']
 const TARGET_KEY = /^(fb|yt|tk):[\w.-]{1,64}$/
 
@@ -71,8 +70,9 @@ export function cleanSettings(input = {}, base = DEFAULT_SETTINGS) {
     if (langs.length) s.languages = [...new Set(langs)]
   }
   if (AUTO_POST.includes(input.autoPost)) s.autoPost = input.autoPost
-  else if (typeof input.autoPost === 'boolean') s.autoPost = input.autoPost ? 'ai' : 'off' // ค่าแบบเก่า (ติ๊กถูก)
-  if (!AUTO_POST.includes(s.autoPost)) s.autoPost = s.autoPost ? 'ai' : 'off'
+  else if (input.autoPost === 'ai' || input.autoPost === true) s.autoPost = 'now' // ค่าแบบเก่า (AI ตรวจ / ติ๊กถูก)
+  else if (input.autoPost === false) s.autoPost = 'off'
+  if (!AUTO_POST.includes(s.autoPost)) s.autoPost = s.autoPost ? 'now' : 'off' // ค่าที่บันทึกไว้เป็น 'ai' → เข้าคิวโพสต์เลย
   if (POST_PAGES.includes(input.postPages)) s.postPages = input.postPages
   if (!POST_PAGES.includes(s.postPages)) s.postPages = 'all'
   if (input.pageQuota && typeof input.pageQuota === 'object') {

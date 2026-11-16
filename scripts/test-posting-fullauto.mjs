@@ -1,4 +1,4 @@
-// เทสต์: "ออโต้ทั้งหมด" — ผลิตเสร็จ → เข้าคิว → AI ตรวจ → (ไม่มีข้อความโพสต์ก็ให้ ChatGPT เขียนให้) → ตั้งเวลา → โพสต์
+// เทสต์: ออโต้ทั้งเส้น (ไม่มีขั้นตรวจ) — ผลิตเสร็จ → เข้าคิว → (ไม่มีข้อความโพสต์ก็ให้ ChatGPT เขียนให้) → ตั้งเวลา → โพสต์
 //         แล้วบอกว่าโพสต์ไปไหนบ้าง (แจ้งเตือน + บรรทัด "โพสต์ล่าสุด" ในแผงข้าง)
 //   node scripts/test-posting-fullauto.mjs
 // ไม่ยิง Facebook/ChatGPT จริง · คิว/บัญชีอยู่ใน temp · โปรเจกต์ทดสอบ _fullautotest ถูกลบทิ้งตอนจบ
@@ -31,7 +31,7 @@ const failed = {
   id: 'b', title: 'คลิป ข', status: 'failed', finishedAt: 3000, targets: ['fb:1', 'yt:2'],
   results: { 'fb:1': { ok: true, name: 'เพจธรรมะ', url: 'https://fb/1' }, 'yt:2': { ok: false, name: 'ช่องธรรมะ', error: 'โควตาหมด' } },
 }
-const held = { id: 'c', title: 'คลิป ค', status: 'review', ai: { status: 'done', verdict: 'fix', summary: 'เสียงไม่ชัด', checkedAt: 2500 } }
+const held = { id: 'c', title: 'คลิป ค', status: 'review' } // ยังไม่ได้เวลาโพสต์ — ไม่ใช่เหตุการณ์ที่ต้องแจ้ง
 const old = { ...posted, id: 'd', finishedAt: 500 }
 
 await test('สรุปปลายทาง: ✓ ที่สำเร็จ · ✗ ที่พลาดพร้อมเหตุผล', () => {
@@ -39,11 +39,10 @@ await test('สรุปปลายทาง: ✓ ที่สำเร็จ �
   assert.equal(P.resultSummary(failed), 'เพจธรรมะ ✓ · ช่องธรรมะ ✗ (โควตาหมด)')
 })
 
-await test('เหตุการณ์ใหม่หลังเวลาที่เห็นล่าสุด: โพสต์แล้ว / พลาด / AI ให้รอคนดู · เรียงตามเวลา', () => {
+await test('เหตุการณ์ใหม่หลังเวลาที่เห็นล่าสุด: โพสต์แล้ว / พลาด · เรียงตามเวลา', () => {
   const ev = P.postingEvents([old, failed, posted, held], 1000)
-  assert.deepEqual(ev.map((e) => [e.id, e.kind]), [['a', 'posted'], ['c', 'held'], ['b', 'failed']])
+  assert.deepEqual(ev.map((e) => [e.id, e.kind]), [['a', 'posted'], ['b', 'failed']])
   assert.match(ev[0].text, /เพจธรรมะ ✓/)
-  assert.match(ev[1].text, /เสียงไม่ชัด/)
   assert.deepEqual(P.postingEvents([old, posted], 5000), [])
 })
 
@@ -98,21 +97,14 @@ const lastJob = () => [...jobs.values()].at(-1)
 try {
   P.updateAccounts((d) => {
     d.facebook.push({ id: 'p1', name: 'เพจธรรมะ', pageId: '1234567', token: 'x'.repeat(30) })
-    Object.assign(d.settings, { enabledAt: clipAt - 1000, autoCheck: true, autoApprove: true, skipCheck: false, slots: ['12:00', '19:00'] }) // เลือก AI ตรวจเอง (ค่าเริ่มต้นไม่ตรวจ)
+    Object.assign(d.settings, { enabledAt: clipAt - 1000, slots: ['12:00', '19:00'] }) // เปิดโหมดอย่างเดียว — ไม่มีสวิตช์ตรวจ/อนุมัติแล้ว
   })
 
-  await test('ผลิตเสร็จ → เข้าคิวเอง → ส่ง AI ตรวจเอง', async () => {
+  await test('ผลิตเสร็จ → เข้าคิวเอง → ไม่ส่ง AI ตรวจ · ยังไม่มีข้อความโพสต์ → ให้ ChatGPT เขียนให้เอง (ไม่ค้างรอคน)', async () => {
     await posting.tick()
-    assert.equal(item().status, 'review')
-    assert.equal(item().ai?.status, 'running')
-    assert.match(lastJob().payload.label, /ตรวจคลิป/)
-  })
-
-  await test('AI ให้ผ่านแต่คลิปยังไม่มีข้อความโพสต์ → ให้ ChatGPT เขียนให้เอง (ไม่ค้างรอคน)', async () => {
-    Object.assign(lastJob(), { status: 'done', result: { text: '{"score": 92, "verdict": "pass", "summary": "ดี", "issues": []}' } })
-    await posting.tick()
-    assert.equal(item().ai.verdict, 'pass')
     assert.equal(item().status, 'review', 'ยังไม่มีข้อความโพสต์ ยังตั้งเวลาไม่ได้')
+    assert.ok(!item().ai, 'ไม่มีขั้น AI ตรวจแล้ว')
+    assert.equal([...jobs.values()].filter((j) => /ตรวจคลิป/.test(j.payload.label)).length, 0)
     assert.match(lastJob().payload.label, /คิดชื่อคลิป/)
     await posting.tick()
     assert.equal([...jobs.values()].filter((j) => /คิดชื่อคลิป/.test(j.payload.label)).length, 1, 'ไม่ขอซ้ำระหว่างรอ')
@@ -146,10 +138,10 @@ try {
     assert.deepEqual((await get(`/api/posting/recent?since=${r.now}`)).events, [])
   })
 
-  await test('แผง + แจ้งเตือน: สวิตช์ "ออโต้ทั้งหมด" · บรรทัดโพสต์ล่าสุด · Chrome แจ้งเตือนหลังโพสต์', () => {
+  await test('แผง + แจ้งเตือน: ไม่มีสวิตช์ตรวจ/อนุมัติ · บรรทัดโพสต์ล่าสุด · Chrome แจ้งเตือนหลังโพสต์', () => {
     const js = readFileSync(join(ROOT, 'extension', 'posting.js'), 'utf8')
-    assert.match(js, /ออโต้ทั้งหมด/)
-    assert.match(js, /enabled: true, autoCheck: true, autoApprove: true/)
+    assert.doesNotMatch(js, /autoCheck|autoApprove|skipCheck|approve-all/)
+    assert.match(js, /รอตั้งเวลา/)
     assert.match(readFileSync(join(ROOT, 'extension', 'sidepanel.html'), 'utf8'), /id="lastPost"/)
     assert.match(readFileSync(join(ROOT, 'extension', 'sidepanel.js'), 'utf8'), /\/api\/posting\/recent/)
     const bg = readFileSync(join(ROOT, 'extension', 'background.js'), 'utf8')
