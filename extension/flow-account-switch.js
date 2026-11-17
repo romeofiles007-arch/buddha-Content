@@ -60,6 +60,12 @@ export async function flowIdentity(chrome, tabId, { diagnose = false } = {}) {
   // ปุ่มบัญชีอ่านไม่ได้/ไม่มีบนหน้านี้ → ถามจากข้อมูลบัญชีของหน้าเว็บเอง (ใช้ได้กับหน้าย่อยของโปรเจกต์ด้วย)
   const fromPage = await pageAccountEmail(chrome, tabId)
   if (fromPage) return fromPage
+  // หน้าเปิดดู/แก้ภาพของโปรเจกต์ (…/project/<id>/edit/<assetId>) แทนแถบบนทั้งแถบ จึงไม่มีปุ่มบัญชีให้หาจริง ๆ
+  // — อย่าไปไล่ AX tree ซ้ำ ๆ แล้วรายงานว่า "อาจออกจากระบบ"
+  if (/\/project\/[^/]+\/.+/.test(new URL(tab.url).pathname)) {
+    if (diagnose) throw new Error('หน้า Flow ค้างอยู่ที่หน้าเปิดดู/แก้ภาพของโปรเจกต์ จึงไม่มีแถบบัญชี Google บนหน้า — กดย้อนกลับ (หรือ Done) ให้กลับหน้าโปรเจกต์ แล้วกดทำต่อ')
+    return ''
+  }
   // Google renders the profile within a component; closed roots remain visible to accessibility.
   // 2026-11-04 Flow's new layout: also look in child frames and in image/menu controls, but only
   // controls (never page text such as prompts) whose name ties an email to an account/profile.
@@ -143,11 +149,19 @@ async function accountPanelIdentity(command, initialTrees, snapshot, stillCurren
     }
     return ''
   } finally {
-    if (opened && openedPanelId != null && await stillCurrent()) {
-      const found = panels(await snapshot())
-      if (found.length === 1 && panelId(found[0].panel) === openedPanelId && await stillCurrent()) {
-        const close = descendants(found[0]).filter(n => !n.ignored && n.role?.value === 'button' && /^(?:Close account (?:panel|settings)|ปิดแผงบัญชี)$/i.test(n.name?.value ?? '') && n.backendDOMNodeId)
-        if (close.length === 1) await click(close[0])
+    if (opened && await stillCurrent()) {
+      if (openedPanelId != null) {
+        const found = panels(await snapshot())
+        if (found.length === 1 && panelId(found[0].panel) === openedPanelId && await stillCurrent()) {
+          const close = descendants(found[0]).filter(n => !n.ignored && n.role?.value === 'button' && /^(?:Close account (?:panel|settings)|ปิดแผงบัญชี)$/i.test(n.name?.value ?? '') && n.backendDOMNodeId)
+          if (close.length === 1) await click(close[0])
+        }
+      } else {
+        // กดเปิดแผงบัญชีแล้วแต่ไม่เจอแผงที่รู้จัก — ต้องปิดสิ่งที่เปิดค้างไว้ ไม่งั้นแผงนั้นบังหน้า Flow
+        // ทำให้รอบต่อ ๆ ไปอ่านบัญชีไม่เจอเลย (AX tree มองไม่เห็นอะไรนอกแผงที่เปิดอยู่)
+        for (const type of ['keyDown', 'keyUp']) {
+          await command('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 }).catch(() => {})
+        }
       }
     }
   }

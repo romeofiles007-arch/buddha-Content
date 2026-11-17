@@ -49,7 +49,9 @@ async function verifiedAccountEmail({ required = true } = {}) {
     console.warn(`[dhamma-auto] อ่านบัญชี Google Flow ไม่ได้${detail} — ทำต่อโดยไม่ล็อกบัญชี (ถ้าใช้หลายบัญชีสลับโควต้า ให้รีเฟรชหน้า Flow แล้วเริ่มใหม่)`)
     return ''
   }
-  throw new Error(`FLOW_ACCOUNTS_EXHAUSTED: อ่านบัญชี Google Flow ปัจจุบันไม่ได้ — หยุดก่อนสร้างภาพ${detail}`)
+  // ไม่ใช่ "โควต้าหมด" — แค่อ่านบัญชีบนหน้าไม่ได้ (เช่นหน้าแก้ภาพค้างอยู่ หรือหน้ายังโหลดไม่เสร็จ)
+  // จึงไม่ใช้รหัส FLOW_ACCOUNTS_EXHAUSTED ที่ autopilot/ผลิตต่อเนื่องเอาไปหยุดทั้งรอบ — ยังไม่ได้ส่ง prompt จึงลองรอบใหม่ได้
+  throw new Error(`FLOW_ACCOUNT_UNREADABLE: อ่านบัญชี Google Flow ปัจจุบันไม่ได้ — หยุดก่อนสร้างภาพ${detail}`)
 }
 class FlowQuotaError extends Error {
   constructor(quota) { super(quota.reason); this.quota = quota }
@@ -237,7 +239,22 @@ async function pickModelFromMenu(modelBtn, model) {
   await sleep(700)
 }
 
+/** หน้าย่อยของโปรเจกต์ (เปิดดู/แก้ภาพ: …/project/<id>/edit/<assetId>) — Flow เอาแถบบนออกทั้งแถบ */
+const inProjectSubview = () => /\/project\/[^/]+\/.+/.test(location.pathname)
+/** URL ของหน้าโปรเจกต์สำหรับรายงานกลับ — ตัดหน้าย่อยทิ้ง ไม่งั้นรอบถัดไปเปิดกลับมาที่หน้าแก้ภาพ */
+const projectHref = () => {
+  try {
+    const url = new URL(location.href)
+    url.pathname = url.pathname.replace(/(\/project\/[^/]+)\/.*$/, '$1')
+    url.hash = ''
+    return url.href
+  } catch { return location.href }
+}
+
 async function openProject() {
+  // หน้าเปิดดู/แก้ภาพค้างอยู่ → ไม่มีทั้งปุ่มบัญชี Google และช่องพิมพ์ของโปรเจกต์ให้หา
+  // บอกสาเหตุจริงตรงนี้ แทนที่จะไปล้มตอนอ่านบัญชีไม่ได้แล้วถูกเข้าใจว่าโควต้าหมด
+  if (inProjectSubview()) throw new Error('หน้า Flow ค้างอยู่ที่หน้าเปิดดู/แก้ภาพของโปรเจกต์ — กดย้อนกลับ (หรือ Done) บนหน้า Flow ให้กลับหน้าโปรเจกต์ แล้วกดทำต่อ')
   if (/\/project\//.test(location.pathname)) return
   const btn = await waitFor(SEL.newProject, { timeout: 30_000, label: 'ปุ่ม New project / โปรเจ็กต์ใหม่' })
   realClick(btn)
@@ -910,7 +927,7 @@ async function runImageJob(job) {
     await clearFlowDialogs()
     await renameProject(projectTitle).catch(() => {})
     tiles.clear() // A reused content-script world must not retain a previous project's tiles.
-    await toBridge('PROGRESS', { id: job.id, progress: { done: 0, total: expected, stage: 'project', projectUrl: location.href } })
+    await toBridge('PROGRESS', { id: job.id, progress: { done: 0, total: expected, stage: 'project', projectUrl: projectHref() } })
     await scanAllTiles()
     const before = collectTiles().size
     // ภาพเก่าใน project: เก็บเฉพาะที่ตั้งชื่อไฟล์ตรงแล้ว · ไม่จับคู่จากเลข SHOT เพราะอาจเป็น shot list ชุดก่อน (คนละฉาก)
@@ -920,7 +937,7 @@ async function runImageJob(job) {
     await saveNew(namedPicks(wanted))
     if (saved.size) {
       // The pipeline owns the complete style/cover prompt. Let it rebuild only missing shots.
-      await toBridge('RESULT', { id: job.id, files: [], meta: { recovered: true, projectUrl: location.href, expected, named: saved.size } })
+      await toBridge('RESULT', { id: job.id, files: [], meta: { recovered: true, projectUrl: projectHref(), expected, named: saved.size } })
       return
     }
     const credits = await verifyFreeSettings(model, aspect)
@@ -1012,7 +1029,7 @@ async function runImageJob(job) {
       const lastReply = text([...document.querySelectorAll('flow-chat-bubble')].at(-1)).slice(0, 160)
       throw new Error(`Flow ยังไม่ส่งไฟล์ภาพตามรายการชุดนี้กลับมา (0/${expected}) — ภาพทั้งหมด ${collectTiles().size} ใบ (เก่า ${oldTiles.size}) · อ่าน prompt ภาพใหม่ได้ ${s.read} ใบ มีเลข SHOT ${s.withShot} · อ่านไม่ทัน ${s.failed} ครั้ง · แท็บ${document.hidden ? 'ถูกซ่อนอยู่ (เปิดแท็บ Flow ไว้ด้านหน้า)' : 'เปิดอยู่'} · Agent ตอบล่าสุด: "${lastReply}"`)
     }
-    await toBridge('RESULT', { id: job.id, files: [], meta: { generated: saved.size, expected, named: saved.size, projectUrl: location.href } })
+    await toBridge('RESULT', { id: job.id, files: [], meta: { generated: saved.size, expected, named: saved.size, projectUrl: projectHref() } })
   } catch (error) {
     // กดหยุดงาน → กด Stop ของ Flow Agent ด้วย ไม่งั้น Agent ฝั่ง Google วาดต่อเองจนครบ (เปลืองโควต้า)
     if (error instanceof JobCancelled || jobCancelled) {
@@ -1143,7 +1160,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const agent = await configureAgent(model, { dryRun: !!msg.dryRun, ratio: aspect })
       const imagesBefore = collectTiles().size
       if (!msg.dryRun) await sendPrompt(msg.prompt, msg.attachments)
-      sendResponse({ ok: true, credits, agent, imagesBefore, projectUrl: location.href })
+      sendResponse({ ok: true, credits, agent, imagesBefore, projectUrl: projectHref() })
     } catch (err) {
       sendResponse({ ok: false, error: errorText(err) })
     } finally {

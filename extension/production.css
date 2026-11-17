@@ -37,6 +37,7 @@
 #prodBox .prodResumeAt { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--ink); }
 #prodBox .prodResumeAt input { width: 128px; }
 #prodBox .prodResumeAt button { min-height: 44px; padding: 8px 12px; }
+#prodBox .prodResumeClear { display: block; margin-top: 12px; min-height: 44px; padding: 8px 12px; font-size: 13px; }
 #prodBox #prodStatus { margin: 12px 0 0; }
 #prodBox #prodStatus:empty { display: none; }
 #prodBox .prodHistoryBox { border: 0; padding: 12px 0 0; margin: 12px 0 0; border-top: 1px solid var(--line); }

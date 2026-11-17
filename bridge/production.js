@@ -44,7 +44,8 @@ const AUTO_POST = ['off', 'now']
 const POST_PAGES = ['all', 'split']
 const TARGET_KEY = /^(fb|yt|tk):[\w.-]{1,64}$/
 
-const blankState = () => ({ active: false, pageIndex: 0, made: 0, failed: 0, failsInRow: 0, nextAt: null, run: null, batch: 0, message: '', history: [] })
+// dismissed = กดล้างชุดที่ค้างแล้ว (ไม่ทำต่อ) — เริ่มชุดใหม่ล้างค่านี้เอง เพราะ startBatch ใช้ blankState()
+const blankState = () => ({ active: false, pageIndex: 0, made: 0, failed: 0, failsInRow: 0, nextAt: null, run: null, batch: 0, message: '', history: [], dismissed: false })
 
 function readJson(file, fallback) {
   try {
@@ -176,8 +177,8 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     save()
   }
 
-  /** ชุดที่หยุดกลางทาง (ล้มติดกัน / บัญชี Flow เต็ม / กดหยุดเอง) ยังทำไม่ครบ → ทำต่อได้ */
-  const resumable = () => !state.active && (state.batch ?? 0) > 0 && state.made < target()
+  /** ชุดที่หยุดกลางทาง (ล้มติดกัน / บัญชี Flow เต็ม / กดหยุดเอง) ยังทำไม่ครบ → ทำต่อได้ · กดล้างแล้วไม่ถามอีก */
+  const resumable = () => !state.active && !state.dismissed && (state.batch ?? 0) > 0 && state.made < target()
 
   /** คลิปล่าสุดของชุดล้มหลังได้ชื่อเรื่องแล้ว → ทำต่อคลิปนั้นจากแผนกที่ค้าง ไม่เริ่มหัวข้อใหม่ */
   function unfinishedClip() {
@@ -206,6 +207,15 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     state.run = null
     state.nextAt = null
     say('หยุดแล้ว')
+    save()
+  }
+
+  /** ล้างชุดที่หยุดค้าง — ไม่ทำต่อแล้ว กล่อง "ทำต่อ" หายไป · ประวัติคลิปยังอยู่ กดเริ่มผลิตได้ชุดใหม่นับจาก 0 */
+  function dismiss() {
+    state.dismissed = true
+    state.resume = null
+    state.nextAt = null
+    say('ล้างชุดที่ค้างแล้ว — กดเริ่มผลิตเพื่อเริ่มชุดใหม่')
     save()
   }
 
@@ -416,6 +426,13 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     }
     if (path === '/api/production/stop') {
       stop()
+      return json(res, 200, view()), true
+    }
+    // ล้างชุดที่ค้าง: ซ่อนกล่อง "ทำต่อ" ไปเลย ไม่แตะประวัติหรือไฟล์คลิป
+    if (path === '/api/production/dismiss') {
+      if (state.active) return json(res, 409, { error: 'กำลังผลิตอยู่ — กดหยุดผลิตก่อน' }), true
+      if (!resumable()) return json(res, 400, { error: 'ไม่มีชุดที่หยุดค้าง' }), true
+      dismiss()
       return json(res, 200, view()), true
     }
     // ชุดล่าสุดที่ผลิตเสร็จ: เปิดโฟลเดอร์ หรือเปิดคลิปเต็มจอ (เฉพาะไฟล์ในโฟลเดอร์พร้อมดูของเราเอง)

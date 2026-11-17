@@ -3688,6 +3688,7 @@ function renderProd() {
   }
   $('prodResume').disabled = !r || prodCommandBusy
   $('prodResumeAt').disabled = !r || prodCommandBusy
+  $('prodDismiss').disabled = !r || prodCommandBusy
 }
 
 let prodRequest = 0, prodAppliedRequest = 0
@@ -3764,6 +3765,11 @@ $('prodResumeAt').addEventListener('click', () => {
   $('prodResumeTime').removeAttribute('aria-invalid')
   prodCommand('/api/production/resume', { at })
 })
+// ไม่ทำต่อแล้ว — ล้างกล่อง "ชุดนี้หยุดค้างไว้" ทิ้ง · ประวัติคลิปและไฟล์ที่ทำไว้ยังอยู่ครบ
+$('prodDismiss').addEventListener('click', () => {
+  if (!confirm('ล้างชุดที่ค้างนี้?\n\nจะทำต่อจากคลิปที่ค้างไม่ได้อีก — คลิปที่เสร็จแล้วและไฟล์ทั้งหมดยังอยู่ครบ\nครั้งหน้ากดเริ่มผลิตจะเป็นชุดใหม่ นับจากคลิป 1')) return
+  prodCommand('/api/production/dismiss', {})
+})
 async function prodCommand(path, body) {
   if (prodCommandBusy) return
   if (path.endsWith('/start')) {
@@ -3784,6 +3790,10 @@ async function prodCommand(path, body) {
     if (ok && path.endsWith('/resume')) {
       $('prodSaveState').classList.remove('error')
       $('prodSaveState').textContent = body.at ? `ตั้งเวลาทำต่อ ${body.at} น. แล้ว` : 'ทำต่อชุดเดิมแล้ว'
+    }
+    if (ok && path.endsWith('/dismiss')) {
+      $('prodSaveState').classList.remove('error')
+      $('prodSaveState').textContent = 'ล้างชุดที่ค้างแล้ว'
     }
   } finally { prodCommandBusy = false; renderProd() }
 }

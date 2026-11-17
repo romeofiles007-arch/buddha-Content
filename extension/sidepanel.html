@@ -429,7 +429,7 @@
         <strong id="prodPlanTitle"></strong>
         <p class="hint" id="prodPlanDetail"></p>
       </div>
-      <!-- ชุดที่หยุดกลางทาง: ทำต่อเลย / ตั้งเวลาทำต่อ — นับจำนวนคลิปต่อจากเดิม (bridge/production.js → resume) -->
+      <!-- ชุดที่หยุดกลางทาง: ทำต่อเลย / ตั้งเวลาทำต่อ — นับจำนวนคลิปต่อจากเดิม · หรือล้างทิ้ง (bridge/production.js → resume / dismiss) -->
       <div class="prodResume" id="prodResumeBox" hidden>
         <strong id="prodResumeTitle">ชุดนี้หยุดค้างไว้</strong>
         <p class="hint" id="prodResumeHint"></p>
@@ -441,6 +441,8 @@
           <input type="time" id="prodResumeTime" value="22:00" />
           <button type="button" class="ghost" id="prodResumeAt" data-icon="clock">ตั้งเวลาทำต่อ</button>
         </div>
+        <!-- ไม่ทำต่อแล้ว: ล้างกล่องนี้ทิ้ง (bridge/production.js → dismiss) · ประวัติคลิปและไฟล์ยังอยู่ครบ -->
+        <button type="button" class="ghost prodResumeClear" id="prodDismiss" data-icon="close">ไม่ทำต่อแล้ว · ล้างชุดนี้</button>
       </div>
       <div class="run">
         <button class="primary" id="prodGo" disabled>เริ่มผลิต</button>
