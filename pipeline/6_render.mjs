@@ -11,8 +11,8 @@
  */
 import { existsSync, statSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
-import { loadConfig, projectDir, fromRoot } from './lib/config.mjs'
-import { resolveBgm } from './lib/bgm.mjs'
+import { loadConfig, projectDir } from './lib/config.mjs'
+import { resolveBgm, bgmFor } from './lib/bgm.mjs'
 import { collectImages } from './lib/shotfile.mjs'
 import { probeDuration, probeSize, renderVideo, MOTION_PRESETS } from './lib/ffmpeg.mjs'
 import { hhmmss } from './lib/timecode.mjs'
@@ -26,9 +26,8 @@ if (!slug) {
 }
 
 const config = loadConfig()
-// เพลงพื้นหลัง: เพลงที่แนบให้คลิปนี้ (--bgm) ก่อน · ไม่มี → render.bgmFile (ไฟล์เดียว หรือโฟลเดอร์ = เลือกเพลงต่อคลิป)
-const bgmArg = rest.includes('--bgm') ? rest[rest.indexOf('--bgm') + 1] : config.render.bgmFile ? fromRoot(config.render.bgmFile) : ''
-const bgm = resolveBgm(bgmArg, slug)
+// เพลงพื้นหลัง: เพลงที่แนบให้คลิปนี้ (--bgm) ก่อน · ไม่มี → ตั้งค่าคลิป (ไม่ใส่ · สุ่มต่อคลิป · เพลงที่เลือก)
+const bgm = rest.includes('--bgm') ? resolveBgm(rest[rest.indexOf('--bgm') + 1], slug) : bgmFor(config, slug)
 if (bgm.warning) console.warn(bgm.warning)
 const imagesDir = projectDir(slug, 'images')
 const voiceover = join(projectDir(slug, 'audio'), 'voiceover.wav')

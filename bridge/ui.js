@@ -36,6 +36,7 @@ import { readSelfMonk, updateSelfMonk, addSelfMonkImage, removeSelfMonkImage, se
 import { readMyBuddha, updateMyBuddha, addMyBuddhaImage, removeMyBuddhaImage, MY_BUDDHA_DIR, MAX_MY_BUDDHA_IMAGES } from '../pipeline/lib/my_buddha.mjs'
 import { PAUSE_PRESETS, MOTION_PRESETS } from '../pipeline/lib/ffmpeg.mjs'
 import { SUBTITLE_STYLES } from '../pipeline/lib/subtitles.mjs'
+import { bgmMode, bgmTracks } from '../pipeline/lib/bgm.mjs'
 import { clipSettings, CLIP_COVERAGES, firstCountOf, FIRST_COUNT_MAX } from '../pipeline/lib/clips.mjs'
 import { KIE_TIERS, kieTier } from '../pipeline/lib/kie.mjs'
 import { clipCost } from '../pipeline/lib/usage.mjs'
@@ -931,6 +932,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             if (body.firstCount !== undefined) c.clips = { ...(c.clips ?? {}), firstCount: firstCountOf(body.firstCount) }
             if (KIE_TIERS[body.kieTier]) c.clips = { ...(c.clips ?? {}), tier: body.kieTier }
             if (SUBTITLE_STYLES[body.subtitles]) c.render.subtitles = { ...(c.render.subtitles ?? {}), style: body.subtitles }
+            // เพลงพื้นหลัง: 'off' ไม่ใส่ · 'random' สุ่มต่อคลิป · ชื่อเพลงในโฟลเดอร์เพลง = ใช้เพลงนี้ทุกคลิป
+            if (body.bgm === 'off' || body.bgm === 'random' || bgmTracks(c).includes(body.bgm)) c.render.bgmMode = body.bgm
             if (PAUSE_PRESETS[body.pause]) {
               const { segmentGapMs, paragraphGapMs } = PAUSE_PRESETS[body.pause]
               Object.assign(c.tts, { pause: body.pause, segmentGapMs, paragraphGapMs })
@@ -940,6 +943,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         const c = loadConfig()
         const clips = clipSettings(c)
         const aiCoverage = !clips.enabled ? 'off' : clips.pick === 'first' ? 'first' : String(clips.coveragePercent)
+        const tracks = bgmTracks(c)
         // ให้ผู้ใช้ปิด/เปิดการสร้างคลิปวิดีโอด้วย Kie ได้จากปุ่มเดียวกัน
         // ค่า off ต้องอยู่ใน options ด้วย ไม่เช่นนั้น config รองรับแต่หน้า UI เลือกปิดไม่ได้
         const aiCoverageOptions = [
@@ -955,6 +959,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           pause: PAUSE_PRESETS[c.tts.pause] ? c.tts.pause : 'normal',
           motion: MOTION_PRESETS[c.render.motion] ? c.render.motion : 'off',
           engage: c.script.engage === false ? 'off' : 'on',
+          bgm: bgmMode(c),
+          bgmCount: tracks.length,
           aiCoverage,
           aiClips: aiCoverage,
           firstCount: clips.firstCount,
@@ -969,6 +975,13 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             kieTier: Object.entries(KIE_TIERS).map(([id, t]) => ({ id, label: t.label, name: t.name, credits: t.credits, detail: t.detail })),
             motion: Object.entries(MOTION_PRESETS).map(([id, m]) => ({ id, label: m.label })),
             engage: [{ id: 'on', label: 'ชวนคุย' }, { id: 'off', label: 'ไม่ชวน' }],
+            bgm: [
+              { id: 'off', label: 'ไม่ใส่เพลง' },
+              { id: 'random', label: `สุ่มเพลง (${tracks.length} เพลง)` },
+              ...tracks.map((t) => ({ id: t, label: `🎵 ${t.replace(/\.[^.]+$/, '')}` })),
+              // เพลงที่เลือกไว้ถูกลบออกจากโฟลเดอร์แล้ว → ยังโชว์ค่าเดิม (ตอนตัดต่อสุ่มเพลงอื่นแทน)
+              ...(!['off', 'random', ...tracks].includes(bgmMode(c)) ? [{ id: bgmMode(c), label: `⚠️ ${bgmMode(c)} (ไม่พบไฟล์แล้ว — ใช้สุ่มแทน)` }] : []),
+            ],
             subtitles: Object.entries(SUBTITLE_STYLES).map(([id, s]) => ({ id, label: s.label })),
             pause: Object.entries(PAUSE_PRESETS).map(([id, p]) => ({ id, label: p.label })),
           },

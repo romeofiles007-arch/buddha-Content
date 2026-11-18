@@ -1551,6 +1551,22 @@ function renderClipSettings() {
   const sel = $('clipSubtitles')
   if (!sel.options.length) for (const o of clip.options.subtitles) sel.append(new Option(o.label, o.id))
   sel.value = clip.subtitles
+  // เพลงพื้นหลัง — รายชื่อเพลงเปลี่ยนได้ (เพิ่ม/ลบไฟล์ในโฟลเดอร์ music) จึงสร้างตัวเลือกใหม่ทุกครั้ง · โปรแกรมรุ่นเก่าไม่ส่งมา → ซ่อน
+  const bgm = $('clipBgm')
+  const bgmOptions = clip.options.bgm ?? []
+  bgm.parentElement.hidden = !bgmOptions.length
+  if (bgm.dataset.options !== JSON.stringify(bgmOptions)) {
+    bgm.replaceChildren(...bgmOptions.map((o) => new Option(o.label, o.id)))
+    bgm.dataset.options = JSON.stringify(bgmOptions)
+  }
+  bgm.value = clip.bgm
+  $('clipBgmHint').textContent = !clip.bgmCount
+    ? 'ยังไม่มีเพลง — วางไฟล์เพลง (mp3 · wav · m4a) ไว้ในโฟลเดอร์ music ของโปรแกรม'
+    : clip.bgm === 'off'
+      ? 'ไม่ใส่เพลง — คลิปมีแต่เสียงพากย์'
+      : clip.bgm === 'random'
+        ? 'สุ่มเพลงจากโฟลเดอร์ music ให้แต่ละคลิป (ตัดต่อคลิปเดิมซ้ำได้เพลงเดิม)'
+        : 'ใช้เพลงนี้ทุกคลิป · เพลงเบากว่าเสียงพากย์ ค่อยๆ ดังขึ้นตอนต้นและเบาลงตอนจบ'
   const pause = $('clipPause')
   if (!pause.childElementCount) {
     for (const o of clip.options.pause) {
@@ -1647,10 +1663,11 @@ function renderClipSettings() {
   const subLabel = clip.options.subtitles.find((o) => o.id === clip.subtitles)?.label
   const pauseLabel = clip.options.pause.find((o) => o.id === clip.pause)?.label
   const artLabel = (clip.options.artStyle ?? []).find((o) => o.id === clip.artStyle)?.label
-  const summary = `${clip.orientation === 'portrait' ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'}${artLabel ? ` · ${artLabel}` : ''} · ซับไตเติล${subLabel}${motionLabel ? ` · ${motionLabel}` : ''} · เงียบ${pauseLabel}`
+  const bgmLabel = !bgmOptions.length ? '' : clip.bgm === 'off' ? 'ไม่มีเพลง' : clip.bgm === 'random' ? 'สุ่มเพลง' : `เพลง ${String(clip.bgm).replace(/\.[^.]+$/, '')}`
+  const summary = `${clip.orientation === 'portrait' ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'}${artLabel ? ` · ${artLabel}` : ''} · ซับไตเติล${subLabel}${motionLabel ? ` · ${motionLabel}` : ''}${bgmLabel ? ` · ${bgmLabel}` : ''} · เงียบ${pauseLabel}`
   $('clipSettingsSummary').textContent = `ตั้งค่าคลิป: ${summary}${character?.active ? ' · ตัวละครของฉัน' : ''}`
   $('renderSettingsHint').textContent = `ซับไตเติล: ${subLabel}${motionLabel ? ` · ${motionLabel}` : ''} · แนวภาพตามภาพที่สร้างไว้ (เปลี่ยนได้ที่ ⚡ ตั้งค่าคลิป)`
-  for (const el of [...$('clipOrientation').querySelectorAll('button'), sel, ...pause.querySelectorAll('button'), ...motion.querySelectorAll('button'), ...ai.querySelectorAll('button')]) el.disabled = localBusy()
+  for (const el of [...$('clipOrientation').querySelectorAll('button'), sel, bgm, ...pause.querySelectorAll('button'), ...motion.querySelectorAll('button'), ...ai.querySelectorAll('button')]) el.disabled = localBusy()
 }
 
 async function saveClipSettings(change) {
@@ -1714,6 +1731,7 @@ $('saveKieKey').addEventListener('click', async () => {
   } catch (err) { $('kieKeyStatus').textContent = err.message }
 })
 $('clipSubtitles').addEventListener('change', (e) => saveClipSettings({ subtitles: e.target.value }))
+$('clipBgm').addEventListener('change', (e) => saveClipSettings({ bgm: e.target.value }))
 
 localApp()
   .then((app) => api(app, '/api/clip-settings'))

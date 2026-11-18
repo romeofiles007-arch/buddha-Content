@@ -16,6 +16,8 @@ if (config.tts) config.tts.engine = 'edge'
 if (config.clips) config.clips.provider = 'off'
 // โฟลเดอร์ส่งโพสต์ (Google Drive ของเรา) ไม่ใช่ของลูกค้า
 if (config.autoPost) config.autoPost.dir = ''
+// เพลงพื้นหลัง: ลูกค้าเริ่มที่โฟลเดอร์ music ของโปรแกรม + สุ่มเพลง (เพลงที่เราเลือกไว้อาจไม่มีในเครื่องลูกค้า)
+if (config.render) Object.assign(config.render, { bgmFile: '', bgmMode: 'random' })
 
 writeFileSync(join(ROOT, 'config', 'default.config.json'), JSON.stringify(config, null, 2) + '\n')
 console.log('✓ config/default.config.json — เสียง Edge · ปิด Kie · ไม่มี Voice ID / โฟลเดอร์ของเรา')
