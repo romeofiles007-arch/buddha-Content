@@ -17,8 +17,9 @@
 import { PENDING_USAGE, adoptPendingUsage } from './lib/usage.mjs'
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, statSync, readdirSync, mkdirSync, renameSync, copyFileSync, unlinkSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { loadConfig, projectDir, slugify, ROOT } from './lib/config.mjs'
+import { join, dirname, basename } from 'node:path'
+import { loadConfig, projectDir, slugify, ROOT, fromRoot } from './lib/config.mjs'
+import { resolveBgm } from './lib/bgm.mjs'
 import { requireBridge, runJob } from './lib/bridge.mjs'
 import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics, opensWithHaveYouEver } from './lib/prompts.mjs'
 import { saveScript, loadScript } from './lib/stage2.mjs'
@@ -529,7 +530,10 @@ async function editDepartment() {
   const newestImage = Math.max(0, ...collectImages(images).images.map((i) => mtime(i.file)), ...[...aiClips.values()].map((c) => c.mtime))
   const rendered = existsSync(join(projectDir(slug, 'render'), 'render.json')) ? JSON.parse(readFileSync(join(projectDir(slug, 'render'), 'render.json'), 'utf8')) : null
   const sameSubs = (rendered?.subtitles ?? 'off') === (config.render.subtitles?.style ?? 'off') && (rendered?.motion ?? 'off') === (config.render.motion ?? 'off') && (rendered?.clips ?? 0) === aiClips.size
-  if (sameSubs && mtime(out) > newestImage && mtime(out) > mtime(join(projectDir(slug, 'audio'), 'voiceover.wav'))) {
+  // ตั้งเพลงพื้นหลังไว้แต่วิดีโอเดิมไม่มีเพลง/คนละเพลง → ตัดต่อใหม่ (หาเพลงไม่เจอ = ใช้วิดีโอเดิม ไม่ถอดเพลงออก)
+  const bgm = config.render.bgmFile ? resolveBgm(fromRoot(config.render.bgmFile), slug).file : null
+  const sameBgm = !bgm || rendered?.bgm === basename(bgm)
+  if (sameSubs && sameBgm && mtime(out) > newestImage && mtime(out) > mtime(join(projectDir(slug, 'audio'), 'voiceover.wav'))) {
     state.video = out
     return dept('edit', { status: 'done', detail: 'ใช้วิดีโอเดิม' })
   }

@@ -10,8 +10,9 @@
  *   node pipeline/6_render.mjs <slug> [--bgm path.mp3] [--subs off|black|white|yellow]
  */
 import { existsSync, statSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { loadConfig, projectDir } from './lib/config.mjs'
+import { join, basename } from 'node:path'
+import { loadConfig, projectDir, fromRoot } from './lib/config.mjs'
+import { resolveBgm } from './lib/bgm.mjs'
 import { collectImages } from './lib/shotfile.mjs'
 import { probeDuration, probeSize, renderVideo, MOTION_PRESETS } from './lib/ffmpeg.mjs'
 import { hhmmss } from './lib/timecode.mjs'
@@ -25,7 +26,10 @@ if (!slug) {
 }
 
 const config = loadConfig()
-const bgmArg = rest.includes('--bgm') ? rest[rest.indexOf('--bgm') + 1] : config.render.bgmFile
+// เพลงพื้นหลัง: เพลงที่แนบให้คลิปนี้ (--bgm) ก่อน · ไม่มี → render.bgmFile (ไฟล์เดียว หรือโฟลเดอร์ = เลือกเพลงต่อคลิป)
+const bgmArg = rest.includes('--bgm') ? rest[rest.indexOf('--bgm') + 1] : config.render.bgmFile ? fromRoot(config.render.bgmFile) : ''
+const bgm = resolveBgm(bgmArg, slug)
+if (bgm.warning) console.warn(bgm.warning)
 const imagesDir = projectDir(slug, 'images')
 const voiceover = join(projectDir(slug, 'audio'), 'voiceover.wav')
 const outFile = join(projectDir(slug, 'render'), `${slug}.mp4`)
@@ -121,11 +125,11 @@ if (clips.size) {
   if (timeline.length < images.length) console.log(`คลิป AI เล่นต่อเนื่องแทนภาพนิ่งในฉากเดียวกัน ${images.length - timeline.length} ช็อต`)
 }
 
-console.log(`ภาพ ${images.length} ใบ · เสียง ${hhmmss(totalDuration)} · ${portrait ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'} · ซับไตเติล${SUBTITLE_STYLES[subStyle].label} · ${MOTION_PRESETS[motion].label}${clips.size ? ` · คลิป AI ${clips.size} ช็อต` : ''} · กำลัง render...`)
+console.log(`ภาพ ${images.length} ใบ · เสียง ${hhmmss(totalDuration)} · ${portrait ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'} · ซับไตเติล${SUBTITLE_STYLES[subStyle].label} · ${MOTION_PRESETS[motion].label}${clips.size ? ` · คลิป AI ${clips.size} ช็อต` : ''}${bgm.file ? ` · เพลง ${basename(bgm.file)}` : ''} · กำลัง render...`)
 await renderVideo({
   images: timeline,
   voiceover,
-  bgm: bgmArg && existsSync(bgmArg) ? bgmArg : null,
+  bgm: bgm.file,
   outFile,
   totalDuration,
   config: config.render,
@@ -137,7 +141,7 @@ await renderVideo({
   onProgress: (done, total) => process.stdout.write(`\rขยับภาพ ${done}/${total} ช็อต${done === total ? ' · กำลังรวมเป็นวิดีโอ...\n' : ''}`),
 })
 // ค่าที่ใช้ตัดต่อ — ทำคลิปอัตโนมัติใช้ตัดสินว่าต้องตัดต่อใหม่ไหมเมื่อเปลี่ยนตั้งค่า
-writeFileSync(join(projectDir(slug, 'render'), 'render.json'), JSON.stringify({ resolution, subtitles: subStyle, motion, clips: clips.size, renderedAt: Date.now() }, null, 2))
+writeFileSync(join(projectDir(slug, 'render'), 'render.json'), JSON.stringify({ resolution, subtitles: subStyle, motion, clips: clips.size, bgm: bgm.file ? basename(bgm.file) : null, renderedAt: Date.now() }, null, 2))
 
 const mb = (statSync(outFile).size / 1024 / 1024).toFixed(1)
 console.log(`เสร็จ: ${outFile} (${mb} MB)`)
