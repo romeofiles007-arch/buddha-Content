@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, statSync, readdirSync, mkdirSync, renameSync, copyFileSync, unlinkSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import { loadConfig, projectDir, slugify, ROOT } from './lib/config.mjs'
-import { bgmFor, bgmMode } from './lib/bgm.mjs'
+import { bgmFor, bgmMode, bgmDb } from './lib/bgm.mjs'
 import { requireBridge, runJob } from './lib/bridge.mjs'
 import { scriptPrompt, scoredTopicsPrompt, parseScoredTopics, opensWithHaveYouEver } from './lib/prompts.mjs'
 import { saveScript, loadScript } from './lib/stage2.mjs'
@@ -533,7 +533,8 @@ async function editDepartment() {
   // เพลงพื้นหลังไม่ตรงตั้งค่า (ไม่มีเพลง/คนละเพลง/ปิดเพลงแล้วแต่วิดีโอมีเพลง) → ตัดต่อใหม่
   // หาเพลงไม่เจอ (ไดรฟ์ไม่ได้เสียบ) = ใช้วิดีโอเดิม ไม่ถอดเพลงออก
   const bgm = bgmFor(config, slug).file
-  const sameBgm = bgmMode(config) === 'off' ? !rendered?.bgm : !bgm || rendered?.bgm === basename(bgm)
+  // ความดังเพลง: วิดีโอรุ่นก่อนมีระดับเสียง (ไม่มี bgmDb ใน render.json) ใช้ -21 dB = กลาง
+  const sameBgm = bgmMode(config) === 'off' ? !rendered?.bgm : !bgm || (rendered?.bgm === basename(bgm) && (rendered?.bgmDb ?? -21) === bgmDb(config))
   if (sameSubs && sameBgm && mtime(out) > newestImage && mtime(out) > mtime(join(projectDir(slug, 'audio'), 'voiceover.wav'))) {
     state.video = out
     return dept('edit', { status: 'done', detail: 'ใช้วิดีโอเดิม' })

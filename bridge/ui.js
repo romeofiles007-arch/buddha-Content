@@ -36,7 +36,7 @@ import { readSelfMonk, updateSelfMonk, addSelfMonkImage, removeSelfMonkImage, se
 import { readMyBuddha, updateMyBuddha, addMyBuddhaImage, removeMyBuddhaImage, MY_BUDDHA_DIR, MAX_MY_BUDDHA_IMAGES } from '../pipeline/lib/my_buddha.mjs'
 import { PAUSE_PRESETS, MOTION_PRESETS } from '../pipeline/lib/ffmpeg.mjs'
 import { SUBTITLE_STYLES } from '../pipeline/lib/subtitles.mjs'
-import { bgmMode, bgmTracks } from '../pipeline/lib/bgm.mjs'
+import { bgmMode, bgmTracks, bgmLevel, BGM_LEVELS } from '../pipeline/lib/bgm.mjs'
 import { clipSettings, CLIP_COVERAGES, firstCountOf, FIRST_COUNT_MAX } from '../pipeline/lib/clips.mjs'
 import { KIE_TIERS, kieTier } from '../pipeline/lib/kie.mjs'
 import { clipCost } from '../pipeline/lib/usage.mjs'
@@ -934,6 +934,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             if (SUBTITLE_STYLES[body.subtitles]) c.render.subtitles = { ...(c.render.subtitles ?? {}), style: body.subtitles }
             // เพลงพื้นหลัง: 'off' ไม่ใส่ · 'random' สุ่มต่อคลิป · ชื่อเพลงในโฟลเดอร์เพลง = ใช้เพลงนี้ทุกคลิป
             if (body.bgm === 'off' || body.bgm === 'random' || bgmTracks(c).includes(body.bgm)) c.render.bgmMode = body.bgm
+            if (BGM_LEVELS[body.bgmLevel]) c.render.bgmLevel = body.bgmLevel
             if (PAUSE_PRESETS[body.pause]) {
               const { segmentGapMs, paragraphGapMs } = PAUSE_PRESETS[body.pause]
               Object.assign(c.tts, { pause: body.pause, segmentGapMs, paragraphGapMs })
@@ -961,6 +962,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           engage: c.script.engage === false ? 'off' : 'on',
           bgm: bgmMode(c),
           bgmCount: tracks.length,
+          bgmLevel: bgmLevel(c),
           aiCoverage,
           aiClips: aiCoverage,
           firstCount: clips.firstCount,
@@ -975,6 +977,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             kieTier: Object.entries(KIE_TIERS).map(([id, t]) => ({ id, label: t.label, name: t.name, credits: t.credits, detail: t.detail })),
             motion: Object.entries(MOTION_PRESETS).map(([id, m]) => ({ id, label: m.label })),
             engage: [{ id: 'on', label: 'ชวนคุย' }, { id: 'off', label: 'ไม่ชวน' }],
+            bgmLevel: Object.entries(BGM_LEVELS).map(([id, l]) => ({ id, label: l.label })),
             bgm: [
               { id: 'off', label: 'ไม่ใส่เพลง' },
               { id: 'random', label: `สุ่มเพลง (${tracks.length} เพลง)` },

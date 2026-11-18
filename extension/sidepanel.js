@@ -1567,6 +1567,21 @@ function renderClipSettings() {
       : clip.bgm === 'random'
         ? 'สุ่มเพลงจากโฟลเดอร์ music ให้แต่ละคลิป (ตัดต่อคลิปเดิมซ้ำได้เพลงเดิม)'
         : 'ใช้เพลงนี้ทุกคลิป · เพลงเบากว่าเสียงพากย์ ค่อยๆ ดังขึ้นตอนต้นและเบาลงตอนจบ'
+  // ความดังเพลง: เบา · กลาง · ดัง · ดังมาก — ซ่อนเมื่อไม่ใส่เพลง/ไม่มีเพลง หรือโปรแกรมรุ่นเก่าไม่ส่งมา
+  const bgmLevel = $('clipBgmLevel')
+  const bgmLevelOptions = clip.options.bgmLevel ?? []
+  bgmLevel.parentElement.hidden = !bgmLevelOptions.length || !clip.bgmCount || clip.bgm === 'off'
+  if (!bgmLevel.childElementCount) {
+    for (const o of bgmLevelOptions) {
+      const b = Object.assign(document.createElement('button'), { type: 'button', textContent: o.label })
+      b.dataset.value = o.id
+      bgmLevel.append(b)
+    }
+  }
+  for (const b of bgmLevel.querySelectorAll('button')) {
+    b.setAttribute('aria-pressed', String(b.dataset.value === clip.bgmLevel))
+    b.disabled = localBusy()
+  }
   const pause = $('clipPause')
   if (!pause.childElementCount) {
     for (const o of clip.options.pause) {
@@ -1663,7 +1678,8 @@ function renderClipSettings() {
   const subLabel = clip.options.subtitles.find((o) => o.id === clip.subtitles)?.label
   const pauseLabel = clip.options.pause.find((o) => o.id === clip.pause)?.label
   const artLabel = (clip.options.artStyle ?? []).find((o) => o.id === clip.artStyle)?.label
-  const bgmLabel = !bgmOptions.length ? '' : clip.bgm === 'off' ? 'ไม่มีเพลง' : clip.bgm === 'random' ? 'สุ่มเพลง' : `เพลง ${String(clip.bgm).replace(/\.[^.]+$/, '')}`
+  const levelLabel = bgmLevelOptions.find((o) => o.id === clip.bgmLevel)?.label
+  const bgmLabel = !bgmOptions.length ? '' : clip.bgm === 'off' ? 'ไม่มีเพลง' : `${clip.bgm === 'random' ? 'สุ่มเพลง' : `เพลง ${String(clip.bgm).replace(/\.[^.]+$/, '')}`}${levelLabel ? ` (${levelLabel})` : ''}`
   const summary = `${clip.orientation === 'portrait' ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'}${artLabel ? ` · ${artLabel}` : ''} · ซับไตเติล${subLabel}${motionLabel ? ` · ${motionLabel}` : ''}${bgmLabel ? ` · ${bgmLabel}` : ''} · เงียบ${pauseLabel}`
   $('clipSettingsSummary').textContent = `ตั้งค่าคลิป: ${summary}${character?.active ? ' · ตัวละครของฉัน' : ''}`
   $('renderSettingsHint').textContent = `ซับไตเติล: ${subLabel}${motionLabel ? ` · ${motionLabel}` : ''} · แนวภาพตามภาพที่สร้างไว้ (เปลี่ยนได้ที่ ⚡ ตั้งค่าคลิป)`
@@ -1732,6 +1748,10 @@ $('saveKieKey').addEventListener('click', async () => {
 })
 $('clipSubtitles').addEventListener('change', (e) => saveClipSettings({ subtitles: e.target.value }))
 $('clipBgm').addEventListener('change', (e) => saveClipSettings({ bgm: e.target.value }))
+$('clipBgmLevel').addEventListener('click', (e) => {
+  const b = e.target.closest('button')
+  if (b && !localBusy()) saveClipSettings({ bgmLevel: b.dataset.value })
+})
 
 localApp()
   .then((app) => api(app, '/api/clip-settings'))

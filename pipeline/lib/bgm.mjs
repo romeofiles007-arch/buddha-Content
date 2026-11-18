@@ -37,6 +37,20 @@ export function resolveBgm(path, slug) {
   return { file: pickBySlug(tracks, slug) }
 }
 
+/**
+ * ความดังเพลงเทียบกับเสียงพากย์ (render.bgmLevel) — ค่าเริ่มต้น = ดัง (ผู้ใช้เลือก 18 พ.ย. 2026)
+ * กดเลือกในแผงข้างแล้วบันทึกลง config ทันที ใช้ค่านั้นไปจนกว่าจะกดอันอื่น
+ */
+export const BGM_DEFAULT_LEVEL = 'loud'
+export const BGM_LEVELS = {
+  soft: { label: 'เบา', db: -27 },
+  medium: { label: 'กลาง', db: -21 },
+  loud: { label: 'ดัง', db: -16 },
+  xloud: { label: 'ดังมาก', db: -12 },
+}
+export const bgmLevel = (config) => (BGM_LEVELS[config.render?.bgmLevel] ? config.render.bgmLevel : BGM_DEFAULT_LEVEL)
+export const bgmDb = (config) => BGM_LEVELS[bgmLevel(config)].db
+
 export const bgmSource = (config) => fromRoot(config.render?.bgmFile || BGM_DEFAULT_DIR)
 export const bgmMode = (config) => config.render?.bgmMode || 'random'
 

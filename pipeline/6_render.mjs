@@ -12,7 +12,7 @@
 import { existsSync, statSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { loadConfig, projectDir } from './lib/config.mjs'
-import { resolveBgm, bgmFor } from './lib/bgm.mjs'
+import { resolveBgm, bgmFor, bgmDb, bgmLevel, BGM_LEVELS } from './lib/bgm.mjs'
 import { collectImages } from './lib/shotfile.mjs'
 import { probeDuration, probeSize, renderVideo, MOTION_PRESETS } from './lib/ffmpeg.mjs'
 import { hhmmss } from './lib/timecode.mjs'
@@ -124,14 +124,14 @@ if (clips.size) {
   if (timeline.length < images.length) console.log(`คลิป AI เล่นต่อเนื่องแทนภาพนิ่งในฉากเดียวกัน ${images.length - timeline.length} ช็อต`)
 }
 
-console.log(`ภาพ ${images.length} ใบ · เสียง ${hhmmss(totalDuration)} · ${portrait ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'} · ซับไตเติล${SUBTITLE_STYLES[subStyle].label} · ${MOTION_PRESETS[motion].label}${clips.size ? ` · คลิป AI ${clips.size} ช็อต` : ''}${bgm.file ? ` · เพลง ${basename(bgm.file)}` : ''} · กำลัง render...`)
+console.log(`ภาพ ${images.length} ใบ · เสียง ${hhmmss(totalDuration)} · ${portrait ? 'แนวตั้ง 9:16' : 'แนวนอน 16:9'} · ซับไตเติล${SUBTITLE_STYLES[subStyle].label} · ${MOTION_PRESETS[motion].label}${clips.size ? ` · คลิป AI ${clips.size} ช็อต` : ''}${bgm.file ? ` · เพลง ${basename(bgm.file)} (${BGM_LEVELS[bgmLevel(config)].label} ${bgmDb(config)} dB)` : ''} · กำลัง render...`)
 await renderVideo({
   images: timeline,
   voiceover,
   bgm: bgm.file,
   outFile,
   totalDuration,
-  config: config.render,
+  config: { ...config.render, bgmDb: bgmDb(config) },
   resolution,
   subtitles,
   fit,
@@ -140,7 +140,7 @@ await renderVideo({
   onProgress: (done, total) => process.stdout.write(`\rขยับภาพ ${done}/${total} ช็อต${done === total ? ' · กำลังรวมเป็นวิดีโอ...\n' : ''}`),
 })
 // ค่าที่ใช้ตัดต่อ — ทำคลิปอัตโนมัติใช้ตัดสินว่าต้องตัดต่อใหม่ไหมเมื่อเปลี่ยนตั้งค่า
-writeFileSync(join(projectDir(slug, 'render'), 'render.json'), JSON.stringify({ resolution, subtitles: subStyle, motion, clips: clips.size, bgm: bgm.file ? basename(bgm.file) : null, renderedAt: Date.now() }, null, 2))
+writeFileSync(join(projectDir(slug, 'render'), 'render.json'), JSON.stringify({ resolution, subtitles: subStyle, motion, clips: clips.size, bgm: bgm.file ? basename(bgm.file) : null, bgmDb: bgm.file ? bgmDb(config) : null, renderedAt: Date.now() }, null, 2))
 
 const mb = (statSync(outFile).size / 1024 / 1024).toFixed(1)
 console.log(`เสร็จ: ${outFile} (${mb} MB)`)
