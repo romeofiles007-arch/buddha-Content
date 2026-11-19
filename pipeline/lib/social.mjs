@@ -106,6 +106,33 @@ export async function facebookUpload({ pageId, token, file, title, description, 
 }
 
 /**
+ * หาวิดีโอที่อัปขึ้นเพจไปแล้ว — ใช้ตรวจโพสต์ที่ "ไม่รู้ผล" (Facebook ตอบ 502/503 หลังรับไฟล์ไปแล้ว)
+ * ดูวิดีโอของเพจตั้งแต่ since (วินาที) ถึงตอนนี้ แล้วจับคู่ด้วยชื่อโพสต์ หรือต้นข้อความโพสต์
+ * คืน { found: true, postId, url } | { found: false, checked } · อ่านเพจไม่ได้ = throw (ห้ามสรุปว่าไม่มี)
+ */
+export async function facebookFindVideo({ pageId, token, title, description, since }, { fetchImpl = fetch } = {}) {
+  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
+  const wantTitle = norm(String(title ?? '').slice(0, 255))
+  const wantText = norm(description).slice(0, 60)
+  let url = `${GRAPH}/${encodeURIComponent(pageId)}/videos?fields=id,title,description,created_time&limit=100&since=${Math.floor(since)}&access_token=${encodeURIComponent(token)}`
+  let checked = 0
+  for (let page = 0; url && page < 5; page++) {
+    const res = await fetchImpl(url)
+    if (!res.ok) throw await failure(res, 'facebook')
+    const data = await res.json()
+    for (const v of data.data ?? []) {
+      checked++
+      const t = norm(v.title), d = norm(v.description)
+      if ((wantTitle && t === wantTitle) || (wantText.length >= 20 && d.startsWith(wantText))) {
+        return { found: true, postId: String(v.id), url: `https://www.facebook.com/${pageId}/videos/${v.id}`, createdAt: v.created_time }
+      }
+    }
+    url = data.paging?.next ?? null
+  }
+  return { found: false, checked }
+}
+
+/**
  * ลง Story ของเพจ 1 ตอน (Page Stories API: start → อัปไฟล์ไป rupload → finish)
  * คลิปต้องแนวตั้ง 9:16 ไม่เกิน 60 วิ — ตัดเป็นตอนไว้ก่อนแล้ว (stageStoryParts) · ไฟล์ที่อัปแล้วใช้ซ้ำในโพสต์อื่นไม่ได้
  */

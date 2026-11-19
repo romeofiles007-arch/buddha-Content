@@ -13,7 +13,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readd
 import { join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { ROOT, loadConfig } from './config.mjs'
-import { categoryOf, monkInTitle, ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS } from '../../extension/prompts.js'
+import { categoryOf, monkInTitle, ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS, resolveMood } from '../../extension/prompts.js'
 import { readSelfMonk, selfMonkReady, SELF_NOT_READY } from './self_monk.mjs'
 import { readMyBuddha, myBuddhaReady, MY_BUDDHA_DIR } from './my_buddha.mjs'
 
@@ -254,7 +254,8 @@ export async function ensureProfile(slug, { title, genre, log = console.log } = 
     const category = categoryOf(genre)?.id ?? detectCategory(title)
     // โหมดพระสอนธรรมต้องมีรูปหน้าพระก่อน — ไม่งั้นได้พระหน้าใครก็ไม่รู้
     if (category === 'self' && !selfMonkReady()) throw new Error(SELF_NOT_READY)
-    profile = { category, title, ...clipStyle(category, title) }
+    // แนวเนื้อหา: autopilot สุ่มไว้แล้วตอนคิดหัวข้อ (CLIP_MOOD) → หัวข้อกับบทเป็นแนวเดียวกัน · ไม่มี = ตามตั้งค่าคลิป
+    profile = { category, title, ...clipStyle(category, title), mood: resolveMood(process.env.CLIP_MOOD || loadConfig().script?.mood) }
     // จำชื่อพระไว้กับคลิป (เปลี่ยนชื่อในแผงข้างทีหลัง คลิปเดิมยังใช้ชื่อเดิม)
     if (category === 'self') profile.self = { name: readSelfMonk().name }
     if (category === 'monk') {
@@ -264,7 +265,7 @@ export async function ensureProfile(slug, { title, genre, log = console.log } = 
       else profile.category = 'dhamma'
     }
     saveProfile(slug, profile)
-    log(`   หมวดของคลิป: ${profile.category}${profile.monk ? ` · ${profile.monk.name}` : ''}${profile.narration ? ` · วิธีเล่า ${profile.narration}` : ''} · ลายเส้น ${profile.artStyle}`)
+    log(`   หมวดของคลิป: ${profile.category}${profile.monk ? ` · ${profile.monk.name}` : ''}${profile.narration ? ` · วิธีเล่า ${profile.narration}` : ''}${profile.mood === 'happy' ? ' · แนวเพิ่มความสุข' : ''} · ลายเส้น ${profile.artStyle}`)
   }
   // ยังไม่เคยดึงสำเร็จ (เช่น เน็ตหลุดรอบก่อน) → ลองใหม่
   if (profile.category === 'monk' && profile.monk && !profile.monk.fetchedAt) {

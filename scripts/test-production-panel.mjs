@@ -17,6 +17,7 @@ assert.ok(controller, 'production controller exists')
 const fixture = `
 import { scheduleFromFields, scheduleFields, scheduleCopy } from '/extension/production-schedule.js';
 import { applyCategoryTheme } from '/extension/category-themes.js';
+import { CATEGORIES } from '/extension/prompts.js';
 const params = new URLSearchParams(location.search);
 applyCategoryTheme(params.get('category') || 'dhamma');
 const box = document.getElementById('prodBox'),control=document.getElementById('autoControlBlock'),section=document.getElementById('autoSection'),main=document.querySelector('main');

@@ -15,20 +15,23 @@ export function blueprint(config) {
   return readFileSync(join(ROOT, config.blueprint), 'utf8')
 }
 
+/** แนวเนื้อหาของคลิปนี้ ('happy' | 'off') — autopilot สุ่มไว้ใน CLIP_MOOD แล้ว ไม่งั้นตามตั้งค่าคลิป (สุ่มใหม่ทุกครั้งที่เรียก) */
+export const clipMood = (config) => shared.resolveMood(process.env.CLIP_MOOD || config.script?.mood)
+
 export function topicsPrompt(config) {
-  return shared.topicsPrompt(blueprint(config), { titleLanguage: config.script.titleLanguage, genre: config.script.genre, narration: config.script.buddhaNarration })
+  return shared.topicsPrompt(blueprint(config), { titleLanguage: config.script.titleLanguage, genre: config.script.genre, narration: config.script.buddhaNarration, mood: clipMood(config) })
 }
 
 export const { parseScoredTopics } = shared
 
 /** หัวข้อพร้อมคะแนน — ชื่อหัวข้อใช้ภาษาเดียวกับเสียงพากย์ของคลิป */
 export function scoredTopicsPrompt(config, { avoid = [], seen = [], themes } = {}) {
-  return shared.scoredTopicsPrompt(blueprint(config), { titleLanguage: config.script.language, minutes: config.script.targetMinutes, avoid, seen, genre: config.script.genre, narration: config.script.buddhaNarration, themes: themes ?? shared.pickThemes(5, recentThemes()) })
+  return shared.scoredTopicsPrompt(blueprint(config), { titleLanguage: config.script.language, minutes: config.script.targetMinutes, avoid, seen, genre: config.script.genre, narration: config.script.buddhaNarration, mood: clipMood(config), themes: themes ?? shared.pickThemes(5, recentThemes()) })
 }
 
 /** profile = โปรไฟล์ของคลิป (หมวด + พระเกจิ) จาก clip_profile.mjs — ไม่มี = ให้ ChatGPT ดูหมวดจากชื่อเรื่อง */
 export function scriptPrompt(config, title, profile = null) {
-  return shared.scriptPrompt(blueprint(config), title, { ...config.script, profile, theme: themeOf(slugify(title)) })
+  return shared.scriptPrompt(blueprint(config), title, { ...config.script, profile, mood: profile?.mood ?? clipMood(config), theme: themeOf(slugify(title)) })
 }
 
 

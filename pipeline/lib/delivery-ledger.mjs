@@ -225,6 +225,22 @@ export function createDeliveryLedger(dir) {
         Object.assign(entry, { status: needsVerification === false ? 'retryable' : 'uncertain', error: message, at: Date.now() })
       })
     },
+    /**
+     * ตรวจกับปลายทางแล้วว่าการส่งที่ "ไม่รู้ผล" ขึ้นจริงหรือไม่ — found: นับว่าโพสต์แล้ว · ไม่พบ: ปลดล็อกให้ส่งใหม่ได้
+     * แตะเฉพาะรายการ uncertain ของคลิปนี้ + ปลายทางนี้ · คืนจำนวนรายการที่เปลี่ยน
+     */
+    resolve({ identity, destination }, { found, result, note }) {
+      return transaction(data => {
+        let changed = 0
+        for (const entry of data.entries) {
+          if (entry.status !== 'uncertain' || !matches(entry, identity, destination)) continue
+          if (found) Object.assign(entry, { status: 'done', result, verifiedAt: Date.now() })
+          else Object.assign(entry, { status: 'retryable', verifiedMissingAt: Date.now(), error: note ?? entry.error })
+          changed++
+        }
+        return changed
+      })
+    },
     importRecords(records) {
       transaction(data => {
         for (const record of records) {

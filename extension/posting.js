@@ -588,10 +588,24 @@ export function initPosting({ api, localApp }) {
         fail && q.error && !(q.targets ?? []).some((k) => q.results?.[k]) ? el('p', { className: 'status err' }, q.error) : null,
         // คลิปที่ยังรอปลายทางอื่น: ยังไม่ปิดงาน — ไม่มีปุ่มเอาออก (จะยกเลิกปลายทางที่รออยู่ไปด้วย) จัดการได้ในแท็บรอตั้งเวลา/ตั้งเวลาแล้ว
         closed ? el('div', { className: 'pActions' },
-          q.status === 'failed' && (q.targets ?? []).some(k => !q.results?.[k]?.ok && !q.results?.[k]?.needsVerification) ? el('button', { type: 'button', className: 'primary', on: { click: () => {
+          // ไฟล์คลิปหาย: ลองใหม่ก็พลาดซ้ำ → ตัดต่อใหม่ก่อน พอไฟล์กลับมาระบบตั้งเวลาโพสต์ใหม่ให้เอง
+          q.status === 'failed' && q.missing ? el('p', { className: 'status err' }, 'ไฟล์คลิปหายไปจากเครื่อง — กดตัดต่อใหม่ เสร็จแล้วระบบตั้งเวลาโพสต์ให้เอง') : null,
+          q.status === 'failed' && q.missing ? el('button', { type: 'button', className: 'primary', on: { click: async () => {
+            try {
+              setStatus('กำลังสั่งตัดต่อใหม่…', 'busy')
+              await api(app, '/api/autopilot', { title: q.title, restartFrom: 'edit' })
+              setStatus(`เริ่มตัดต่อ "${q.title}" ใหม่แล้ว — ดูความคืบหน้าในหน้าทำคลิป`, 'ok')
+            } catch (err) { setStatus(err.message, 'error') }
+          } } }, '🎬 ตัดต่อใหม่') : null,
+          q.status === 'failed' && !q.missing && (q.targets ?? []).some(k => !q.results?.[k]?.ok && !q.results?.[k]?.needsVerification) ? el('button', { type: 'button', className: 'primary', on: { click: () => {
             call('/api/posting/retry', { id: q.id }, 'กำลังส่งเฉพาะปลายทางที่ยังไม่ถูกส่ง…').catch(() => {})
           } } }, '↻ ลองเฉพาะปลายทางที่ยังไม่ถูกส่ง') : null,
-          q.status === 'failed' && (q.targets ?? []).some(k => q.results?.[k]?.needsVerification) ? el('p', { className: 'status err' }, 'ปลายทางที่ยังไม่รู้ผลถูกระงับการส่งซ้ำ กรุณาตรวจในเพจ/ช่องโดยตรง') : null,
+          // ไม่รู้ผล (Facebook ตอบ 5xx หลังรับไฟล์): ระบบตรวจกับเพจเองทุก 10 นาที — ไม่พบ = ตั้งเวลาโพสต์ใหม่ · พบ = นับว่าโพสต์แล้ว
+          q.status === 'failed' && (q.targets ?? []).some(k => q.results?.[k]?.needsVerification) ? el('p', { className: 'pMeta' }, 'ยังไม่รู้ว่าขึ้นเพจหรือไม่ — ระบบตรวจกับเพจเองทุก 10 นาที ถ้าไม่พบจะตั้งเวลาโพสต์ใหม่ให้ (ไม่โพสต์ซ้ำ)') : null,
+          q.status === 'failed' && (q.targets ?? []).some(k => q.results?.[k]?.needsVerification && k.startsWith('fb:')) ? el('button', { type: 'button', className: 'primary', on: { click: async () => {
+            const out = await call('/api/posting/verify', { id: q.id }, 'ตรวจกับเพจแล้ว').catch(() => null)
+            if (out?.message) setStatus(out.message, 'ok')
+          } } }, '🔎 ตรวจกับเพจเดี๋ยวนี้') : null,
           el('button', { type: 'button', className: 'ghost', on: { click: () => call('/api/posting/remove', { id: q.id }, 'เอาออกจากรายการแล้ว').catch(() => {}) } }, 'เอาออกจากรายการ'),
         ) : null,
       )

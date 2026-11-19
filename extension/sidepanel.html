@@ -234,6 +234,11 @@
 
 <main>
   <h1 class="brand-lockup"><img class="brand-icon" src="icons/cartoon-auto.svg" alt="" width="42" height="42" />ธรรมะ Auto</h1>
+  <!-- ผลิตครั้งต่อไปกี่โมง — ค้างไว้บนสุดตลอด (sidepanel.js renderProdNext) -->
+  <button type="button" class="prodNext" id="prodNext" hidden>
+    <span class="prodNextIcon" aria-hidden="true">🏭</span>
+    <span class="prodNextText"><strong id="prodNextMain"></strong><span id="prodNextSub"></span></span>
+  </button>
 
   <label class="pick categoryPicker" id="genreBox">หมวดเนื้อหา
       <select id="topicGenre" aria-label="หมวดคลิป"></select>
@@ -398,6 +403,11 @@
       <div class="pick">สุ่มอะไรบ้าง <span class="hint" style="margin:0">(ไม่ติ๊ก = ใช้ค่าที่ตั้งไว้)</span>
         <label class="prodCheck"><input type="checkbox" id="prodRandGenre" /> หมวดและหัวข้อ</label>
         <p class="hint" id="prodGenreLock" style="margin:0 0 6px 26px" hidden>🙏 โหมดพระสอนธรรมเลือกไว้ — ทุกคลิปเป็นท่านสอนธรรม ไม่สุ่มหมวด (สุ่มหัวข้อในโหมดนี้)</p>
+        <div id="prodShareBox" style="margin:0 0 8px 26px" hidden>
+          <span class="hint" style="margin:0 0 4px">สัดส่วนแต่ละหมวด (%) — ใช้หลายเพจที่รับคนละหมวด กำหนดได้ว่าหมวดไหนผลิตมากน้อย</span>
+          <div id="prodShare" style="display:grid;grid-template-columns:1fr 64px auto;gap:4px 8px;align-items:center"></div>
+          <span class="hint" id="prodShareHint" style="margin:4px 0 0"></span>
+        </div>
         <label class="prodCheck"><input type="checkbox" id="prodRandArt" /> ลายเส้นของภาพ</label>
         <label class="prodCheck"><input type="checkbox" id="prodRandNarration" /> วิธีเล่า หมวด 1</label>
         <div class="prodCheck"><label class="prodCheck" style="margin:0"><input type="checkbox" id="prodRandLang" /> ภาษา:</label>
@@ -481,6 +491,10 @@
     <label class="pick" id="autoTitleBox">หัวข้อคลิป (แก้ได้)
       <input id="autoTitle" maxlength="200" placeholder="เช่น ถ้าคุณตกลงไปในหลุมดำ จะเกิดอะไรขึ้น" autocomplete="off" />
     </label>
+    <div class="pick" hidden>แนวเนื้อหา
+      <div class="seg" id="clipMood" role="group" aria-label="แนวเนื้อหา"></div>
+      <span class="hint" id="clipMoodHint" style="margin:2px 0 0"></span>
+    </div>
     <div class="pick" hidden>ชวนคุยท้ายคลิป
       <div class="seg" id="clipEngage" role="group" aria-label="ชวนคุยท้ายคลิป"></div>
       <span class="hint" style="margin:2px 0 0">ปิดท้ายบทด้วยคำถามให้คนดูตอบในคอมเมนต์ เช่น "ถ้าเป็นคุณ จะทำอย่างไร?" · ใช้กับบทที่เขียนหลังจากนี้</span>

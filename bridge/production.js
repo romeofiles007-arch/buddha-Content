@@ -13,7 +13,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, linkSyn
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { ROOT, loadConfig } from '../pipeline/lib/config.mjs'
-import { GENRES, categoryOf } from '../extension/prompts.js'
+import { GENRES, CATEGORIES, categoryOf } from '../extension/prompts.js'
 import { clipSettings } from '../pipeline/lib/clips.mjs'
 import { hasKey } from '../pipeline/lib/env.mjs'
 import { loadQueue, loadAccounts, allTargets, findTarget, pageSequence } from '../pipeline/lib/posting.mjs'
@@ -39,7 +39,12 @@ export const DEFAULT_SETTINGS = {
   // โพสต์ลงเพจไหน: all = ระบบกระจายเอง แพลตฟอร์มละ 1 เพจ/ช่องที่รับหมวดของคลิป (กฎห้ามโพสต์ซ้ำ) · split = แบ่งคลิปตามจำนวนที่ตั้งต่อเพจ (คลิปละเพจเดียว)
   postPages: 'all',
   pageQuota: {}, // { "fb:<id>" | "yt:<id>": จำนวนคลิปต่อชุด } ใช้เมื่อ postPages = split
+  // สัดส่วนหมวดเมื่อสุ่มหมวด (random.genre) — { buddha: %, monk: %, dhamma: % } · ว่าง/รวม 0 = เท่าๆ กัน
+  // ผู้ใช้ (19 พ.ย. 2026): ใช้หลายเพจ แต่ละเพจรับคนละหมวด → กำหนดได้ว่าหมวดไหนผลิตมากน้อยเท่าไร
+  genreShare: {},
 }
+/** หมวดที่กำหนดสัดส่วนได้ (ไม่รวมโหมดเฉพาะ พระสอนธรรม) */
+export const SHARE_CATEGORIES = CATEGORIES.filter((c) => !c.exclusive).map((c) => c.id)
 const AUTO_POST = ['off', 'now']
 const POST_PAGES = ['all', 'split']
 const TARGET_KEY = /^(fb|yt|tk):[\w.-]{1,64}$/
@@ -81,6 +86,11 @@ export function cleanSettings(input = {}, base = DEFAULT_SETTINGS) {
     for (const [k, v] of Object.entries(input.pageQuota)) if (TARGET_KEY.test(k) && Number.isFinite(Number(v)) && Number(v) > 0) s.pageQuota[k] = int(v, 0, 100)
   }
   s.pageQuota = { ...(s.pageQuota ?? {}) }
+  if (input.genreShare && typeof input.genreShare === 'object') {
+    s.genreShare = {}
+    for (const id of SHARE_CATEGORIES) if (Number.isFinite(Number(input.genreShare[id]))) s.genreShare[id] = int(input.genreShare[id], 0, 100)
+  }
+  s.genreShare = { ...(s.genreShare ?? {}) }
   return s
 }
 
@@ -100,14 +110,31 @@ export const productionError = lines => (lines ?? []).findLast(line => STOP_ALL.
 // ล้มแบบนี้ทุกคลิปถัดไปก็ล้มเหมือนกัน → หยุดทั้งรอบ: บัญชี Flow ติดลิมิตครบ · เครดิต ElevenLabs หมด (ต้องเติมเอง ไม่สลับเสียง)
 const STOP_ALL = /FLOW_ACCOUNTS_EXHAUSTED|เครดิต ElevenLabs หมด/
 
-/** ตัวเลือกของคลิปถัดไป — สุ่มเฉพาะข้อที่ติ๊กไว้ */
-export function pickClip(s, config, rand = Math.random) {
+/**
+ * หมวดของคลิปถัดไปตามสัดส่วน % — เลือกหมวดที่ยังได้น้อยกว่าสัดส่วนมากที่สุด (ไม่ใช่สุ่มล้วน)
+ * ชุด 10 คลิป ตั้ง 50/30/20 → ได้ 5/3/2 พอดี · made = { id: จำนวนคลิปที่ทำสำเร็จแล้วในชุดนี้ }
+ * ไม่ได้ตั้ง (รวม 0) → null = คละหมวดแบบเดิม
+ */
+export function shareGenre(share = {}, made = {}, rand = Math.random) {
+  const ids = SHARE_CATEGORIES.filter((id) => share[id] > 0)
+  if (!ids.length) return null
+  const total = ids.reduce((a, id) => a + share[id], 0)
+  const n = ids.reduce((a, id) => a + (made[id] ?? 0), 0) + 1
+  const gap = (id) => (share[id] / total) * n - (made[id] ?? 0)
+  const best = Math.max(...ids.map(gap))
+  const tied = ids.filter((id) => gap(id) >= best - 1e-9)
+  const id = tied[Math.floor(rand() * tied.length)]
+  return CATEGORIES.find((c) => c.id === id).name
+}
+
+/** ตัวเลือกของคลิปถัดไป — สุ่มเฉพาะข้อที่ติ๊กไว้ · made = หมวดที่ทำสำเร็จแล้วในชุด (ใช้กับสัดส่วนหมวด) */
+export function pickClip(s, config, rand = Math.random, made = {}) {
   const pick = (list) => list[Math.floor(rand() * list.length)]
   const language = s.random.language ? pick(s.languages) : config.script.language ?? 'th'
   // โหมดเฉพาะ (พระสอนธรรม) เลือกไว้ = ทุกคลิปเป็นโหมดนั้น ไม่สุ่มหมวดทับ แม้ติ๊ก "สุ่มหมวด" ไว้
   const fixed = categoryOf(config.script.genre)
   return {
-    genre: fixed?.exclusive ? fixed.name : s.random.genre ? 'mix' : GENRES.includes(config.script.genre) ? config.script.genre : 'mix',
+    genre: fixed?.exclusive ? fixed.name : s.random.genre ? shareGenre(s.genreShare, made, rand) ?? 'mix' : GENRES.includes(config.script.genre) ? config.script.genre : 'mix',
     language,
     // ชื่อเรื่องภาษาเดียวกับเสียงพากย์เมื่อสุ่มภาษา (คลิปจีนชื่อจีน)
     titleLanguage: s.random.language ? language : config.script.titleLanguage ?? language,
@@ -187,7 +214,7 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     const last = state.history.filter((h) => h.batch === state.batch).at(-1)
     if (!last || last.ok || !last.slug || !last.title) return null
     const status = readJson(join(ROOT, 'projects', last.slug, 'autopilot.json'), null)
-    return status?.status === 'done' ? null : { slug: last.slug, title: last.title, language: last.language }
+    return status?.status === 'done' ? null : { slug: last.slug, title: last.title, language: last.language, genre: last.genre ?? null }
   }
 
   /** ทำต่อชุดเดิม — นับจำนวนคลิปต่อจากเดิม · at = 'HH:MM' ตั้งเวลาทำต่อ (ไม่ใส่ = ทำต่อเลย) */
@@ -253,7 +280,7 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
   }
 
   function finishRun(result, now = Date.now()) {
-    state.history.push({ ...result, batch: state.batch, startedAt: state.run.startedAt, endedAt: now, language: state.run.language })
+    state.history.push({ ...result, batch: state.batch, startedAt: state.run.startedAt, endedAt: now, language: state.run.language, genre: state.run.genre ?? null })
     state.history = state.history.slice(-40)
     state.run = null
     if (result.ok) {
@@ -322,7 +349,10 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
       say('เปิดแอนิเมชัน Kie แต่ยังไม่มี API key — ลองใหม่อีก 10 นาที')
       return save()
     }
-    const clip = pickClip(settings, config)
+    // หมวดที่ทำสำเร็จแล้วในชุดนี้ → คลิปถัดไปเลือกหมวดให้ตรงสัดส่วน % ที่ตั้งไว้
+    const made = {}
+    for (const h of state.history) if (h.batch === state.batch && h.ok && h.genre) made[h.genre] = (made[h.genre] ?? 0) + 1
+    const clip = pickClip(settings, config, Math.random, made)
     // ทำต่อคลิปที่ค้าง: สั่งด้วยชื่อเรื่องเดิม autopilot ข้ามแผนกที่เสร็จแล้วเอง (หมวด/ลายเส้นอยู่ในโปรไฟล์ของคลิปแล้ว)
     const again = state.resume
     state.resume = null
@@ -330,9 +360,9 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
     const run = again
       ? runner.start('autopilot', again.slug, { title: again.title, genre: clip.genre, language: clip.language, titleLanguage: clip.titleLanguage, minutes: clip.minutes, env: clip.env, quiet: true })
       : runner.start('autopilot', null, { autoTopic: true, genre: clip.genre, language: clip.language, titleLanguage: clip.titleLanguage, minutes: clip.minutes, env: clip.env, quiet: true })
-    state.run = { startedAt: run.startedAt, language: clip.language }
+    state.run = { startedAt: run.startedAt, language: clip.language, genre: again ? again.genre ?? null : categoryOf(clip.genre)?.id ?? null }
     const n = state.made + 1
-    say(`${again ? `ทำต่อ "${again.title}" · ` : ''}เริ่มคลิป ${n}${settings.count ? `/${settings.count}` : ''} (${{ th: 'ไทย', zh: 'จีน', en: 'อังกฤษ' }[clip.language]})`)
+    say(`${again ? `ทำต่อ "${again.title}" · ` : ''}เริ่มคลิป ${n}${settings.count ? `/${settings.count}` : ''} (${{ th: 'ไทย', zh: 'จีน', en: 'อังกฤษ' }[clip.language]}${!again && categoryOf(clip.genre) ? ` · ${categoryOf(clip.genre).name}` : ''})`)
     save()
   }
 

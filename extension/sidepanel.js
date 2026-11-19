@@ -6,7 +6,7 @@
  *
  * prompt ใช้ชุดเดียวกับ pipeline/ (extension/prompts.js) ผลจึงเหมือนรันจาก terminal
  */
-import { BLUEPRINT_FILE, topicsPrompt, scriptPrompt, parseTopics, cleanScript, estimateMinutes, slugify, scoredTopicsPrompt, parseScoredTopics, GENRES, categoryOf } from './prompts.js'
+import { BLUEPRINT_FILE, topicsPrompt, scriptPrompt, parseTopics, cleanScript, estimateMinutes, slugify, scoredTopicsPrompt, parseScoredTopics, GENRES, CATEGORIES, categoryOf, resolveMood } from './prompts.js'
 import { initIcons, setIconLabel } from './icons.js'
 import { portrait, DEPARTMENTS, HANDOFF, AGENT_WORD, elapsed, SEA_ASSETS } from './agents.js'
 import { initPosting } from './posting.js'
@@ -169,12 +169,18 @@ const failStatus = (id, err) =>
 $('stopTopics').addEventListener('click', stopRun)
 $('stopScript').addEventListener('click', stopRun)
 
+/** แนวเนื้อหาของหัวข้อชุดใหม่ ('happy' | 'off') — "สุ่ม" เลือกตอนขอหัวข้อ แล้วจำไว้ใช้กับบทของหัวข้อชุดนี้ */
+function newClipMood() {
+  S.mood = resolveMood(clip?.mood)
+  return S.mood
+}
+
 // ── 1 หัวข้อ ──
 $('askTopics').addEventListener('click', async () => {
   $('topicsRawBox').hidden = true
   try {
     const text = await withBusy('topicsStatus', 'ChatGPT กำลังคิดหัวข้อ', async () =>
-      askChatGPT(topicsPrompt(await blueprint(), { titleLanguage: S.titleLanguage, genre: S.genre })),
+      askChatGPT(topicsPrompt(await blueprint(), { titleLanguage: S.titleLanguage, genre: S.genre, mood: newClipMood() })),
     )
     const topics = parseTopics(text)
     if (!topics.length) {
@@ -203,7 +209,7 @@ async function selectTopic(t) {
 $('askScript').addEventListener('click', async () => {
   $('scriptRawBox').hidden = true
   S.minutes = Math.min(60, Math.max(1, Number($('minutes').value) || 1))
-  const opts = { language: S.language, targetMinutes: S.minutes, wordsPerMinute: WORDS_PER_MINUTE, engage: clip?.engage !== 'off' }
+  const opts = { language: S.language, targetMinutes: S.minutes, wordsPerMinute: WORDS_PER_MINUTE, engage: clip?.engage !== 'off', mood: S.mood ?? resolveMood(clip?.mood) }
   // โหมดพระสอนธรรม: บทเป็นพระพูดเอง ("อาตมา") ตามกฎของโหมด
   if (selfMode()) opts.profile = { category: 'self', self: { name: selfMonk?.name ?? '' } }
   try {
@@ -1290,7 +1296,9 @@ async function startAutopilot({ title, autoTopic }) {
   setStatus('autoStatus', 'กำลังเริ่ม…', 'busy')
   try {
     const app = await localApp()
-    const { slug } = await api(app, '/api/autopilot', { title, autoTopic, genre: S.genre, language: S.language, minutes: S.minutes })
+    // หัวข้อที่เลือกจากรายการที่เสนอ → ส่งแนวเนื้อหาที่ใช้ตอนเสนอไปด้วย บทจะได้แนวเดียวกัน · พิมพ์เอง/ให้ระบบคิด = ตามตั้งค่าคลิป
+    const mood = !autoTopic && S.mood && S.scoredTopics?.some((t) => t.title === title) ? S.mood : undefined
+    const { slug } = await api(app, '/api/autopilot', { title, autoTopic, genre: S.genre, language: S.language, minutes: S.minutes, mood })
     // เปิดแท็บ ChatGPT ไว้ก่อน — ถ้ายังไม่ได้ล็อกอินจะเห็นทันที
     if (!(await reuseTab('chatTabId', ['https://chatgpt.com/*', 'https://chat.openai.com/*']))) {
       const tab = await chrome.tabs.create({ url: CHATGPT_URL, active: false })
@@ -1481,7 +1489,7 @@ $('suggestTopics').addEventListener('click', async () => {
     const avoid = history.done ?? []
     const seen = history.seen ?? []
     const text = await withBusy('suggestStatus', 'ChatGPT กำลังคิดหัวข้อและให้คะแนน', async () =>
-      askChatGPT(scoredTopicsPrompt(await blueprint(), { titleLanguage: S.language, minutes: S.minutes, avoid, seen, genre: S.genre, narration: clip?.buddhaNarration })),
+      askChatGPT(scoredTopicsPrompt(await blueprint(), { titleLanguage: S.language, minutes: S.minutes, avoid, seen, genre: S.genre, narration: clip?.buddhaNarration, mood: newClipMood() })),
     )
     const topics = parseScoredTopics(text)
     // จำไว้ว่าเสนออะไรไปแล้ว — ครั้งหน้าให้ ChatGPT เลี่ยง
@@ -1615,6 +1623,23 @@ function renderClipSettings() {
     }
   }
   for (const b of engage.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === clip.engage))
+  // แนวเนื้อหา: ปกติ · สุ่ม · เพิ่มความสุข — โปรแกรมในเครื่องรุ่นเก่าไม่ส่งมา → ซ่อน
+  const mood = $('clipMood')
+  const moodOptions = clip.options.mood ?? []
+  mood.parentElement.hidden = !moodOptions.length
+  if (!mood.childElementCount) {
+    for (const o of moodOptions) {
+      const b = Object.assign(document.createElement('button'), { type: 'button', textContent: o.label })
+      b.dataset.value = o.id
+      mood.append(b)
+    }
+  }
+  for (const b of mood.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === clip.mood))
+  $('clipMoodHint').textContent = {
+    off: 'ตาม Blueprint — เปิดเรื่องด้วยทุกข์ใจของคนดูแล้วชี้ทางออกได้',
+    random: 'สุ่มต่อคลิป ครึ่งหนึ่งเป็นแนวเพิ่มความสุข อีกครึ่งเป็นแนวปกติ',
+    happy: 'หัวข้อและบทเน้นความสุข อิ่มใจ มีกำลังใจ ไม่เสนอความทุกข์ ปัญหา ความกลัว นรก หรือความตาย',
+  }[clip.mood] ?? ''
   // ผู้ช่วยจัดฉาก/Kie — เลือกสัดส่วนของฉากทั้งเรื่อง
   const ai = $('clipAi')
   const aiOptions = clip.options.aiCoverage ?? clip.options.aiClips ?? []
@@ -1710,6 +1735,10 @@ $('clipNarration').addEventListener('click', (e) => {
 $('clipPause').addEventListener('click', (e) => {
   const b = e.target.closest('button')
   if (b && !localBusy()) saveClipSettings({ pause: b.dataset.value })
+})
+$('clipMood').addEventListener('click', (e) => {
+  const b = e.target.closest('button')
+  if (b && !localBusy()) saveClipSettings({ mood: b.dataset.value })
 })
 $('clipEngage').addEventListener('click', (e) => {
   const b = e.target.closest('button')
@@ -2555,6 +2584,8 @@ refreshAgents()
   const sticky = $('agentSticky')
   const syncSticky = () => {
     sticky.hidden = hero.getBoundingClientRect().bottom > 0
+    // แถบ "ผลิตครั้งต่อไป" ค้างไว้ใต้แถบนี้ — ไม่ให้ถูกบัง
+    document.documentElement.style.setProperty('--agent-sticky-h', sticky.hidden ? '0px' : `${sticky.offsetHeight}px`)
   }
   addEventListener('scroll', syncSticky, { passive: true })
   addEventListener('resize', syncSticky, { passive: true })
@@ -3542,7 +3573,49 @@ function prodOptions() {
     autoPost: $('prodAutoPost').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'now',
     postPages: $('prodPages').querySelector('[aria-pressed="true"]')?.dataset.value ?? 'all',
     pageQuota: Object.fromEntries([...$('prodQuota').querySelectorAll('input[data-key]')].map((i) => [i.dataset.key, Math.max(0, Math.round(Number(i.value) || 0))])),
+    // ช่องยังไม่ได้สร้าง (ยังไม่ได้ข้อมูลจากโปรแกรม) → ไม่ส่ง ไม่งั้นสัดส่วนที่บันทึกไว้ถูกล้าง
+    ...($('prodShare').childElementCount && { genreShare: Object.fromEntries([...$('prodShare').querySelectorAll('input[data-cat]')].map((i) => [i.dataset.cat, Math.min(100, Math.max(0, Math.round(Number(i.value) || 0)))])) }),
   }
+}
+
+/**
+ * สัดส่วนหมวด (%) ของผลิตต่อเนื่อง — ใช้เมื่อติ๊กสุ่มหมวด · ยังไม่เคยตั้ง = เท่าๆ กัน (34/33/33)
+ * คำนวณจำนวนคลิปต่อหมวดของชุดแบบเดียวกับ bridge (shareGenre ใน bridge/production.js): เลือกหมวดที่ยังขาดมากสุดทีละคลิป
+ */
+const SHARE_CATS = CATEGORIES.filter((c) => !c.exclusive)
+function shareCounts(share, count) {
+  const ids = SHARE_CATS.map((c) => c.id).filter((id) => share[id] > 0)
+  const total = ids.reduce((a, id) => a + share[id], 0)
+  const made = Object.fromEntries(ids.map((id) => [id, 0]))
+  for (let n = 1; n <= count && ids.length; n++) {
+    const gap = (id) => (share[id] / total) * n - made[id]
+    made[ids.reduce((a, b) => (gap(b) > gap(a) + 1e-9 ? b : a))]++
+  }
+  return made
+}
+function renderProdShare(share) {
+  const box = $('prodShare')
+  if (!box.childElementCount) {
+    const empty = !SHARE_CATS.some((c) => share?.[c.id] > 0)
+    SHARE_CATS.forEach((c, i) => {
+      const label = Object.assign(document.createElement('label'), { textContent: c.name, htmlFor: `prodShare_${c.id}` })
+      const input = Object.assign(document.createElement('input'), { type: 'number', min: '0', max: '100', step: '5', id: `prodShare_${c.id}`, title: 'เปอร์เซ็นต์ของคลิปหมวดนี้ในแต่ละชุด (0 = ไม่ทำหมวดนี้)' })
+      input.dataset.cat = c.id
+      input.value = empty ? Math.floor(100 / SHARE_CATS.length) + (i < 100 % SHARE_CATS.length ? 1 : 0) : share?.[c.id] ?? 0
+      input.addEventListener('input', prodSave)
+      box.append(label, input, Object.assign(document.createElement('span'), { textContent: '%' }))
+    })
+  }
+  $('prodShareBox').hidden = !$('prodRandGenre').checked || selfMode()
+  const form = prodOptions()
+  const vals = form.genreShare ?? {}
+  const total = Object.values(vals).reduce((a, b) => a + b, 0)
+  const counts = form.count ? shareCounts(vals, form.count) : null
+  const short = (id) => SHARE_CATS.find((c) => c.id === id).name.replace(/ · .*/, '')
+  $('prodShareHint').textContent = !total
+    ? '⚠️ ใส่อย่างน้อยหนึ่งหมวด — ถ้าเป็น 0 หมด ระบบคละหมวดให้เอง'
+    : (total !== 100 ? `รวม ${total}% — ระบบคิดเป็นสัดส่วนให้เอง · ` : '')
+      + (counts ? `ชุดละ ${form.count} คลิป: ${Object.entries(counts).map(([id, n]) => `${short(id)} ได้ ${n}`).join(' · ')}` : 'ระบบเลือกหมวดให้ตรงสัดส่วนไปเรื่อยๆ')
 }
 
 function prodForm() {
@@ -3645,6 +3718,7 @@ function renderProd() {
   }
   renderProdPages(s)
   renderProdGenre()
+  renderProdShare(s.genreShare)
   const postMode = prodOptions().autoPost
   $('prodPostHint').textContent = postMode === 'off'
     ? 'คลิปที่เสร็จอยู่ในคลังวิดีโอ ไม่เข้าคิวโพสต์'
@@ -3725,9 +3799,53 @@ function renderProd() {
     $('prodBadge').textContent = `หยุดค้าง ${st.made}${of} — ทำต่อได้`
   }
   $('prodResume').disabled = !r || prodCommandBusy
+  renderProdNext()
   $('prodResumeAt').disabled = !r || prodCommandBusy
   $('prodDismiss').disabled = !r || prodCommandBusy
 }
+
+/**
+ * แถบ "ผลิตครั้งต่อไปกี่โมง" ค้างไว้บนสุดของแผง — ผู้ใช้ (19 พ.ย. 2026) อยากเห็นตลอดโดยไม่ต้องเปิดกล่องตั้งเวลาผลิต
+ * กดแล้วพาไปกล่องตั้งเวลาผลิต · นับถอยหลังอัปเดตทุก 30 วิ
+ */
+function prodLeft(t) {
+  const min = Math.max(0, Math.round((t - Date.now()) / 60_000))
+  if (min < 1) return 'อีกไม่ถึง 1 นาที'
+  const h = Math.floor(min / 60), m = min % 60
+  return `อีก ${h ? `${h} ชม. ` : ''}${m ? `${m} นาที` : ''}`.trim()
+}
+function renderProdNext() {
+  const box = $('prodNext')
+  if (!box || !prod) return
+  const { settings: s, state: st } = prod
+  const of = s.count ? `/${s.count}` : ''
+  let main, sub = '', live = false
+  if (st.active && st.run) {
+    main = `กำลังผลิตคลิป ${st.made + 1}${of}`
+    sub = 'ดูความคืบหน้าด้านล่าง'
+    live = true
+  } else if (st.active && st.nextAt) {
+    main = `ผลิตครั้งต่อไป ${prodTime(st.nextAt)} น.`
+    sub = `${prodLeft(st.nextAt)}${s.start === 'daily' ? ` · ทุกวัน วันละ ${s.count || 'ไม่จำกัด'} คลิป` : ''}`
+    live = true
+  } else if (prod.resume) {
+    main = `ชุดผลิตหยุดค้าง · เสร็จแล้ว ${st.made}${of}`
+    sub = 'กดเพื่อทำต่อ หรือตั้งเวลาทำต่อ'
+  } else {
+    main = 'ยังไม่ได้ตั้งเวลาผลิตครั้งต่อไป'
+    sub = 'กดเพื่อตั้งเวลา'
+  }
+  box.hidden = false
+  box.classList.toggle('on', live)
+  $('prodNextMain').textContent = main
+  $('prodNextSub').textContent = sub
+  box.title = `${main} — ${sub}`
+}
+$('prodNext')?.addEventListener('click', () => {
+  $('prodBox').open = true
+  $('prodBox').scrollIntoView({ behavior: 'smooth', block: 'start' })
+})
+setInterval(renderProdNext, 30_000)
 
 let prodRequest = 0, prodAppliedRequest = 0
 async function prodCall(path, body) {

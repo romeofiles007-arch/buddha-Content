@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { pageSequence, clipCategory, acceptsCategory } from '../pipeline/lib/posting.mjs'
-import { cleanSettings, DEFAULT_SETTINGS, productionError } from '../bridge/production.js'
+import { cleanSettings, DEFAULT_SETTINGS, productionError, shareGenre, pickClip } from '../bridge/production.js'
 import { CATEGORIES } from '../extension/prompts.js'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -86,6 +86,18 @@ test('ต่อสายครบ: production ส่งเพจให้ postin
   assert.match(js, /pageQuota: Object\.fromEntries/)
   // view ส่งชื่อเพจเท่านั้น ไม่ส่ง token
   assert.match(prodSrc, /return \{ key, kind, name: account\?\.name \?\? key \}/)
+})
+
+
+test('สัดส่วนหมวด 50/30/20 ชุด 10 คลิป → ได้ 5/3/2 · หมวด 0% ไม่ถูกเลือก · ไม่ตั้ง = คละหมวด', () => {
+  const run = (share, n) => { const made = {}; for (let i = 0; i < n; i++) { const name = shareGenre(share, made); const id = CATEGORIES.find((c) => c.name === name).id; made[id] = (made[id] ?? 0) + 1 } return made }
+  assert.deepEqual(run({ buddha: 50, monk: 30, dhamma: 20 }, 10), { buddha: 5, monk: 3, dhamma: 2 })
+  assert.deepEqual(run({ buddha: 0, monk: 70, dhamma: 30 }, 10), { monk: 7, dhamma: 3 })
+  assert.equal(shareGenre({}, {}), null)
+  const s = cleanSettings({ random: { genre: true }, genreShare: { buddha: 100, monk: -3, junk: 5 } })
+  assert.deepEqual(s.genreShare, { buddha: 100, monk: 0 })
+  assert.match(pickClip(s, { script: { genre: 'mix', language: 'th' } }).genre, /หมวด 1/)
+  assert.equal(pickClip(cleanSettings({ random: { genre: true } }), { script: { genre: 'mix', language: 'th' } }).genre, 'mix')
 })
 
 console.log(`\nผ่าน ${passed} ข้อ`)

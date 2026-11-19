@@ -44,3 +44,14 @@
 #prodBox .prodHistoryBox summary { cursor: pointer; font-size: 13px; }
 #prodBox #prodHistory { margin: 8px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
 #prodBox #prodHistory li + li { margin-top: 8px; }
+
+/* แถบ "ผลิตครั้งต่อไปกี่โมง" ค้างไว้บนสุดของแผง */
+/* ค้างไว้ตลอดตอนเลื่อน (ผู้ใช้ 19 พ.ย. 2026) — อยู่ใต้แถบ agent ที่ลอยขึ้นมาเมื่อเลื่อนพ้นแบนเนอร์ (--agent-sticky-h ตั้งใน sidepanel.js) */
+.prodNext { position: sticky; top: calc(var(--agent-sticky-h, 0px) + 8px); z-index: 14; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); text-align: left; font: inherit; cursor: pointer; box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 12%, transparent); }
+.prodNext[hidden] { display: none; }
+.prodNext.on { border-color: var(--accent); }
+.prodNext .prodNextIcon { font-size: 20px; line-height: 1; flex: none; }
+.prodNext .prodNextText { display: flex; flex-direction: column; min-width: 0; }
+.prodNext strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.prodNext #prodNextSub { font-size: 12px; color: var(--muted); }
+.prodNext:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

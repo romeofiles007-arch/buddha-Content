@@ -18,11 +18,11 @@ import {
   STATUS, nextDriveUpload, driveToTrash, postingEvents, lastPosted, STORY_EVERY, storyDue, postsSinceStory,
   loadPosted, recordPosted, backfillPosted, clipKey, onePerPlatform, platformOf, PLATFORM_NAME, takenFor, nextSlotFor, readyItems, reorganizeQueue, multiAccountPlatforms, slotsFor, nextSlotForItem, scheduleTargets, setTargetTimes, dueTargets, timeFor, settleQueue,
 } from '../pipeline/lib/posting.mjs'
-import { facebookPageInfo, facebookUpload, facebookStory, facebookPhotoStory, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
+import { facebookPageInfo, facebookUpload, facebookFindVideo, facebookStory, facebookPhotoStory, youtubeAuthUrl, youtubeConnect, youtubeUpload, DRIVE_SCOPES, driveConnect, driveUpload, driveTrash } from '../pipeline/lib/social.mjs'
 import { listVideos } from './videos.js'
 import { runTikTokJob, tiktokUsername, tiktokUploadName, verifyTikTokCaption, tiktokFailure } from '../pipeline/lib/tiktok-browser.mjs'
 import { prepareRiddleStory } from '../pipeline/lib/riddle.mjs'
-import { createDeliveryLedger, stageDelivery, stageCover, deliveryDestination, importDeliveryHistory } from '../pipeline/lib/delivery-ledger.mjs'
+import { createDeliveryLedger, stageDelivery, stageCover, deliveryDestination, deliveryIdentity, importDeliveryHistory } from '../pipeline/lib/delivery-ledger.mjs'
 
 const PROJECTS = join(ROOT, 'projects')
 const TICK_MS = 30_000
@@ -40,7 +40,7 @@ const ENROLL_EVERY_MS = 2 * 60_000
 const OAUTH_TTL_MS = 15 * 60_000
 
 export function createPosting({ jobs, enqueue, json, readBody, log, port, token, pipelineBusy = () => false, scheduler = true, deps = {} }) {
-  const fb = { info: deps.facebookPageInfo ?? facebookPageInfo, upload: deps.facebookUpload ?? facebookUpload, story: deps.facebookStory ?? facebookStory, photoStory: deps.facebookPhotoStory ?? facebookPhotoStory }
+  const fb = { info: deps.facebookPageInfo ?? facebookPageInfo, upload: deps.facebookUpload ?? facebookUpload, find: deps.facebookFindVideo ?? facebookFindVideo, story: deps.facebookStory ?? facebookStory, photoStory: deps.facebookPhotoStory ?? facebookPhotoStory }
   const yt = { connect: deps.youtubeConnect ?? youtubeConnect, upload: deps.youtubeUpload ?? youtubeUpload }
   const drive = { connect: deps.driveConnect ?? driveConnect, upload: deps.driveUpload ?? driveUpload, trash: deps.driveTrash ?? driveTrash }
   const videosOf = deps.listVideos ?? listVideos
@@ -599,6 +599,92 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
     }
   }
 
+  // ── โพสต์ที่ "ไม่รู้ผล" → ตรวจกับเพจเอง ──
+  // ผู้ใช้ (19 พ.ย. 2026): โพสต์พลาด 6 คลิปค้างถาวร — Facebook ตอบ 502/503 หลังรับไฟล์ ระบบล็อกกันโพสต์ซ้ำแต่ไม่มีทางปลด
+  // พบวิดีโอในเพจ = นับว่าโพสต์แล้ว · ไม่พบ = ปลดล็อกแล้วตั้งเวลาโพสต์ใหม่ในช่องว่างถัดไป
+  // รอ 30 นาทีหลังส่งก่อนตรวจ (Facebook อาจยังประมวลผลวิดีโออยู่) · อ่านเพจไม่ได้ = ไม่สรุป รอบหน้าค่อยตรวจใหม่
+  const VERIFY_AFTER_MS = deps.verifyAfterMs ?? 30 * 60_000
+  const VERIFY_EVERY_MS = deps.verifyEveryMs ?? 10 * 60_000
+  let lastVerify = 0
+  const uncertainFb = (it) => (it.targets ?? []).filter((k) => k.startsWith('fb:') && !it.results?.[k]?.ok && it.results?.[k]?.needsVerification)
+  // ส่งใหม่เองได้เฉพาะที่รู้แน่ว่าไม่ได้ขึ้น: ตรวจกับเพจแล้วไม่พบ หรือพลาดเพราะไฟล์คลิปหาย (ตอนนี้ไฟล์กลับมาแล้ว)
+  // error อื่น (โทเค็นหมดอายุ ฯลฯ) ไม่ส่งเองวนซ้ำ — รอคนกดลองใหม่
+  const FILE_GONE = /ENOENT|ไม่พบไฟล์วิดีโอ/
+  const resendable = (r) => !!r && !r.ok && r.needsVerification === false && (!!r.verifiedMissing || FILE_GONE.test(r.error ?? ''))
+
+  /** โพสต์พลาดที่ส่งใหม่ได้แน่แล้ว → ตั้งเวลาโพสต์ใหม่ (ช่องว่างถัดไปของแต่ละปลายทาง) · คืน true ถ้าตั้งให้ */
+  function requeue(id) {
+    return mutateItem(id, (it, queue) => {
+      if (it.status !== 'failed') return false
+      const left = (it.targets ?? []).filter((k) => !it.results?.[k]?.ok)
+      if (!left.length || !left.every((k) => resendable(it.results?.[k]))) return false
+      if (!existsSync(videoPath(it))) return false // ไฟล์ยังหาย — รอตัดต่อใหม่
+      const times = scheduleTargets(loadAccounts(), queue, it)
+      if (times) {
+        it.status = 'scheduled'
+        setTargetTimes(it, times)
+      } else it.status = 'review' // ยังไม่มีช่องเวลาว่าง → รอตั้งเวลาเอง
+      it.error = null
+      const when = times ? ` ${new Date(it.scheduleAt).toLocaleString('th-TH')}` : ''
+      note(it, `ตั้งเวลาโพสต์ใหม่${when} (ปลายทางที่ยังไม่ได้ขึ้น)`)
+      log(`โพสต์อัตโนมัติ: "${it.title}" ตั้งเวลาโพสต์ใหม่${when} หลังตรวจแล้วว่ายังไม่ได้ขึ้น`)
+      return true
+    }) === true
+  }
+
+  /** ตรวจโพสต์ที่ไม่รู้ผลของคลิปนี้กับเพจ Facebook · force = ไม่ต้องรอครบ 30 นาที (กดปุ่มเอง) */
+  async function verifyItem(id, { force = false } = {}) {
+    const item = loadQueue().find((q) => q.id === id)
+    const out = { found: [], missing: [], errors: [], requeued: false }
+    if (!item || item.status !== 'failed') return out
+    const accounts = loadAccounts()
+    const keys = uncertainFb(item).filter((k) => force || Date.now() - (item.results[k].at ?? 0) >= VERIFY_AFTER_MS)
+    if (keys.length) {
+      const identity = await deliveryIdentity(videoPath(item), item, { allowMissing: true })
+      for (const key of keys) {
+        const { kind, account } = findTarget(accounts, key)
+        if (kind !== 'facebook' || !account?.token) continue
+        const r = item.results[key]
+        const destination = r.destination ?? deliveryDestination(kind, account)
+        try {
+          // ดูวิดีโอของเพจตั้งแต่ 1 ชม. ก่อนส่ง — อัปใหญ่ใช้เวลา และ Facebook อาจลงเวลาตอนเริ่มอัป
+          const hit = await fb.find({ pageId: account.pageId, token: account.token, title: item.post?.title, description: caption(item.post), since: (r.at ?? item.finishedAt ?? Date.now()) / 1000 - 3600 })
+          if (hit.found) {
+            const res = { ok: true, postId: hit.postId, url: hit.url, destination, name: account.name, at: Date.parse(hit.createdAt) || Date.now(), verified: true }
+            deliveries.resolve({ identity, destination }, { found: true, result: { postId: hit.postId, url: hit.url, destination } })
+            recordPosted(clipKey(item), key, { name: account.name, at: res.at, url: hit.url, destination, title: item.title })
+            mutateItem(id, (it) => { it.results = { ...it.results, [key]: res }; note(it, `${account.name}: ตรวจกับเพจแล้ว — วิดีโอขึ้นจริง นับว่าโพสต์แล้ว`) })
+            out.found.push(account.name)
+          } else {
+            deliveries.resolve({ identity, destination }, { found: false, note: 'ตรวจกับเพจแล้ว ไม่พบโพสต์' })
+            mutateItem(id, (it) => {
+              it.results = { ...it.results, [key]: { ...it.results[key], needsVerification: false, verifiedMissing: true, verifiedAt: Date.now(), error: `ตรวจกับเพจแล้ว ไม่พบโพสต์ — ส่งใหม่ได้ (เดิม: ${r.error})` } }
+              note(it, `${account.name}: ตรวจกับเพจแล้ว ไม่พบโพสต์ — ปลดล็อกให้ส่งใหม่`)
+            })
+            out.missing.push(account.name)
+          }
+        } catch (err) {
+          out.errors.push(`${account.name}: ${err.message}`)
+        }
+      }
+      for (const n of out.found) log(`โพสต์อัตโนมัติ: "${item.title}" ตรวจกับเพจ ${n} แล้ว — ขึ้นจริง นับว่าโพสต์แล้ว`)
+      for (const n of out.missing) log(`โพสต์อัตโนมัติ: "${item.title}" ตรวจกับเพจ ${n} แล้ว — ไม่พบโพสต์ ปลดล็อกให้ส่งใหม่`)
+      for (const e of out.errors) log(`โพสต์อัตโนมัติ: "${item.title}" ตรวจกับเพจไม่ได้ — ${e} (ลองใหม่รอบหน้า)`)
+    }
+    settle()
+    out.requeued = requeue(id)
+    return out
+  }
+
+  /** ทุก 10 นาที: ตรวจโพสต์พลาดที่ไม่รู้ผล + ตั้งเวลาโพสต์ใหม่ให้ที่ส่งใหม่ได้แน่แล้ว */
+  async function verifyDue() {
+    if (uploading || Date.now() - lastVerify < VERIFY_EVERY_MS) return
+    lastVerify = Date.now()
+    for (const it of loadQueue().filter((q) => q.status === 'failed')) {
+      await verifyItem(it.id).catch((err) => log(`โพสต์อัตโนมัติ: ตรวจโพสต์ "${it.title}" ไม่ได้ — ${err.message}`))
+    }
+  }
+
   // ── Google Drive: ขึ้นตอนเข้าคิว · ลง (ถังขยะ) เมื่อโพสต์ครบ/ตีกลับ/เอาออก ──
   async function syncDrive() {
     const { settings } = loadAccounts()
@@ -651,6 +737,7 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
       repairMissingTargets()
       settle()
       fillPosts()
+      await verifyDue().catch((err) => log('โพสต์อัตโนมัติ: ตรวจโพสต์ที่ไม่รู้ผลไม่ได้ — ' + err.message))
       scheduleAuto()
       await postDue()
       await syncDrive().catch((err) => log(`โพสต์อัตโนมัติ: Google Drive — ${err.message}`))
@@ -1057,6 +1144,17 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
         })
         scheduleAuto()
         return json(res, 200, await view()), true
+      }
+      // ตรวจกับเพจเดี๋ยวนี้ (ไม่ต้องรอรอบ 10 นาที / ครบ 30 นาที) แล้วตั้งเวลาโพสต์ใหม่ถ้ายังไม่ได้ขึ้น
+      if (path === '/api/posting/verify') {
+        const out = await verifyItem(String(body.id), { force: true })
+        const message = [
+          out.found.length ? `ขึ้นจริงแล้วที่ ${out.found.join(', ')} — นับว่าโพสต์แล้ว` : '',
+          out.missing.length ? `ไม่พบโพสต์ที่ ${out.missing.join(', ')}${out.requeued ? ' — ตั้งเวลาโพสต์ใหม่แล้ว' : ''}` : '',
+          out.errors.length ? `ตรวจไม่ได้: ${out.errors.join(' · ')}` : '',
+          !out.found.length && !out.missing.length && !out.errors.length ? (out.requeued ? 'ตั้งเวลาโพสต์ใหม่แล้ว' : 'ไม่มีอะไรต้องตรวจ') : '',
+        ].filter(Boolean).join(' · ')
+        return json(res, 200, { ...(await view()), message }), true
       }
       if (path === '/api/posting/retry') {
         const pending = loadQueue().find(q => q.id === body.id)

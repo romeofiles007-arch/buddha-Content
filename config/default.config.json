@@ -13,7 +13,9 @@
     "titleLanguage": "th",
     "_titleLanguage": "ภาษาของชื่อเรื่องและหัวข้อ — th | en (แยกจาก narration ได้)",
     "genre": "mix",
-    "_genre": "แนวของหัวข้อที่ให้ AI เสนอ — mix (สุ่มคนละแนวทุกหัวข้อ) หรือชื่อแนวจาก GENRES ใน extension/prompts.js"
+    "_genre": "แนวของหัวข้อที่ให้ AI เสนอ — mix (สุ่มคนละแนวทุกหัวข้อ) หรือชื่อแนวจาก GENRES ใน extension/prompts.js",
+    "mood": "off",
+    "_mood": "แนวเนื้อหา: off ปกติ (ตาม Blueprint) | random สุ่มต่อคลิป | happy เพิ่มความสุข ไม่เสนอความทุกข์ — เลือกได้ที่ ⚡ ตั้งค่าคลิป"
   },
   "tts": {
     "engine": "edge",

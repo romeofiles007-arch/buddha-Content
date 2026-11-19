@@ -100,6 +100,33 @@ const shuffle = (list) => {
 }
 
 /**
+ * แนวเนื้อหา (ตั้งค่าคลิป → "แนวเนื้อหา") — ผู้ใช้ 19 พ.ย. 2026: เลือกให้คลิปเน้นเพิ่มความสุข ไม่เสนอความทุกข์ได้
+ *   off    ปกติ — ตาม Blueprint (เปิดด้วยทุกข์ใจของคนดูแล้วชี้ทางออกได้)
+ *   random สุ่มต่อคลิป (ครึ่งๆ) — เลือกตอนเริ่มคลิปแล้วจำไว้ในโปรไฟล์ของคลิป ทั้งหัวข้อและบทใช้แบบเดียวกัน
+ *   happy  เพิ่มความสุข — ทั้งหัวข้อและบทเน้นสุข อิ่มใจ มีกำลังใจ ไม่ตั้งต้นจากความทุกข์
+ */
+export const MOODS = {
+  off: { label: 'ปกติ' },
+  random: { label: '🎲 สุ่ม' },
+  happy: { label: '😊 เพิ่มความสุข' },
+}
+/** ค่าที่ตั้ง → แนวของคลิปนี้ ('happy' | 'off') — 'random' สุ่มตอนเรียก */
+export const resolveMood = (mood, rand = Math.random) => (mood === 'happy' ? 'happy' : mood === 'random' ? (rand() < 0.5 ? 'happy' : 'off') : 'off')
+
+const HAPPY_TOPICS = `**แนวของคลิปชุดนี้: เพิ่มความสุข** (ข้อนี้มาก่อนกติกา hook/ทุกข์ใจใน Blueprint)
+- เสนอเฉพาะหัวข้อที่ดูแล้วใจเบิกบาน อิ่มใจ มีกำลังใจ อบอุ่น — เช่น ความสุขเล็กๆ ที่มีอยู่แล้ว ความกตัญญู เมตตา การให้ ความสงบ บุญที่ทำได้ทุกวัน ความดีที่ย้อนกลับมาหาตัว
+- ห้ามตั้งหัวข้อจากความทุกข์ ปัญหา ความผิดหวัง ความเจ็บปวด ความกลัว ความตาย นรก/อบายภูมิ หรือผลร้ายของบาปกรรม
+- Hook มาจากความอยากรู้ ความอบอุ่น ความหวัง — ไม่จี้ทุกข์ใจของคนดู`
+
+const HAPPY_SCRIPT = `**แนวของคลิปนี้: เพิ่มความสุข** (ข้อนี้มาก่อนโครงเรื่อง/hook ใน Blueprint)
+- เปิดเรื่องด้วยภาพหรือความรู้สึกที่อบอุ่น ชวนยิ้ม — ห้ามเปิดด้วยปัญหา ความทุกข์ หรือความเจ็บปวดของคนดู
+- ทั้งเรื่องให้กำลังใจ ชวนอิ่มใจ ชวนขอบคุณ ชวนทำดีเพราะทำแล้วมีความสุข — ไม่ขู่ ไม่พูดถึงผลร้ายของบาป นรก หรือความตาย ไม่ตั้งปัญหาก่อนแล้วค่อยแก้
+- ปิดท้ายให้คนดูรู้สึกเบาสบาย มีความสุขขึ้นกว่าตอนเริ่มดู`
+
+/** กฎแนวเนื้อหา — stage: 'topics' | 'script' · แนวปกติ = '' (ใช้ Blueprint ตามเดิม) */
+export const moodRule = (mood, stage = 'script') => (mood === 'happy' ? `\n${stage === 'topics' ? HAPPY_TOPICS : HAPPY_SCRIPT}\n` : '')
+
+/**
  * วิธีเล่าของหมวด 1 (ตั้งค่าคลิป → "วิธีเล่า หมวด 1") — random = สุ่มต่อคลิป แล้วบันทึกไว้ใน profile ของคลิปนั้น
  *   teach — สอนธรรมตรงๆ เสียงเรียบช้าแบบพระ (คลิปตัวอย่างชุดแรกของผู้ใช้)
  *   story — ย้อนรอยพุทธกาล เล่าเหตุการณ์จริงแบบสารคดี เสียงบรรยายปกติ (คลิปตัวอย่าง "คืนสุดท้ายก่อนปรินิพพาน")
@@ -291,7 +318,7 @@ function lang(code) {
   return l
 }
 
-export function topicsPrompt(blueprint, { titleLanguage = 'en', genre = 'mix', narration = 'teach' } = {}) {
+export function topicsPrompt(blueprint, { titleLanguage = 'en', genre = 'mix', narration = 'teach', mood = 'off' } = {}) {
   const title = lang(titleLanguage)
   return `${blueprint}
 
@@ -300,7 +327,7 @@ export function topicsPrompt(blueprint, { titleLanguage = 'en', genre = 'mix', n
 
 แสดง 5 หัวข้อ viral ในตาราง markdown ตาม format ที่กำหนด (คอลัมน์ # | Video Title | Genre)
 **ชื่อหัวข้อทั้ง 5 ต้องเป็น${title.name}เท่านั้น**
-${genreRule(genre, narration)}
+${genreRule(genre, narration)}${moodRule(mood, 'topics')}
 ห้ามมีคำนำ ห้ามมีคำอธิบาย ห้ามมีอะไรปิดท้ายนอกจากตาราง
 ตอบเป็นข้อความในแชตเท่านั้น อย่าสร้างไฟล์`
 }
@@ -441,7 +468,7 @@ export function pickThemes(n = 5, recent = []) {
   return areas.map((area, i) => ({ area, dhamma: dhammas[i] }))
 }
 
-export function scoredTopicsPrompt(blueprint, { titleLanguage = 'th', minutes = 5, avoid = [], seen = [], genre = 'mix', narration = 'teach', themes = pickThemes(5) } = {}) {
+export function scoredTopicsPrompt(blueprint, { titleLanguage = 'th', minutes = 5, avoid = [], seen = [], genre = 'mix', narration = 'teach', themes = pickThemes(5), mood = 'off' } = {}) {
   const title = lang(titleLanguage)
   // ทั้งชุดเป็นหมวด 1 แบบย้อนรอยพุทธกาล → ใช้มุมเล่าและกฎธีมของแนวนี้แทนสูตรชีวิตคนยุคนี้
   const story = categoryOf(genre)?.id === 'buddha' && narration === 'story'
@@ -452,7 +479,7 @@ export function scoredTopicsPrompt(blueprint, { titleLanguage = 'th', minutes = 
 
 เสนอ 5 หัวข้อ viral ที่ทำเป็นคลิปธรรมะภาพวาดยาวประมาณ ${minutes} นาทีได้ดี
 **ชื่อหัวข้อทั้ง 5 ต้องเป็น${title.name}เท่านั้น**
-${genreRule(genre, narration)}
+${genreRule(genre, narration)}${moodRule(mood, 'topics')}
 ใช้มุมเล่าข้อละแบบ (ห้ามซ้ำกัน): ${pickAngles(5, story).map((a, i) => `${i + 1}) ${a}`).join(' · ')}
 ${themeRule(themes, { story })}
 ${avoid.length ? `\nห้ามซ้ำหรือคล้ายกับหัวข้อที่ทำคลิปไปแล้ว:\n${avoid.map((t) => `- ${t}`).join('\n')}\n` : ''}${seen.length ? `\nหัวข้อเหล่านี้เคยเสนอไปแล้ว — ห้ามเสนอซ้ำ และห้ามเป็นสิ่งของ/เหตุการณ์/ปรากฏการณ์เดียวกันที่แค่เปลี่ยนถ้อยคำ ให้หาเรื่องใหม่ที่ยังไม่อยู่ในรายการ:\n${seen.slice(0, 80).map((t) => `- ${t}`).join('\n')}\n` : ''}
@@ -634,7 +661,7 @@ function scriptThemeRule(theme) {
 - ตัวอย่างชีวิตในบทต้องอยู่ในด้านชีวิตนี้ ห้ามพาไปเรื่องพ่อแม่ ลูก หลาน ถ้าด้านชีวิตไม่ใช่ครอบครัว\n`
 }
 
-export function scriptPrompt(blueprint, title, { language = 'th', targetMinutes = 10, wordsPerMinute = 150, profile = null, theme = null, engage = true } = {}) {
+export function scriptPrompt(blueprint, title, { language = 'th', targetMinutes = 10, wordsPerMinute = 150, profile = null, theme = null, engage = true, mood = 'off' } = {}) {
   const vo = lang(language)
   return `${blueprint}
 
@@ -647,7 +674,7 @@ ${scriptThemeRule(theme)}
 (ชื่อเรื่องเป็นคนละภาษากับ narration ได้ ไม่ต้องแปลชื่อเรื่อง)
 
 ${lengthTarget(language, targetMinutes, wordsPerMinute, paceOf(profile))}
-
+${moodRule(profile?.mood ?? mood, 'script')}
 ${profile ? categoryRule(profile, 'script') : 'หมวดของคลิป: ดูจากชื่อเรื่องแล้วทำตามกฎหมวดที่ตรงที่สุดในหัวข้อ "หมวดคลิป" ของ Blueprint'}
 ${profile?.category === 'buddha' && language !== 'en' ? `\n${profile.narration === 'story' ? STORY_STYLE : TEACHING_STYLE}\n` : ''}${language === 'zh' ? `\n${ZH_RULES}\n` : ''}
 ข้อกำหนดของ output — สำคัญมาก อ่านให้ครบ:

@@ -14,7 +14,7 @@ import { pipeline as pipeStreams } from 'node:stream/promises'
 import { join, resolve, sep, extname } from 'node:path'
 import { ROOT, loadConfig, updateConfig, slugify } from '../pipeline/lib/config.mjs'
 import { topicsPrompt, scriptPrompt, parseTopics, cleanScript, GENRES } from '../pipeline/lib/prompts.mjs'
-import { ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS, categoryOf } from '../extension/prompts.js'
+import { ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS, MOODS, categoryOf } from '../extension/prompts.js'
 import { createProduction } from './production.js'
 import { saveScript, loadScript } from '../pipeline/lib/stage2.mjs'
 import { createRunner } from './runner.js'
@@ -788,7 +788,9 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         // เริ่มใหม่ตั้งแต่แผนกที่เลือก (ไม่ใส่ = ทำต่อจากที่ค้าง) — ต้องมีหัวข้อ ใช้กับคลิปที่มีอยู่แล้ว
         const restartFrom = title && ['script', 'voice', 'art', 'images', 'clips', 'edit'].includes(body.restartFrom) ? body.restartFrom : null
         const slug = autoTopic ? null : slugify(title)
-        const started = runner.start('autopilot', slug, { title, autoTopic, genre, language, titleLanguage, minutes, restartFrom })
+        // แนวเนื้อหาที่แผงข้างใช้ตอนเสนอหัวข้อ (สุ่มไว้แล้ว) → บทเป็นแนวเดียวกับหัวข้อ · ไม่ส่ง = autopilot เลือกตามตั้งค่าคลิป
+        const env = ['happy', 'off'].includes(body.mood) ? { CLIP_MOOD: body.mood } : undefined
+        const started = runner.start('autopilot', slug, { title, autoTopic, genre, language, titleLanguage, minutes, restartFrom, env })
         // ขั้นเสียงพากย์อ่านภาษา/ความยาวเป้าหมายจาก config — ให้ตรงกับที่เลือกในแผงข้าง
         updateConfig((c) => {
           Object.assign(c.script, { language, titleLanguage, targetMinutes: minutes })
@@ -920,6 +922,8 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             if (MOTION_PRESETS[body.motion]) c.render.motion = body.motion
             // ชวนคุยท้ายคลิป: 'on' (ค่าเริ่มต้น) | 'off' — ใช้กับบทที่เขียนหลังจากนี้
             if (['on', 'off'].includes(body.engage)) c.script.engage = body.engage === 'on'
+            // แนวเนื้อหา: off ปกติ | random สุ่มต่อคลิป | happy เพิ่มความสุข ไม่เสนอความทุกข์ — ใช้กับคลิปใหม่
+            if (MOODS[body.mood]) c.script.mood = body.mood
             // ม้าน้ำ/Kie: 'off' · เปอร์เซ็นต์ของฉากทั้งเรื่อง · 'first' = N ภาพแรก (จำนวนจาก firstCount)
             const aiCoverage = body.aiCoverage ?? body.aiClips // aiClips รองรับ extension รุ่นเก่า
             if (aiCoverage === 'off') c.clips = { ...(c.clips ?? {}), provider: 'off' }
@@ -960,6 +964,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
           pause: PAUSE_PRESETS[c.tts.pause] ? c.tts.pause : 'normal',
           motion: MOTION_PRESETS[c.render.motion] ? c.render.motion : 'off',
           engage: c.script.engage === false ? 'off' : 'on',
+          mood: MOODS[c.script.mood] ? c.script.mood : 'off',
           bgm: bgmMode(c),
           bgmCount: tracks.length,
           bgmLevel: bgmLevel(c),
@@ -977,6 +982,7 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
             kieTier: Object.entries(KIE_TIERS).map(([id, t]) => ({ id, label: t.label, name: t.name, credits: t.credits, detail: t.detail })),
             motion: Object.entries(MOTION_PRESETS).map(([id, m]) => ({ id, label: m.label })),
             engage: [{ id: 'on', label: 'ชวนคุย' }, { id: 'off', label: 'ไม่ชวน' }],
+            mood: Object.entries(MOODS).map(([id, m]) => ({ id, label: m.label })),
             bgmLevel: Object.entries(BGM_LEVELS).map(([id, l]) => ({ id, label: l.label })),
             bgm: [
               { id: 'off', label: 'ไม่ใส่เพลง' },

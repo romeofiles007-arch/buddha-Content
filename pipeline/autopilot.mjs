@@ -27,7 +27,7 @@ import { shotlistFiles, readRounds, resetRounds, mergeRounds, saveRound, nextRou
 import { collectImages } from './lib/shotfile.mjs'
 import { characterAttachments, activeCharacter } from './lib/character.mjs'
 import { ensureProfile } from './lib/clip_profile.mjs'
-import { reviseLengthPrompt, paceOf, categoryOf } from '../extension/prompts.js'
+import { reviseLengthPrompt, paceOf, categoryOf, resolveMood } from '../extension/prompts.js'
 import { selfMonkReady, SELF_NOT_READY } from './lib/self_monk.mjs'
 import { hasCover } from './lib/cover.mjs'
 import { clipSettings, clipTarget, clipScopeLabel, clipsDir, collectClips, scenes } from './lib/clips.mjs'
@@ -66,6 +66,9 @@ if (categoryOf(config.script.genre)?.id === 'self' && !selfMonkReady()) {
   process.exit(1)
 }
 
+// แนวเนื้อหา (ตั้งค่าคลิป): "สุ่ม" → เลือกครั้งเดียวตอนนี้ ให้หัวข้อ บท และโปรไฟล์ของคลิปเป็นแนวเดียวกัน
+process.env.CLIP_MOOD = resolveMood(process.env.CLIP_MOOD || config.script.mood)
+
 // ── แผนกคิดหัวข้อ (เฉพาะ --auto-topic): ChatGPT เสนอ 5 หัวข้อพร้อมคะแนน → เลือกคะแนนสูงสุดที่ยังไม่เคยทำ ──
 let topicPick = null
 if (autoTopic) {
@@ -78,7 +81,7 @@ if (autoTopic) {
   let guard = { window: recent.length, judged: false }
   const seen = listSeenTitles()
   console.log('▶ แผนกคิดหัวข้อ')
-  console.log(`   แนว: ${!config.script.genre || config.script.genre === 'mix' ? 'สุ่มหลากหลายแนว' : config.script.genre}`)
+  console.log(`   แนว: ${!config.script.genre || config.script.genre === 'mix' ? 'สุ่มหลากหลายแนว' : config.script.genre}${process.env.CLIP_MOOD === 'happy' ? ' · เพิ่มความสุข' : ''}`)
   console.log('   ChatGPT กำลังเสนอหัวข้อและให้คะแนน…')
   await requireBridge()
   let topics = []
