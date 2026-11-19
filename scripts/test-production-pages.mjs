@@ -21,6 +21,8 @@ const test = (name, fn) => {
 test('production retains exhausted-account errors when autopilot prints a recovery hint afterward', () => {
   assert.match(productionError(['FLOW_ACCOUNTS_EXHAUSTED: บัญชีติดลิมิตครบแล้ว', 'กดทำคลิปอัตโนมัติอีกครั้งด้วยหัวข้อเดิม']), /FLOW_ACCOUNTS_EXHAUSTED/)
   assert.equal(productionError(['ordinary failure']), 'ordinary failure')
+  // เครดิต ElevenLabs หมด ต้องโชว์ข้อความเครดิต ไม่ใช่คำแนะนำบรรทัดสุดท้าย
+  assert.match(productionError(['✕ TTS ล้มเหลว: เครดิต ElevenLabs หมด (เหลือ 5 เครดิต)', 'กดทำคลิปอัตโนมัติอีกครั้งด้วยหัวข้อเดิม']), /เครดิต ElevenLabs หมด/)
 })
 
 test('แบ่งเพจ 3/2 → สลับกัน ครบ 5 คลิป (เพจ 1 = 3 · เพจ 2 = 2)', () => {

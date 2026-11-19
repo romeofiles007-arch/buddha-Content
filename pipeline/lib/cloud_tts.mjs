@@ -143,12 +143,26 @@ export const elevenModelFits = (model, language) => language !== 'th' || ELEVEN_
 /** Voice ID ของ ElevenLabs เป็นตัวอักษร/ตัวเลข ~20 ตัว — กันพิมพ์ชื่อเสียงมาแทน ID */
 export const isElevenVoiceId = (id) => /^[A-Za-z0-9]{15,40}$/.test(String(id ?? ''))
 
+/**
+ * เครดิต ElevenLabs หมด — บอกตรงๆ ให้ไปเติม ไม่สลับไปเสียงอื่นเอง (ผู้ใช้ 19 พ.ย. 2026)
+ * ElevenLabs บอกยอดมาในข้อความ: "...You have 112 credits remaining, while 1503 credits are required..."
+ * ข้อความขึ้นต้นด้วย ELEVEN_CREDITS_OUT เสมอ — ผลิตต่อเนื่องใช้หยุดทั้งรอบ (bridge/production.js)
+ */
+export const ELEVEN_CREDITS_OUT = 'เครดิต ElevenLabs หมด'
+export function elevenCreditsOut(message = '') {
+  const num = (re) => message.match(re)?.[1]?.replace(/,/g, '')
+  const left = num(/([\d,]+)\s*credits?\s*remaining/i)
+  const need = num(/([\d,]+)\s*credits?\s*(?:are|is)?\s*required/i)
+  const detail = left != null ? ` (เหลือ ${left} เครดิต${need != null ? ` · ประโยคนี้ต้องใช้ ${need}` : ''})` : ''
+  return `${ELEVEN_CREDITS_OUT}${detail} — เติมเครดิตที่ elevenlabs.io แล้วกดทำต่อ ระบบทำคลิปเดิมต่อจากจุดที่ค้าง`
+}
+
 /** อ่าน error ของ ElevenLabs ({detail:{status,message}}) เป็นข้อความที่บอกว่าต้องแก้อะไร */
 function elevenError(status, data) {
   const code = data?.detail?.status ?? ''
   const message = data?.detail?.message ?? (typeof data?.detail === 'string' ? data.detail : '') ?? ''
   // ดูรหัสก่อนสถานะ HTTP — ElevenLabs ส่งเครดิตหมด/สิทธิ์ไม่พอมาเป็น 401 เหมือน key ผิด
-  if (code === 'quota_exceeded') return 'เครดิต ElevenLabs ไม่พอสำหรับบทนี้ — เติมเครดิต หรือเปลี่ยนไปใช้เสียงอื่น'
+  if (code === 'quota_exceeded') return elevenCreditsOut(message)
   if (code === 'missing_permissions') return 'API key นี้ไม่มีสิทธิ์ Text to Speech — สร้าง key ใหม่ที่เปิดสิทธิ์ Text to Speech และ Voices (อ่าน)'
   if (code === 'invalid_api_key' || status === 401) return 'ElevenLabs API key ไม่ถูกต้อง — ใส่ใหม่ในขั้นที่ 3'
   if (code === 'voice_not_found' || status === 404) return 'ไม่พบ Voice ID นี้ในบัญชี ElevenLabs — คัดลอกจากหน้า Voices (ปุ่ม ID ของเสียง) แล้วใส่ใหม่'

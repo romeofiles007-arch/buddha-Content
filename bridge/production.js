@@ -96,7 +96,9 @@ export function nextTimeAt(hhmm, now = Date.now()) {
 export const randomDelayMs = (s, rand = Math.random) => Math.round((s.delayMin + rand() * (s.delayMax - s.delayMin)) * 60_000)
 
 // Autopilot prints a human recovery hint after its error; retain the actionable quota marker.
-export const productionError = lines => (lines ?? []).findLast(line => /FLOW_ACCOUNTS_EXHAUSTED/.test(line)) ?? lines?.at(-1) ?? null
+export const productionError = lines => (lines ?? []).findLast(line => STOP_ALL.test(line)) ?? lines?.at(-1) ?? null
+// ล้มแบบนี้ทุกคลิปถัดไปก็ล้มเหมือนกัน → หยุดทั้งรอบ: บัญชี Flow ติดลิมิตครบ · เครดิต ElevenLabs หมด (ต้องเติมเอง ไม่สลับเสียง)
+const STOP_ALL = /FLOW_ACCOUNTS_EXHAUSTED|เครดิต ElevenLabs หมด/
 
 /** ตัวเลือกของคลิปถัดไป — สุ่มเฉพาะข้อที่ติ๊กไว้ */
 export function pickClip(s, config, rand = Math.random) {
@@ -272,6 +274,10 @@ export function createProduction({ runner, log, json, readBody, scheduler = true
       state.active = false
       state.nextAt = null
       say('หยุด — บัญชี Flow ติดลิมิตครบแล้วหรือยืนยันบัญชีใหม่ไม่ได้ รอโควต้าคืนแล้วกดทำต่อ (หรือตั้งเวลาทำต่อ) ระบบทำคลิปเดิมต่อจากที่ค้าง')
+    } else if (!result.ok && /เครดิต ElevenLabs หมด/.test(result.error ?? '')) {
+      state.active = false
+      state.nextAt = null
+      say(`หยุด — ${result.error}`)
     } else if (state.made >= target()) {
       completeBatch(now)
     } else if (state.failsInRow >= MAX_FAILS_IN_ROW) {
