@@ -165,6 +165,45 @@ async function fillPrompt(input, prompt) {
   throw new Error('วาง prompt ลงช่องพิมพ์ของ ChatGPT ไม่ได้ — ช่องพิมพ์ยังว่างอยู่ · กด F5 ที่แท็บ ChatGPT แล้วสั่งใหม่')
 }
 
+const sendReady = () => {
+  const btn = pick(S.send)
+  return !!btn && !btn.disabled
+}
+const squash = (s) => String(s ?? '').replace(/[\s…]+/g, ' ').trim()
+
+/**
+ * ไฟล์แนบที่ ChatGPT แปลงมาจาก prompt ยาว ("pasted text") — ดูจากป้ายปุ่ม หรือการ์ดที่ขึ้นต้นด้วยข้อความ prompt
+ * ห้ามโดนรูปตัวละครที่แนบไว้ก่อน (การ์ดรูปไม่มีข้อความ prompt)
+ */
+function pastedTextAttachments(prompt) {
+  const head = squash(prompt).slice(0, 20)
+  const form = pick(S.input)?.closest('form') ?? document
+  return [...form.querySelectorAll(REMOVE)].filter((b) => {
+    if (/pasted/i.test(b.getAttribute('aria-label') ?? '')) return true
+    const card = b.closest('.composer-attachment-surface') ?? b.parentElement
+    return head.length >= 10 && squash(card?.innerText).startsWith(head)
+  })
+}
+
+/**
+ * ทางสำรองเมื่อไฟล์แนบ "pasted text" ค้าง "Adding pasted text…" ไม่จบ ปุ่มส่งจึงกดไม่ได้ตลอด
+ * (เจอจริง 20 พ.ย. 2026 ทั้งวางด้วยโปรแกรมและกด Ctrl+V เอง) → เอาไฟล์แนบนั้นออกแล้วใส่ข้อความลงช่องพิมพ์ตรงๆ
+ * insertText ไม่ผ่าน paste จึงไม่ถูกแปลงเป็นไฟล์แนบ (ตรวจกับหน้าจริงแล้ว: 28,800 ตัวอักษร ~3 วิ ปุ่มส่งพร้อม)
+ */
+async function inlinePrompt(prompt) {
+  for (const b of pastedTextAttachments(prompt)) {
+    b.click()
+    await sleep(400)
+  }
+  const box = pick(S.input)
+  if (!box) throw new Error('ไม่เจอช่องพิมพ์ของ ChatGPT')
+  box.focus()
+  document.execCommand('selectAll')
+  document.execCommand('delete')
+  document.execCommand('insertText', false, prompt)
+  await waitFor(() => composerState().chars > 0 && sendReady(), { timeout: 20_000, label: 'ปุ่มส่งของ ChatGPT พร้อม (ใส่ข้อความตรงๆ)' })
+}
+
 async function clearComposer(input) {
   const form = input.closest('form') ?? document
   for (let i = 0; i < 20; i++) {
@@ -200,11 +239,13 @@ async function runPrompt(prompt, { newChat = true, attachments = [] } = {}) {
   }
   await fillPrompt(input, prompt)
 
-  // prompt ยาว ChatGPT แปลงเป็นไฟล์แนบ — รอจนปุ่มส่งพร้อม (แนบเสร็จ) ก่อนกด Enter
-  await waitFor(() => {
-    const btn = pick(S.send)
-    return btn && !btn.disabled
-  }, { timeout: 60_000, label: 'ปุ่มส่งของ ChatGPT พร้อม' }).catch(() => null)
+  // prompt ยาว ChatGPT แปลงเป็นไฟล์แนบ — รอจนปุ่มส่งพร้อม (แนบเสร็จ ปกติ ~1 วิ) ก่อนกด Enter
+  // ไฟล์แนบนั้นค้างได้ไม่มีกำหนด → 20 วิแล้วยังไม่พร้อม ใส่ข้อความลงช่องพิมพ์ตรงๆ แทน
+  let ready = await waitFor(sendReady, { timeout: 20_000, label: 'ปุ่มส่งของ ChatGPT พร้อม' }).then(() => true, () => false)
+  if (!ready && pastedTextAttachments(prompt).length) {
+    ready = await inlinePrompt(prompt).then(() => true, () => false)
+  }
+  if (!ready) await waitFor(sendReady, { timeout: 40_000, label: 'ปุ่มส่งของ ChatGPT พร้อม' }).catch(() => null)
   guard()
   await sleep(500)
 
