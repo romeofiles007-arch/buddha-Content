@@ -108,7 +108,8 @@ export const randomDelayMs = (s, rand = Math.random) => Math.round((s.delayMin +
 // Autopilot prints a human recovery hint after its error; retain the actionable quota marker.
 export const productionError = lines => (lines ?? []).findLast(line => STOP_ALL.test(line)) ?? lines?.at(-1) ?? null
 // ล้มแบบนี้ทุกคลิปถัดไปก็ล้มเหมือนกัน → หยุดทั้งรอบ: บัญชี Flow ติดลิมิตครบ · เครดิต ElevenLabs หมด (ต้องเติมเอง ไม่สลับเสียง)
-const STOP_ALL = /FLOW_ACCOUNTS_EXHAUSTED|เครดิต ElevenLabs หมด/
+// FLOW_BLOCKED = Flow ปฏิเสธคำสั่งของ Agent (กันบอต/ใช้งานผิดปกติ) ไล่ทำคลิปต่อมีแต่พังทุกคลิป (20 พ.ย. 2026)
+const STOP_ALL = /FLOW_ACCOUNTS_EXHAUSTED|FLOW_BLOCKED|เครดิต ElevenLabs หมด/
 
 /**
  * หมวดของคลิปถัดไปตามสัดส่วน % — เลือกหมวดที่ยังได้น้อยกว่าสัดส่วนมากที่สุด (ไม่ใช่สุ่มล้วน)
