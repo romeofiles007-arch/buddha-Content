@@ -15,7 +15,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync
 import { join, dirname } from 'node:path'
 import { shipsToCustomer, isProtected, isCustomerData, USER_CONFIG, DEFAULT_CONFIG, customerDefaults, installerProblems } from './package-rules.js'
 
-const CHECK_EVERY_MS = 30 * 60_000
+const CHECK_EVERY_MS = 10 * 60_000 // ถามแค่ commit ล่าสุด (แบบ ls-remote) เบา ตรวจถี่ได้
 const FIRST_CHECK_MS = 20_000
 const MUST_HAVE = ['bridge/server.js', 'extension/manifest.json', 'pipeline/autopilot.mjs', 'package.json']
 

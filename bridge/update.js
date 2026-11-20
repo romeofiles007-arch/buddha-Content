@@ -16,7 +16,8 @@ import { join } from 'node:path'
 import { ROOT } from '../pipeline/lib/config.mjs'
 import { createPackageUpdater, busyMessage } from './update-package.js'
 
-const CHECK_EVERY_MS = 30 * 60_000
+// git fetch เบา (ถามแค่ว่ามี commit ใหม่ไหม) ตรวจถี่ได้ — 30 นาทีช้าเกินจน push แล้วเครื่องอื่นหาไม่เจอ
+const CHECK_EVERY_MS = 10 * 60_000
 const FIRST_CHECK_MS = 20_000
 const MAX_COMMITS = 20
 

@@ -3496,6 +3496,16 @@ async function loadUpdate(action) {
   return gitUpdate
 }
 
+/**
+ * แผงเปิด / ทุก 10 นาที: ผลที่โปรแกรมตรวจไว้เก่ากว่า 5 นาที → ถาม GitHub ใหม่เลย
+ * เคยอ่านแค่ผลเก่า (โปรแกรมตรวจเองทุก 30 นาที) push แล้วเครื่องอื่นไม่เห็นอัปเดตจนกว่าจะกดตรวจเอง (20 พ.ย. 2026)
+ */
+async function refreshUpdate() {
+  const u = await loadUpdate()
+  if (!u || u.checking || u.applying) return
+  if (!u.checkedAt || Date.now() - u.checkedAt > 5 * 60_000) await loadUpdate('check').catch(() => {})
+}
+
 $('checkUpdate').addEventListener('click', async () => {
   $('checkUpdate').disabled = true
   setStatus('projectsStatus', 'กำลังตรวจอัปเดตจาก GitHub…', 'busy')
@@ -3545,8 +3555,8 @@ render()
 syncGenre() // หมวดที่เลือกไว้ในแผง → ตั้งค่าในเครื่อง (ผลิตต่อเนื่องใช้ค่านี้)
 resumeVoice()
 resumeAuto()
-loadUpdate()
-setInterval(() => loadUpdate(), 10 * 60_000)
+refreshUpdate()
+setInterval(() => refreshUpdate(), 10 * 60_000)
 
 // ── 🏭 ผลิตต่อเนื่อง — โปรแกรมในเครื่องเป็นคนคุมเวลา (ปิดแผงนี้ได้) แผงนี้แค่ตั้งค่า/ดูสถานะ ──
 let prod = null
