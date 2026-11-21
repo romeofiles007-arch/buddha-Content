@@ -3558,6 +3558,110 @@ resumeAuto()
 refreshUpdate()
 setInterval(() => refreshUpdate(), 10 * 60_000)
 
+/**
+ * ⏹ หยุดทุกอย่าง — ผู้ใช้ 21 พ.ย. 2026: "บางทีปุ่มหยุดใช้ไม่ได้ มันยังทำงานเอง"
+ * ปุ่มเดียวหยุด: ผลิตต่อเนื่อง · คลิปที่ทำอยู่ · งานในแท็บ ChatGPT/Flow/TikTok · โพสต์อัตโนมัติ · process ที่หลุดการควบคุม
+ * หยุดแล้วค้างไว้ (รอดการรีสตาร์ท) จนกด "ทำงานต่อ" — ทำงานต่อแล้วก็ไม่เริ่มอะไรเอง
+ * (อยู่นอกส่วน 🏭 ผลิตต่อเนื่อง — test-production-panel ตัดส่วนนั้นไปรันเดี่ยวๆ)
+ */
+let halt = null
+let haltBusy = false
+function renderHalt() {
+  const bar = $('haltBar')
+  bar.hidden = !halt
+  if (!halt) return
+  const on = !!halt.halted
+  bar.dataset.halted = String(on)
+  const at = halt.at ? new Date(halt.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''
+  $('haltTitle').textContent = on ? `⏹ หยุดทุกอย่างไว้${at ? ` ตั้งแต่ ${at} น.` : ''}` : 'ระบบทำงานปกติ'
+  $('haltSub').textContent = on
+    ? `ไม่มีอะไรทำงานเองจนกว่าจะกดทำงานต่อ: ผลิตต่อเนื่อง โพสต์อัตโนมัติ และงานในแท็บ AI หยุดหมด${halt.run === 'running' ? ' · ⚠️ ยังมีขั้นหนึ่งกำลังปิดตัว' : ''}`
+    : 'กดหยุดทุกอย่างเมื่ออยากให้ทุกส่วนหยุดทันที: ผลิตต่อเนื่อง คลิปที่ทำอยู่ งานในแท็บ AI และโพสต์อัตโนมัติ'
+  const btn = $('haltButton')
+  btn.textContent = haltBusy ? (on ? 'กำลังปลด…' : 'กำลังหยุด…') : on ? '▶ ทำงานต่อ' : '⏹ หยุดทุกอย่าง'
+  btn.disabled = haltBusy
+}
+async function haltCall(on) {
+  try {
+    const app = await localApp()
+    halt = await api(app, '/api/halt', on === undefined ? undefined : { on })
+  } catch {
+    // โปรแกรมในเครื่องรุ่นเก่ายังไม่มีปุ่มนี้ / ยังไม่เปิด → ซ่อนแถบ
+    if (on === undefined) halt = null
+    else throw new Error('สั่งไม่สำเร็จ — โปรแกรมในเครื่องยังไม่เปิด')
+  }
+  renderHalt()
+}
+$('haltButton').addEventListener('click', async () => {
+  const stopping = !halt?.halted
+  haltBusy = true
+  renderHalt()
+  try {
+    await haltCall(stopping)
+    // หยุดแล้ว → แท็บ ChatGPT ที่แผงข้างสั่งตรง (ไม่ผ่านโปรแกรม) ก็ต้องหยุดด้วย
+    if (stopping) {
+      chrome.runtime.sendMessage({ type: 'STOP_ALL_TABS' }).catch(() => {})
+      if (typeof prodCall === 'function') prodCall('/api/production')
+    }
+  } catch (err) {
+    $('haltSub').textContent = err.message
+  } finally {
+    haltBusy = false
+    renderHalt()
+  }
+})
+haltCall()
+
+/**
+ * เครดิตคงเหลือ — ผู้ใช้ 21 พ.ย. 2026: "ให้มีสถานะเครดิตทุกอย่างแสดงค้างไว้ด้านบน เช่น ElevenLabs และ Kie"
+ * โปรแกรมในเครื่องจำค่าไว้ 5 นาที แผงถามทุก 1 นาที · กด ↻ อ่านใหม่ทันที · บริการที่ไม่มี key ไม่แสดง
+ * (ชื่อ creditNum — fmtNum มีอยู่แล้วในส่วนค่าใช้จ่ายคลิป)
+ */
+let credits = null
+const creditNum = (n) => Number(n).toLocaleString('th-TH')
+function renderCredits() {
+  const list = $('creditList')
+  const services = credits?.services ?? []
+  $('creditBar').hidden = !services.length
+  list.replaceChildren(...services.map((s) => {
+    const li = document.createElement('li')
+    li.className = 'creditItem'
+    const name = Object.assign(document.createElement('span'), { textContent: s.label })
+    const value = document.createElement('b')
+    const note = document.createElement('small')
+    if (s.error) {
+      li.dataset.level = 'error'
+      value.textContent = 'อ่านไม่ได้'
+      li.title = s.error
+      note.textContent = s.short ?? (s.error.length > 40 ? '' : s.error)
+    } else {
+      const ratio = s.limit ? s.remaining / s.limit : null
+      li.dataset.level = s.remaining <= 0 ? 'out' : ratio != null && ratio < 0.15 ? 'low' : 'ok'
+      value.textContent = s.limit ? `${creditNum(s.remaining)} / ${creditNum(s.limit)}` : creditNum(s.remaining)
+      const reset = s.resetAt ? `รีเซ็ต ${new Date(s.resetAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}` : ''
+      note.textContent = [s.remaining <= 0 ? 'หมดแล้ว' : 'เหลือ', reset].filter(Boolean).join(' · ')
+      li.title = `${s.label}: เหลือ ${creditNum(s.remaining)} ${s.unit ?? ''}${s.limit ? ` จาก ${creditNum(s.limit)} (ใช้ไป ${creditNum(s.used)})` : ''}${reset ? ` · ${reset}` : ''}${s.tier ? ` · แพ็กเกจ ${s.tier}` : ''}`
+    }
+    li.append(name, value, note)
+    return li
+  }))
+}
+async function creditsCall(refresh = false) {
+  try {
+    credits = await api(await localApp(), `/api/credits${refresh ? '?refresh=1' : ''}`)
+  } catch {
+    credits = null // โปรแกรมในเครื่องรุ่นเก่า / ยังไม่เปิด → ซ่อน
+  }
+  renderCredits()
+}
+$('creditRefresh').addEventListener('click', async () => {
+  $('creditRefresh').disabled = true
+  await creditsCall(true)
+  $('creditRefresh').disabled = false
+})
+creditsCall()
+setInterval(() => creditsCall(), 60_000)
+
 // ── 🏭 ผลิตต่อเนื่อง — โปรแกรมในเครื่องเป็นคนคุมเวลา (ปิดแผงนี้ได้) แผงนี้แค่ตั้งค่า/ดูสถานะ ──
 let prod = null
 let prodFilled = false
@@ -3977,6 +4081,7 @@ chrome.runtime.sendMessage({ type: 'ENSURE_APP' }).then((app) => app?.ok && api(
 setInterval(() => {
   if (prod?.state.active || $('prodBox').open) prodCall('/api/production')
   followAutoInBackground()
+  if (typeof haltCall === 'function') haltCall() // แถบหยุดทุกอย่าง (ไม่อยู่ในส่วนผลิตต่อเนื่อง)
 }, 20_000)
 
 /**

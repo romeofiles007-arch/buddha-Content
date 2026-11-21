@@ -39,7 +39,7 @@ function lastPostAt(queue) {
 const ENROLL_EVERY_MS = 2 * 60_000
 const OAUTH_TTL_MS = 15 * 60_000
 
-export function createPosting({ jobs, enqueue, json, readBody, log, port, token, pipelineBusy = () => false, scheduler = true, deps = {} }) {
+export function createPosting({ jobs, enqueue, json, readBody, log, port, token, pipelineBusy = () => false, scheduler = true, deps = {}, halted = () => false }) {
   const fb = { info: deps.facebookPageInfo ?? facebookPageInfo, upload: deps.facebookUpload ?? facebookUpload, find: deps.facebookFindVideo ?? facebookFindVideo, story: deps.facebookStory ?? facebookStory, photoStory: deps.facebookPhotoStory ?? facebookPhotoStory }
   const yt = { connect: deps.youtubeConnect ?? youtubeConnect, upload: deps.youtubeUpload ?? youtubeUpload }
   const drive = { connect: deps.driveConnect ?? driveConnect, upload: deps.driveUpload ?? driveUpload, trash: deps.driveTrash ?? driveTrash }
@@ -728,6 +728,8 @@ export function createPosting({ jobs, enqueue, json, readBody, log, port, token,
   }
 
   async function tick() {
+    // หยุดทุกอย่างอยู่ → ไม่โพสต์/อัปโหลดเอง (bridge/halt.js) · โพสต์ที่ตั้งเวลาไว้รอจนกด "ทำงานต่อ"
+    if (halted()) return
     if (ticking) return
     ticking = true
     try {

@@ -234,11 +234,26 @@
 
 <main>
   <h1 class="brand-lockup"><img class="brand-icon" src="icons/cartoon-auto.svg" alt="" width="42" height="42" />ธรรมะ Auto</h1>
-  <!-- ผลิตครั้งต่อไปกี่โมง — ค้างไว้บนสุดตลอด (sidepanel.js renderProdNext) -->
-  <button type="button" class="prodNext" id="prodNext" hidden>
-    <span class="prodNextIcon" aria-hidden="true">🏭</span>
-    <span class="prodNextText"><strong id="prodNextMain"></strong><span id="prodNextSub"></span></span>
-  </button>
+  <!-- ค้างไว้บนสุดตลอด: เครดิตคงเหลือ · ปุ่มหยุดทุกอย่าง · ผลิตครั้งต่อไป (ผู้ใช้ 21 พ.ย. 2026) -->
+  <div class="topDock" id="topDock">
+    <div class="creditBar" id="creditBar" hidden aria-label="เครดิตคงเหลือ">
+      <ul class="creditList" id="creditList"></ul>
+      <button type="button" class="creditRefresh" id="creditRefresh" title="อ่านเครดิตใหม่ตอนนี้" aria-label="อ่านเครดิตใหม่">↻</button>
+    </div>
+    <!-- ⏹ หยุดทุกอย่าง — ผู้ใช้ 21 พ.ย. 2026: "บางทีปุ่มหยุดใช้ไม่ได้ มันยังทำงานเอง" (bridge/halt.js) -->
+    <div class="haltBar" id="haltBar" data-halted="false" hidden aria-label="หยุดทุกอย่าง">
+      <div class="haltText" role="status" aria-live="polite">
+        <strong id="haltTitle">ระบบทำงานปกติ</strong>
+        <span id="haltSub">กดหยุดทุกอย่างเมื่ออยากให้ทุกส่วนหยุดทันที: ผลิตต่อเนื่อง คลิปที่ทำอยู่ งานในแท็บ AI และโพสต์อัตโนมัติ</span>
+      </div>
+      <button type="button" class="haltButton" id="haltButton">⏹ หยุดทุกอย่าง</button>
+    </div>
+    <!-- ผลิตครั้งต่อไปกี่โมง (sidepanel.js renderProdNext) -->
+    <button type="button" class="prodNext" id="prodNext" hidden>
+      <span class="prodNextIcon" aria-hidden="true">🏭</span>
+      <span class="prodNextText"><strong id="prodNextMain"></strong><span id="prodNextSub"></span></span>
+    </button>
+  </div>
 
   <label class="pick categoryPicker" id="genreBox">หมวดเนื้อหา
       <select id="topicGenre" aria-label="หมวดคลิป"></select>
