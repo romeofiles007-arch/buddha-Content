@@ -57,4 +57,10 @@ test('อยู่หน้าอื่นของ Flow (ไม่ใช่โ�
   assert.deepEqual(nav, { navigate: false, url: 'https://flow.google.com/?hl=en' })
 })
 
+test('แท็บค้างที่หน้า "Project not found" (/404) → กลับหน้าแรกของบัญชีเดิม ไม่ปล่อยให้หาปุ่ม New project จนหมดเวลา', () => {
+  assert.deepEqual(flowJobNavigation('https://flow.google.com/404?reason=project', { projectUrl: PROJECT }), { navigate: true, url: 'https://flow.google.com/?hl=en' })
+  assert.deepEqual(flowJobNavigation('https://flow.google.com/u/2/404?reason=project', {}), { navigate: true, url: 'https://flow.google.com/u/2/?hl=en' })
+  assert.equal(flowHomeUrl('https://flow.google.com/u/1/404?reason=project&hl=en'), 'https://flow.google.com/u/1/?hl=en')
+})
+
 console.log(`\nผ่าน ${passed} เทสต์`)

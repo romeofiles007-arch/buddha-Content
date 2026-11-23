@@ -19,7 +19,9 @@ export function preferredFlowTab(tabs, savedId) {
 export function flowHomeUrl(value) {
   const url = flowUrl(value)
   if (!url) return HOME
-  url.pathname = url.pathname.replace(/\/project\/.*$/, '/')
+  // หน้า /404 "Project not found" (เปิด project ของบัญชีอื่น) → หน้าแรกของบัญชีเดียวกัน
+  url.pathname = url.pathname.replace(/\/(?:project\/.*|404\b.*)$/, '/')
+  url.searchParams.delete('reason')
   url.hash = ''
   url.searchParams.set('hl', 'en')
   return url.href
@@ -41,6 +43,8 @@ export function flowProjectUrl(value) {
 const inProjectSubview = url => !!url && !!PROJECT_PATH.exec(url.pathname)?.[2]
 export function flowJobNavigation(currentUrl, payload = {}) {
   const current = flowUrl(currentUrl)
+  // แท็บค้างที่หน้า "Project not found" (/404) — ไม่มีปุ่ม New project ให้กด → กลับหน้าแรกของบัญชีเดียวกันก่อน (เจอจริง 23 พ.ย. 2026)
+  if (current && /^(?:\/u\/\d+)?\/404\b/.test(current.pathname)) return { navigate: true, url: flowHomeUrl(currentUrl) }
   const currentProject = flowProjectUrl(currentUrl)
   const savedProject = flowProjectUrl(payload.projectUrl)
   // Resume in the currently selected account/workspace. If the user switched

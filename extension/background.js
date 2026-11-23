@@ -382,8 +382,9 @@ async function pollLoop() {
       const results = await Promise.all(
         free.map(async (agent) => {
           try {
-            const res = await fetch(`${base}/job?agent=${agent}`, { headers: { 'x-bridge-token': token } })
+            const res = await fetch(`${base}/job?agent=${agent}&v=${encodeURIComponent(chrome.runtime.getManifest().version)}`, { headers: { 'x-bridge-token': token } })
             if (res.status === 401) return 'auth'
+            if (res.status === 409) return 'stale' // ไฟล์ extension เป็นรุ่นใหม่แล้ว แต่ตัวที่โหลดอยู่ยังเป็นรุ่นเก่า
             if (res.status !== 200) return 'idle'
             const job = await res.json()
             busy.add(agent)
@@ -403,6 +404,19 @@ async function pollLoop() {
           }
         }),
       )
+      if (results.includes('stale')) {
+        // ไม่รับงานด้วยโค้ดเก่า — ว่างเมื่อไหร่ reload ตัวเอง (งานที่ทำค้างอยู่ทำต่อจนจบก่อน)
+        // reload แล้วยังไม่ตรง (เช่นโหลด extension จากคนละโฟลเดอร์กับโปรแกรม) → ไม่ reload วนซ้ำ บอกผู้ใช้แทน
+        const { staleReloadAt = 0 } = await chrome.storage.local.get('staleReloadAt')
+        if (!busy.size && Date.now() - staleReloadAt > 5 * 60_000) {
+          await setStatus('extension มีรุ่นใหม่ — กำลังโหลดใหม่')
+          await chrome.storage.local.set({ staleReloadAt: Date.now() })
+          return chrome.runtime.reload()
+        }
+        await setStatus(busy.size ? 'extension มีรุ่นใหม่ — จะโหลดใหม่เมื่องานนี้เสร็จ' : 'extension ไม่ตรงรุ่นกับโปรแกรม — กด reload ที่ chrome://extensions')
+        await new Promise((r) => setTimeout(r, 30_000))
+        continue
+      }
       if (results.includes('auth')) {
         await setStatus('token ไม่ตรงกับ .env')
         return
@@ -633,10 +647,43 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve())
         })
         attached = true
+        // ต่อ debugger แล้ว Chrome ขึ้นแถบ "กำลังแก้ไขข้อบกพร่อง" หน้าเว็บหดลง → รอ layout นิ่งก่อน แล้วโฟกัสช่องพิมพ์ใหม่
+        await new Promise((r) => setTimeout(r, 400))
+        if (msg.click) {
+          // ทางสำรอง: กดปุ่มส่ง (ลูกศร) ด้วยเมาส์จริง — หาตำแหน่งหลังต่อ debugger แล้ว เพราะหน้าเลื่อนไปตามแถบ
+          const labels = JSON.stringify(Array.isArray(msg.labels) ? msg.labels : [])
+          const probe = await command('Runtime.evaluate', {
+            returnByValue: true,
+            expression: `(() => {
+              const labels = ${labels}
+              const b = [...document.querySelectorAll('button')].find((el) => labels.includes(el.getAttribute('aria-label')) && el.getBoundingClientRect().width > 0 && !el.disabled)
+              if (!b) return null
+              b.scrollIntoView({ block: 'center' })
+              const r = b.getBoundingClientRect()
+              return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+            })()`,
+          })
+          const at = probe?.result?.value
+          if (!at) return { ok: false, error: 'ไม่เจอปุ่มส่งที่กดได้' }
+          const mouse = { x: at.x, y: at.y, button: 'left', clickCount: 1 }
+          await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y })
+          await command('Input.dispatchMouseEvent', { type: 'mousePressed', ...mouse })
+          await command('Input.dispatchMouseEvent', { type: 'mouseReleased', ...mouse })
+          return { ok: true, method: 'click' }
+        }
+        await command('Runtime.evaluate', {
+          expression: `(() => {
+            const ed = [...document.querySelectorAll('flow-base-prompt-box .ProseMirror, flow-creative-agent-prompt-box .ProseMirror, flow-prompt-box .ProseMirror')]
+              .find((e) => e.getBoundingClientRect().width > 0 && !e.closest('flow-agent-panel'))
+            if (!ed || document.activeElement === ed) return
+            ed.focus()
+            const sel = getSelection(); sel.selectAllChildren(ed); sel.collapseToEnd()
+          })()`,
+        })
         const enter = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }
         await command('Input.dispatchKeyEvent', { type: 'keyDown', ...enter, text: '\r', unmodifiedText: '\r' })
         await command('Input.dispatchKeyEvent', { type: 'keyUp', ...enter })
-        return { ok: true }
+        return { ok: true, method: 'enter' }
       } catch (err) {
         return { ok: false, error: err?.message ?? String(err) }
       } finally {
