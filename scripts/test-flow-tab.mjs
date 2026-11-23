@@ -8,6 +8,7 @@ import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import * as flowNavigation from '../extension/flow-navigation.js'
 import { insertTikTokCaption } from '../extension/tiktok-caption.js'
+import * as tabClaim from '../extension/tab-claim.js'
 
 const EXT = join(fileURLToPath(new URL('..', import.meta.url)), 'extension')
 const bgSource = readFileSync(join(EXT, 'background.js'), 'utf8')
@@ -21,7 +22,7 @@ const test = async (name, fn) => {
 }
 
 /** chrome จำลอง: tabs = [{ id, windowId, url, incognito }] · windows = [{ id, incognito }] · focused = id หน้าต่างล่าสุด */
-function makeChrome({ tabs, windows, focused, session = {}, translated = false }) {
+function makeChrome({ tabs, windows, focused, session = {}, translated = false, pages = null }) {
   const calls = []
   const rec = (name, value) => (...args) => {
     calls.push([name, ...args])
@@ -33,7 +34,7 @@ function makeChrome({ tabs, windows, focused, session = {}, translated = false }
     removeListener: () => {},
   }
   const chrome = {
-    runtime: { onInstalled: event(), onStartup: event(), onMessage: event(), getManifest: () => manifest, reload: () => {} },
+    runtime: { id: 'this-ext', onInstalled: event(), onStartup: event(), onMessage: event(), getManifest: () => manifest, reload: () => {} },
     alarms: { onAlarm: event(), create: () => {} },
     notifications: { onClicked: event() },
     storage: {
@@ -44,7 +45,12 @@ function makeChrome({ tabs, windows, focused, session = {}, translated = false }
     tabs: {
       query: rec('tabs.query', (q) => (q.windowId != null ? tabs.filter((t) => t.windowId === q.windowId) : tabs)),
       update: rec('tabs.update', (id) => tabs.find((t) => t.id === id)),
-      create: rec('tabs.create', () => tabs[0]),
+      create: rec('tabs.create', (props) => {
+        if (!pages) return tabs[0]
+        const tab = { id: 99, windowId: 1, url: props.url }
+        tabs.unshift(tab)
+        return tab
+      }),
       move: rec('tabs.move', (id, { windowId }) => Object.assign(tabs.find((t) => t.id === id), { windowId })),
       sendMessage: rec('tabs.sendMessage', { ok: true }),
       onUpdated,
@@ -55,15 +61,24 @@ function makeChrome({ tabs, windows, focused, session = {}, translated = false }
       getLastFocused: rec('windows.getLastFocused', () => windows.find((w) => w.id === focused) ?? null),
       get: rec('windows.get', (id) => windows.find((w) => w.id === id)),
     },
-    scripting: { executeScript: rec('scripting.executeScript', [{ result: translated }]) },
+    // pages = { tabId: Map } → จำลอง sessionStorage ของแต่ละแท็บ (ป้ายเจ้าของแท็บ tab-claim.js)
+    scripting: {
+      executeScript: rec('scripting.executeScript', ({ target, func, args = [] }) => {
+        if (!pages || !/sessionStorage/.test(String(func))) return [{ result: translated }]
+        const m = (pages[target.tabId] ??= new Map())
+        const saved = globalThis.sessionStorage
+        globalThis.sessionStorage = { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v), removeItem: (k) => m.delete(k) }
+        try { return [{ result: func(...args) }] } finally { globalThis.sessionStorage = saved }
+      }),
+    },
   }
   return { chrome, calls }
 }
 
 function loadBackground(env) {
   const { chrome, calls } = makeChrome(env)
-  const ctx = vm.createContext({ ...flowNavigation, insertTikTokCaption, chrome, console: { log() {}, warn() {} }, setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask, URL, fetch: async () => ({ ok: false, status: 500 }) })
-  vm.runInContext(bgSource.replace(/^import \{[^\n]+\} from '\.\/(?:flow-(?:navigation|account-switch)|tiktok-caption)\.js'\r?\n/gm, ''), ctx)
+  const ctx = vm.createContext({ ...flowNavigation, ...tabClaim, insertTikTokCaption, chrome, console: { log() {}, warn() {} }, setTimeout, clearTimeout, setInterval: (...a) => setInterval(...a).unref(), clearInterval, queueMicrotask, URL, fetch: async () => ({ ok: false, status: 500 }) })
+  vm.runInContext(bgSource.replace(/^import \{[^\n]+\} from '\.\/(?:flow-(?:navigation|account-switch)|tiktok-caption|tab-claim)\.js'\r?\n/gm, ''), ctx)
   return { ctx, calls }
 }
 const names = (calls) => calls.map((c) => c[0])
@@ -174,6 +189,32 @@ await test('read-only TikTok inspection preserves the uploaded form; posting alw
       assert.ok(!calls.some(c => c[0] === 'tabs.create'), 'inspection cannot replace a user upload with a new tab')
     }
   }
+})
+
+await test('แท็บ ChatGPT ที่ระบบอื่นในโปรไฟล์เดียวกันถืออยู่ → เปิดแท็บของตัวเองแทน ไม่ส่ง prompt ลงแท็บนั้น', async () => {
+  const other = new Map([['__autoBridgeTabOwner', JSON.stringify({ id: 'cartoon-ext', at: Date.now() })]])
+  const tabs = [{ id: 5, windowId: 1, url: 'https://chatgpt.com/' }]
+  const pages = { 5: other }
+  const { ctx, calls } = loadBackground({ tabs, windows: [{ id: 1 }], focused: 1, pages })
+  const tab = await ctx.ensureTab('chatgpt')
+  assert.equal(tab.id, 99)
+  assert.ok(names(calls).includes('tabs.create'))
+  assert.equal(JSON.parse(pages[99].get('__autoBridgeTabOwner')).id, 'this-ext')
+  assert.equal(JSON.parse(other.get('__autoBridgeTabOwner')).id, 'cartoon-ext', 'ห้ามทับป้ายของระบบอื่น')
+  ctx.releaseTab('chatgpt')
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(pages[99].get('__autoBridgeTabOwner'), undefined, 'งานจบแล้วต้องถอดป้าย')
+})
+
+await test('แท็บ ChatGPT ว่าง → ใช้แท็บเดิม ติดป้ายของเรา ไม่เปิดแท็บใหม่', async () => {
+  const tabs = [{ id: 5, windowId: 1, url: 'https://chatgpt.com/' }]
+  const pages = {}
+  const { ctx, calls } = loadBackground({ tabs, windows: [{ id: 1 }], focused: 1, pages })
+  const tab = await ctx.ensureTab('chatgpt')
+  assert.equal(tab.id, 5)
+  assert.ok(!names(calls).includes('tabs.create'))
+  assert.equal(JSON.parse(pages[5].get('__autoBridgeTabOwner')).id, 'this-ext')
+  ctx.releaseTab('chatgpt')
 })
 
 await test('ตรวจคำบรรยายหลังโพสต์: อ่านรายการโพสต์ในแท็บแยก แยกชื่อไฟล์/คำบรรยาย แล้วปิดแท็บ', async () => {

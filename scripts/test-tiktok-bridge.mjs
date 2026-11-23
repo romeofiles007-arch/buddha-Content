@@ -13,6 +13,8 @@ const temp = mkdtempSync(join(tmpdir(), 'tiktok-bridge-'))
 const jobsFile = join(root, 'bridge', `jobs-${port}.json`)
 assert.ok(!existsSync(jobsFile), 'test must not overwrite an existing jobs file')
 const base = `http://127.0.0.1:${port}`, token = 'tiktok-local-test'
+// /job ต้องบอกรุ่น extension ให้ตรงกับไฟล์ (bridge ไม่ส่งงานให้ extension ที่โหลดรุ่นเก่าค้าง)
+const V = encodeURIComponent(JSON.parse(readFileSync(join(root, 'extension', 'manifest.json'), 'utf8')).version)
 const pause = ms => new Promise(r => setTimeout(r, ms))
 let child
 const request = async (path, body) => {
@@ -39,17 +41,17 @@ async function stop() {
 try {
   await start()
   const first = await request('/enqueue', { agent: 'tiktok', kind: 'tiktok-post', payload: { noRetry: true } })
-  assert.equal((await request('/job?agent=tiktok')).id, first.id)
+  assert.equal((await request(`/job?agent=tiktok&v=${V}`)).id, first.id)
   const next = await request('/enqueue', { agent: 'tiktok', kind: 'tiktok-account', payload: {} })
   // Simulate a new worker polling with no in-memory busy flags.
   let delivered = false
   const controller = new AbortController()
-  const poll = fetch(base + '/job?agent=tiktok', { signal: controller.signal, headers: { 'x-bridge-token': token } }).then(() => { delivered = true }).catch(error => { if (error.name !== 'AbortError') throw error })
+  const poll = fetch(base + `/job?agent=tiktok&v=${V}`, { signal: controller.signal, headers: { 'x-bridge-token': token } }).then(() => { delivered = true }).catch(error => { if (error.name !== 'AbortError') throw error })
   await pause(120)
   assert.equal(delivered, false, 'connection job must not navigate over a running post')
   controller.abort(); await poll
   await request('/result', { id: first.id, meta: { ok: true, published: true, username: 'test' } })
-  const running = await request('/job?agent=tiktok')
+  const running = await request(`/job?agent=tiktok&v=${V}`)
   assert.equal(running.id, next.id)
   console.log('PASS: TikTok dispatch is serialized across worker restarts')
   await request('/result', { id: running.id, meta: { ok: true, username: 'test' } })
