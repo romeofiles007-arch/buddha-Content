@@ -18,7 +18,7 @@ import { ART_STYLES, RETIRED_ART_STYLES, BUDDHA_NARRATIONS, MOODS, categoryOf } 
 import { createProduction } from './production.js'
 import { saveScript, loadScript } from '../pipeline/lib/stage2.mjs'
 import { createRunner } from './runner.js'
-import { projectStatus, setupStatus, bgmFile, BGM_EXT, listProjects } from './project.js'
+import { projectStatus, setupStatus, bgmFile, BGM_EXT, listProjects, flowProjectIds } from './project.js'
 import { listVoices, readVoice, writeVoice, voiceDir, voiceId, voiceReady, AUDIO_EXT } from '../pipeline/lib/voices.mjs'
 import { EDGE_VOICES, GEMINI_VOICES, GEMINI_MODELS, ELEVEN_MODELS, edgePython, synthCloud, elevenVoiceInfo, isElevenVoiceId } from '../pipeline/lib/cloud_tts.mjs'
 import { voxcpmInstalled, voxcpmVoices, synthVoxcpm, voxcpmVoiceFromRaw, setVoxcpmRefText } from '../pipeline/lib/voxcpm.mjs'
@@ -397,6 +397,10 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         const { listDoneTitles, listSeenTitles, addSeenTitles } = await import('../pipeline/lib/topics.mjs')
         if (req.method === 'POST') addSeenTitles((await readBody(req)).titles ?? [])
         return json(res, 200, { done: listDoneTitles(), seen: listSeenTitles() }), true
+      }
+
+      if (req.method === 'GET' && path === '/api/flow-projects') {
+        return json(res, 200, { ids: flowProjectIds() }), true
       }
 
       if (req.method === 'GET' && path === '/api/projects') {

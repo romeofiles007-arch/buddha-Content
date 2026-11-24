@@ -13,6 +13,7 @@ import { initPosting } from './posting.js'
 import { applyCategoryTheme, categoryGenre } from './category-themes.js'
 import { preferredFlowTab, flowHomeUrl } from './flow-navigation.js'
 import { createTabClaims } from './tab-claim.js'
+import { foreignTab, foreignTabText, flowProjectId } from './foreign-tab.js'
 import { scheduleFromFields, scheduleFields, scheduleCopy } from './production-schedule.js'
 
 /** พระของฉัน (โหมดพระสอนธรรม) — ประกาศไว้บนสุด เพราะ render() ช่วงโหลดแรกอ่านค่านี้ */
@@ -4141,3 +4142,43 @@ async function followAutoInBackground() {
     followingAuto = false
   }
 }
+
+// ── แท็บที่เปิดอยู่เป็นงานของระบบอื่น (foreign-tab.js) — แผงข้างโชว์คู่กับทุกแท็บ ──
+let ownFlow = null
+let ownFlowAt = 0
+/** โปรเจกต์ Flow ของคลิปธรรมะ · เจอ id ที่ไม่รู้จัก → ถามใหม่ (คลิปที่กำลังทำอาจเพิ่งได้โปรเจกต์) แต่ไม่ถี่กว่า 10 วิ */
+async function ownFlowProjects(id) {
+  const stale = !ownFlow || Date.now() - ownFlowAt > 5 * 60_000 || (id && !ownFlow.has(id) && Date.now() - ownFlowAt > 10_000)
+  if (stale) {
+    const { ids } = await api(await localApp(), '/api/flow-projects')
+    ownFlow = new Set(ids)
+    ownFlowAt = Date.now()
+  }
+  return ownFlow
+}
+let foreignCheck = 0
+async function checkForeignTab() {
+  const ticket = ++foreignCheck
+  let found = null
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tab?.url) {
+      const claim = await claims.read(tab.id)
+      const id = flowProjectId(tab.url)
+      const ownProjects = id ? await ownFlowProjects(id).catch(() => null) : null
+      found = foreignTab({ url: tab.url, claim, ownId: chrome.runtime.id, ownProjects })
+    }
+  } catch {
+    found = null
+  }
+  if (ticket !== foreignCheck) return // แท็บเปลี่ยนระหว่างตรวจ — ผลรอบใหม่กว่าเป็นตัวจริง
+  $('foreignTab').hidden = !found
+  if (found) $('foreignTabSub').textContent = foreignTabText(found)
+}
+chrome.tabs.onActivated.addListener(() => checkForeignTab())
+chrome.tabs.onUpdated.addListener((_id, change, tab) => {
+  if (tab.active && (change.url || change.status === 'complete')) checkForeignTab()
+})
+chrome.windows.onFocusChanged.addListener(() => checkForeignTab())
+setInterval(checkForeignTab, 30_000) // ป้ายเจ้าของแท็บเปลี่ยนได้โดยที่ url ไม่เปลี่ยน
+checkForeignTab()

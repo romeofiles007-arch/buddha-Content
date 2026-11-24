@@ -222,6 +222,28 @@ async function clearComposer(input) {
   if (left) throw new Error(`ช่องพิมพ์ของ ChatGPT มีไฟล์แนบค้างอยู่ ${left} ไฟล์ที่เอาออกไม่ได้ — ลบในแท็บ ChatGPT เองแล้วสั่งใหม่`)
 }
 
+/**
+ * คำตอบนี้ตอบ prompt ของเราจริงไหม — ป้ายเจ้าของแท็บ (tab-claim.js) กันได้เฉพาะระบบที่อัปเดตแล้ว
+ * ระบบอื่นในโปรไฟล์ Chrome เดียวกันที่ยังเป็นรุ่นเก่า (เจอจริง 24 พ.ย. 2026: Cartoon Auto ยังไม่ได้กดอัปเดต · Ebook Auto ไม่มีป้าย)
+ * เปิดแชตใหม่แล้วส่ง prompt ของตัวเองลงแท็บนี้ระหว่างเรารอได้ → คำตอบล่าสุดบนหน้าเป็นของเขา (บท/shot list เรื่องอื่นทั้งก้อน)
+ * ดูสองอย่าง: แชตยังเป็นห้องเดิมที่เราส่ง · ข้อความผู้ใช้ก่อนคำตอบเป็น prompt ของเรา
+ * ข้อความผู้ใช้สั้น/เป็นการ์ดไฟล์แนบ "Pasted text" (prompt ยาวถูกแปลงเป็นไฟล์) → ตัดสินไม่ได้ ไม่ปัดทิ้ง
+ * ส่วนต้นของกล่องอาจมีหัว "You said:" · ส่วนท้ายอาจถูกพับ ("Show more") → เทียบช่วงกลาง
+ */
+const CHAT_PATH = /\/c\/[^/?#]+/
+function foreignAnswer(turn, prompt, chatPath) {
+  const now = location.pathname.match(CHAT_PATH)?.[0]
+  if (chatPath && now && now !== chatPath) return `แชตบนแท็บเปลี่ยนจาก ${chatPath} เป็น ${now}`
+  const asked = userTurns().filter((u) => u.compareDocumentPosition(turn) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1)
+  // เทียบเฉพาะตัวอักษร/ตัวเลข (รวมสระ-วรรณยุกต์ไทย) — หน้าเว็บอาจแสดง markdown ของข้อความผู้ใช้ (หัวข้อ · bullet · ตัวหนา) ต่างจากที่ส่ง
+  const letters = (s) => String(s ?? '').replace(/[^\p{L}\p{M}\p{N}]+/gu, '')
+  const raw = asked?.innerText.replace(CITATION, '') ?? ''
+  const text = letters(raw)
+  if (text.length < 120) return null
+  const probe = text.slice(20, 80)
+  return letters(prompt).includes(probe) ? null : `คำถามก่อนคำตอบไม่ใช่ prompt ของเรา ("${squash(raw).slice(0, 60)}…")`
+}
+
 async function runPrompt(prompt, { newChat = true, attachments = [] } = {}) {
   if (newChat) await startNewChat()
 
@@ -292,9 +314,12 @@ async function runPrompt(prompt, { newChat = true, attachments = [] } = {}) {
   let errorSince = Date.now()
   let retries = 0
   const lastTurnText = () => turnText(newTurns().at(-1))
+  // ห้องแชตที่ prompt ของเราอยู่ — จำครั้งแรกที่เห็น /c/<id> (แชตใหม่ได้ id หลังส่งสักพัก)
+  let chatPath = location.pathname.match(CHAT_PATH)?.[0] ?? null
   for (;;) {
     await waitFor(
       () => {
+        chatPath ??= location.pathname.match(CHAT_PATH)?.[0] ?? null
         const last = newTurns().at(-1) ?? null
         const current = turnText(last)
         if (current !== lastText) errorSince = Date.now()
@@ -330,6 +355,10 @@ async function runPrompt(prompt, { newChat = true, attachments = [] } = {}) {
   if (!turns.length) throw new Error('ไม่พบข้อความตอบกลับ — selector assistantTurns อาจเปลี่ยน')
   const text = turnText(turns.at(-1))
   if (!text) throw new Error('ข้อความตอบกลับว่าง')
+  const foreign = foreignAnswer(turns.at(-1), prompt, chatPath)
+  if (foreign) {
+    throw new Error(`ไม่เอาคำตอบนี้ — ระบบอื่นในโปรไฟล์ Chrome เดียวกัน (เช่น Cartoon Auto · Ebook Auto) ใช้แท็บ ChatGPT นี้ส่งงานของตัวเองระหว่างรอ: ${foreign} · ลองใหม่ในแชตใหม่`)
+  }
   const failed = chatgptError(text)
   if (failed) throw new Error(failed)
   return text

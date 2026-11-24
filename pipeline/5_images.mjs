@@ -124,7 +124,10 @@ const result = await generateWithFailover({
   onProgress: (p) => {
     if (p.stage === 'project') {
       if (p.projectUrl && p.projectUrl !== savedProject?.url) {
-        writeFileSync(projectFile, JSON.stringify({ url: p.projectUrl, at: Date.now() }, null, 2))
+        // เก็บ project เก่าไว้ด้วย (สลับบัญชีกลางทางได้ project ใหม่) — แผงข้างใช้รายการนี้บอกว่าแท็บ Flow ไหนเป็นของระบบนี้
+        const prev = existsSync(projectFile) ? JSON.parse(readFileSync(projectFile, 'utf8')) : {}
+        const previous = [...new Set([...(prev.previous ?? []), prev.url].filter((u) => u && u !== p.projectUrl))]
+        writeFileSync(projectFile, JSON.stringify({ url: p.projectUrl, at: Date.now(), ...(previous.length ? { previous } : {}) }, null, 2))
         console.log(`project ใน Flow: ${p.projectUrl}`)
       }
       return

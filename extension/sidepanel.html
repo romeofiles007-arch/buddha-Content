@@ -236,6 +236,12 @@
   <h1 class="brand-lockup"><img class="brand-icon" src="icons/cartoon-auto.svg" alt="" width="42" height="42" />ธรรมะ Auto</h1>
   <!-- ค้างไว้บนสุดตลอด: เครดิตคงเหลือ · ปุ่มหยุดทุกอย่าง · ผลิตครั้งต่อไป (ผู้ใช้ 21 พ.ย. 2026) -->
   <div class="topDock" id="topDock">
+    <!-- แท็บที่เปิดอยู่เป็นงานของระบบอื่นในโปรไฟล์ Chrome เดียวกัน (sidepanel.js checkForeignTab) — ผู้ใช้ 24 พ.ย. 2026
+         เห็นแผงธรรมะคู่กับภาพภูเขาไฟของ Cartoon Auto แล้วเข้าใจว่าธรรมะทำคลิปทั่วไปที่ไม่มีหมวดนี้ -->
+    <div class="foreignTab" id="foreignTab" role="status" aria-live="polite" hidden>
+      <strong>แท็บนี้ไม่ใช่งานของธรรมะ Auto</strong>
+      <span id="foreignTabSub"></span>
+    </div>
     <div class="creditBar" id="creditBar" hidden aria-label="เครดิตคงเหลือ">
       <ul class="creditList" id="creditList"></ul>
       <button type="button" class="creditRefresh" id="creditRefresh" title="อ่านเครดิตใหม่ตอนนี้" aria-label="อ่านเครดิตใหม่">↻</button>

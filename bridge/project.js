@@ -117,6 +117,33 @@ function lastTouched(dir, depth = 2) {
  * project ทั้งหมดใน projects/ เรียงจากที่ทำล่าสุด — ไว้ให้เลือกกลับมาทำต่อ
  * ชื่อเรื่องอ่านจาก 01_script/title.txt (หรือ meta.json) โฟลเดอร์ที่ขึ้นต้นด้วย _ เป็นของทดสอบ ข้ามไป
  */
+/**
+ * id โปรเจกต์ Google Flow ที่คลิปของระบบนี้สร้าง (05_images/_flow_project.json · รวมคลิปในถังขยะ)
+ * แผงข้างใช้บอกผู้ใช้ว่าแท็บ Flow ที่เปิดอยู่เป็นงานของระบบอื่นในโปรไฟล์ Chrome เดียวกัน (เช่น Cartoon Auto)
+ * — แผงข้างของ extension โชว์ทุกแท็บ เห็นแผงธรรมะคู่กับภาพของ Cartoon แล้วเข้าใจว่าธรรมะทำคลิปนอกหมวด (24 พ.ย. 2026)
+ */
+export function flowProjectIds(root = join(ROOT, 'projects')) {
+  const ids = new Set()
+  const add = (url) => {
+    const id = String(url ?? '').match(/\/project\/([0-9a-f][0-9a-f-]{7,})/i)?.[1]
+    if (id) ids.add(id.toLowerCase())
+  }
+  for (const dir of [root, join(root, '_trash')]) {
+    if (!existsSync(dir)) continue
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const file = join(dir, entry.name, '05_images', '_flow_project.json')
+      if (!existsSync(file)) continue
+      try {
+        const saved = JSON.parse(readFileSync(file, 'utf8'))
+        add(saved.url)
+        for (const url of saved.previous ?? []) add(url)
+      } catch {}
+    }
+  }
+  return [...ids]
+}
+
 export function listProjects(config) {
   const root = join(ROOT, 'projects')
   if (!existsSync(root)) return []
