@@ -231,9 +231,14 @@ async function clearComposer(input) {
  * ส่วนต้นของกล่องอาจมีหัว "You said:" · ส่วนท้ายอาจถูกพับ ("Show more") → เทียบช่วงกลาง
  */
 const CHAT_PATH = /\/c\/[^/?#]+/
+/**
+ * แชตใหม่ได้ id ชั่วคราวก่อน (/c/local-chatgpt%3A<uuid>) แล้วค่อยเปลี่ยนเป็น id จริง (/c/<uuid>) เมื่อเซิร์ฟเวอร์รับ
+ * ห้องเดียวกันนี้ไม่ใช่ "แชตเปลี่ยน" — เดิมนับเป็นระบบอื่นแย่งแท็บ ปัดคำตอบของเราเองทิ้งทุกครั้ง (เจอจริง 24–26 พ.ย. 2026)
+ */
+const provisionalChat = (path) => /^\/c\/local-/i.test(decodeURIComponent(path ?? ''))
 function foreignAnswer(turn, prompt, chatPath) {
   const now = location.pathname.match(CHAT_PATH)?.[0]
-  if (chatPath && now && now !== chatPath) return `แชตบนแท็บเปลี่ยนจาก ${chatPath} เป็น ${now}`
+  if (chatPath && now && now !== chatPath && !provisionalChat(chatPath)) return `แชตบนแท็บเปลี่ยนจาก ${chatPath} เป็น ${now}`
   const asked = userTurns().filter((u) => u.compareDocumentPosition(turn) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1)
   // เทียบเฉพาะตัวอักษร/ตัวเลข (รวมสระ-วรรณยุกต์ไทย) — หน้าเว็บอาจแสดง markdown ของข้อความผู้ใช้ (หัวข้อ · bullet · ตัวหนา) ต่างจากที่ส่ง
   const letters = (s) => String(s ?? '').replace(/[^\p{L}\p{M}\p{N}]+/gu, '')
@@ -319,7 +324,8 @@ async function runPrompt(prompt, { newChat = true, attachments = [] } = {}) {
   for (;;) {
     await waitFor(
       () => {
-        chatPath ??= location.pathname.match(CHAT_PATH)?.[0] ?? null
+        // id ชั่วคราว → จำ id จริงแทนเมื่อโผล่ (ห้องเดียวกัน) จะได้ยังจับระบบอื่นที่เปิดแชตใหม่ทีหลังได้
+        if (!chatPath || provisionalChat(chatPath)) chatPath = location.pathname.match(CHAT_PATH)?.[0] ?? chatPath
         const last = newTurns().at(-1) ?? null
         const current = turnText(last)
         if (current !== lastText) errorSince = Date.now()

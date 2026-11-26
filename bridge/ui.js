@@ -862,7 +862,9 @@ export function createUi({ jobs, enqueue, lastPoll, token, port, json, readBody,
         const last = readJson(join(ROOT, 'projects', '_autopilot_last.json'), null)
         const autopilotRun = run?.step === 'autopilot' ? run : null
         // ช่วงแผนกคิดหัวข้อ run ยังไม่มี slug — ห้ามตกไปใช้คลิปก่อนหน้า ไม่งั้นแผงจะเห็นสถานะเก่าแล้วเลิกติดตามงานที่กำลังทำ
-        const choosingTopic = autopilotRun?.status === 'running' && !autopilotRun.slug
+        // รวมถึงรอบที่จบ (หยุด/ล้ม) ตั้งแต่ยังคิดหัวข้อไม่เสร็จ: เดิมตกไปใช้คลิปก่อนหน้าที่ status = done
+        // → แผงขึ้น "ทำคลิปเสร็จแล้ว" แล้วเปิดคลิปเก่าที่ทำเสร็จไปแล้ว ทั้งที่รอบนี้ยังไม่ได้คลิปเลย (เจอจริง 26 พ.ย. 2026)
+        const choosingTopic = !!autopilotRun && !autopilotRun.slug
         const slug = url.searchParams.get('slug') || autopilotRun?.slug || (choosingTopic ? null : last?.slug || selectedSlug())
         const file = slug ? join(ROOT, 'projects', slug, 'autopilot.json') : null
         const status = file && existsSync(file) ? readJson(file, null) : null
