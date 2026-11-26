@@ -317,6 +317,16 @@ const server = createServer(async (req, res) => {
       if (!job) return json(res, 404, { error: 'ไม่พบงานนี้' })
       // heartbeat ไม่มี progress — แค่บอกว่ายังทำงานอยู่
       if (progress) job.progress = progress
+      // ChatGPT ส่งสถานะการรอคำตอบมาด้วย → จดเมื่อสถานะเปลี่ยน (หรือทุก 3 นาที) ค้างตรงไหนดูจาก log ได้เลย
+      const w = progress?.wait
+      if (w) {
+        const shape = `คำตอบ ${w.answer ? `${w.chars} ตัวอักษร` : 'ยังไม่เจอ'} (กล่องคำตอบ ${w.turns} · ใหม่ ${w.fresh}) · แถบปุ่มใต้คำตอบ ${w.finished ? 'มี' : 'ไม่เจอ'} · ปุ่มหยุด ${w.stop ?? 'ไม่มี'}`
+        if (shape !== job.waitShape || Date.now() - (job.waitLoggedAt ?? 0) > 3 * 60_000) {
+          job.waitShape = shape
+          job.waitLoggedAt = Date.now()
+          log(`รอ ChatGPT (${job.id.slice(0, 8)}): ${shape} · ข้อความนิ่ง ${w.quietSec} วิ`)
+        }
+      }
       job.touchedAt = Date.now()
       // bridge เพิ่งเปิดใหม่หรือเคยถูกตัดสินว่าหลุด แต่ extension ยังทำงานนี้อยู่จริง → กลับเป็น running
       if (job.status === 'queued') job.status = 'running'

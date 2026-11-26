@@ -13,6 +13,8 @@ const S = SELECTORS.chatgpt
 
 // ปุ่มหยุดในแผงข้าง → ตั้งธง stopped ให้ทุกจุดที่รออยู่เลิกรอทันที
 let stopped = false
+// สถานะการรอคำตอบตอนนี้ — ส่งไปกับ heartbeat ให้ bridge จดลง log (ค้างตรงไหนดูได้โดยไม่ต้องเปิดหน้าเว็บ)
+let waitState = null
 const guard = () => {
   if (stopped) throw new Error('หยุดแล้ว')
 }
@@ -316,22 +318,46 @@ async function runPrompt(prompt, { newChat = true, attachments = [] } = {}) {
   const STABLE_MS = 5000
   let lastText = ''
   let stableSince = Date.now()
+  let textSince = Date.now() // ข้อความเปลี่ยนล่าสุด (ไม่นับปุ่มหยุด) — ใช้กับทางสำรองด้านล่าง
   let errorSince = Date.now()
   let retries = 0
-  const lastTurnText = () => turnText(newTurns().at(-1))
+  // คำตอบของ prompt เรา: กล่องคำตอบใหม่ (ไม่อยู่ในชุดเดิม) · ไม่เจอ → กล่องคำตอบที่อยู่หลังข้อความผู้ใช้ที่เราเพิ่งส่ง
+  // (ChatGPT สร้าง element ของแชตใหม่ซ้ำ/ย้ายของเดิมได้ ชุด "เดิม" จึงอาจกลืนคำตอบใหม่ไปด้วย)
+  const answerTurn = () => {
+    const fresh = newTurns().at(-1)
+    if (fresh) return fresh
+    const asked = userTurns().filter((u) => !oldUsers.has(u)).at(-1)
+    if (!asked) return null
+    return assistantTurns().filter((t) => asked.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1) ?? null
+  }
+  const lastTurnText = () => turnText(answerTurn())
   // ห้องแชตที่ prompt ของเราอยู่ — จำครั้งแรกที่เห็น /c/<id> (แชตใหม่ได้ id หลังส่งสักพัก)
   let chatPath = location.pathname.match(CHAT_PATH)?.[0] ?? null
+  let fallback = null
   for (;;) {
     await waitFor(
       () => {
         // id ชั่วคราว → จำ id จริงแทนเมื่อโผล่ (ห้องเดียวกัน) จะได้ยังจับระบบอื่นที่เปิดแชตใหม่ทีหลังได้
         if (!chatPath || provisionalChat(chatPath)) chatPath = location.pathname.match(CHAT_PATH)?.[0] ?? chatPath
-        const last = newTurns().at(-1) ?? null
+        const last = answerTurn()
         const current = turnText(last)
-        if (current !== lastText) errorSince = Date.now()
-        if (current !== lastText || pick(S.stop)) {
+        const stopBtn = pick(S.stop)
+        if (current !== lastText) errorSince = textSince = Date.now()
+        if (current !== lastText || stopBtn) {
           lastText = current
           stableSince = Date.now()
+        }
+        const done = !!last && turnFinished(last)
+        const quietSec = Math.round((Date.now() - textSince) / 1000)
+        // บอกโปรแกรมในเครื่องว่ารออะไรอยู่ (ส่งไปกับ heartbeat) — หน้า ChatGPT เปลี่ยนแล้วค้าง จะรู้จาก log ว่าติดตรงไหน
+        waitState = {
+          turns: assistantTurns().length,
+          fresh: newTurns().length,
+          answer: !!last,
+          chars: current.length,
+          finished: done,
+          stop: stopBtn ? (stopBtn.getAttribute('aria-label') || stopBtn.getAttribute('data-testid') || 'button').slice(0, 40) : null,
+          quietSec,
         }
         // ข้อความ error ค้างนิ่ง → กด Retry ของ ChatGPT ในแชตเดิมก่อน (error ส่วนใหญ่เป็นชั่วคราว ไม่ต้องส่ง prompt ยาวใหม่ทั้งก้อน)
         // กดครบแล้วยังไม่ได้ / หาปุ่มไม่เจอ → เลิกรอทันที ให้ฝั่งโปรแกรมเปิดแชตใหม่ลองใหม่ (ไม่ต้องรอปุ่มหยุดหาย)
@@ -347,21 +373,30 @@ async function runPrompt(prompt, { newChat = true, attachments = [] } = {}) {
           errorSince = stableSince = Date.now()
           return false
         }
-        const finished = !!last && turnFinished(last) && !pick(S.stop)
-        return finished && current && Date.now() - stableSince >= STABLE_MS
+        if (done && !stopBtn && current && Date.now() - stableSince >= STABLE_MS) return true
+        // ทางสำรอง — หน้า ChatGPT เปลี่ยน (26 พ.ย. 2026 เจอคำตอบขึ้นครบบนจอ แต่รอ "ตอบจบ" ไปจนหมดเวลา):
+        // ไม่มีปุ่มหยุดและข้อความนิ่ง 90 วิ = แถบปุ่มใต้คำตอบหาไม่เจอ · นิ่ง 4 นาที = ปุ่มหยุดจับผิดตัว (คำตอบจริงไม่เงียบนานขนาดนี้กลางคัน)
+        // ต้องยาว ≥ 200 ตัวอักษร — หัว "Thinking…" ช่วงคิดนานนิ่งได้หลายนาทีแต่สั้น ไม่เอาไปเป็นคำตอบ
+        const long = current.length >= 200
+        if (long && !stopBtn && quietSec >= 90) return (fallback = 'ไม่เจอแถบปุ่มใต้คำตอบ'), true
+        if (long && quietSec >= 240) return (fallback = `ปุ่มหยุดยังอยู่ (${waitState.stop})`), true
+        return false
       },
       { timeout: 30 * 60_000, interval: 1000, label: 'ChatGPT ตอบจบ' },
     )
     await sleep(1500)
-    if (lastTurnText() === lastText && !pick(S.stop)) break
+    if (lastTurnText() === lastText && (fallback || !pick(S.stop))) break
+    fallback = null
     stableSince = Date.now() // ยังพิมพ์ต่อ → รอรอบใหม่
   }
+  waitState = null
+  if (fallback) console.warn(`[cartoon] รับคำตอบด้วยทางสำรอง: ${fallback}`)
 
-  const turns = newTurns()
-  if (!turns.length) throw new Error('ไม่พบข้อความตอบกลับ — selector assistantTurns อาจเปลี่ยน')
-  const text = turnText(turns.at(-1))
+  const answer = answerTurn()
+  if (!answer) throw new Error('ไม่พบข้อความตอบกลับ — selector assistantTurns อาจเปลี่ยน')
+  const text = turnText(answer)
   if (!text) throw new Error('ข้อความตอบกลับว่าง')
-  const foreign = foreignAnswer(turns.at(-1), prompt, chatPath)
+  const foreign = foreignAnswer(answer, prompt, chatPath)
   if (foreign) {
     throw new Error(`ไม่เอาคำตอบนี้ — ระบบอื่นในโปรไฟล์ Chrome เดียวกัน (เช่น Cartoon Auto · Ebook Auto) ใช้แท็บ ChatGPT นี้ส่งงานของตัวเองระหว่างรอ: ${foreign} · ลองใหม่ในแชตใหม่`)
   }
@@ -399,7 +434,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const stopBeat = heartbeat(job.id, () => {
       stopped = true // pipeline ไม่รอแล้ว → เลิกรอคำตอบ ปล่อยแท็บให้งานถัดไป
       pick(S.stop)?.click()
-    })
+    }, () => (waitState ? { wait: waitState } : null))
     try {
       if (job.kind !== 'prompt') throw new Error(`ChatGPT ไม่รู้จักงาน: ${job.kind}`)
       const text = await runPrompt(job.payload.prompt, job.payload)

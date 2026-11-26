@@ -120,9 +120,10 @@ async function toBridge(type, body, { tries = 6 } = {}) {
  * heartbeat ทุก 20 วิระหว่างทำงานยาว — คืนฟังก์ชันหยุด
  * bridge ตอบว่างานถูกยกเลิกแล้ว (pipeline หมดเวลา/ถูกปิด) → เรียก onCancel ให้เลิกทำ ไม่งั้นงานที่ไม่มีใครรอจะขวางคิวงานถัดไป
  */
-function heartbeat(id, onCancel) {
+function heartbeat(id, onCancel, getProgress) {
   const timer = setInterval(async () => {
-    const res = await toBridge('PROGRESS', { id }, { tries: 1 }).catch(() => null)
+    const progress = getProgress?.() ?? undefined
+    const res = await toBridge('PROGRESS', { id, progress }, { tries: 1 }).catch(() => null)
     if (res?.cancelled) {
       clearInterval(timer)
       onCancel?.()
