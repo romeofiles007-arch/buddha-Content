@@ -268,6 +268,17 @@ await check('ปุ่มหยุดค้างตลอด + ไม่มี�
   assert(r.text?.length === 600, `ได้ข้อความ ${r.text?.length}`)
   assert(r.secs >= 240 && r.secs < 360, `ใช้เวลา ${r.secs} วิ`)
 })
+await check('แถบปุ่มโผล่แล้วแต่ปุ่มหยุดค้าง → รับภายใน ~15 วิหลังนิ่ง (เดิมรอ 4 นาทีทุกคำถาม)', async () => {
+  const r = await run(makePage({ stopForever: true }))
+  assert(!r.error, `ไม่ควร error: ${r.error}`)
+  assert(r.text?.length === 600, `ได้ข้อความ ${r.text?.length}`)
+  assert(r.secs >= 35 && r.secs < 60, `ใช้เวลา ${r.secs} วิ`)
+})
+await check('แถบปุ่มโผล่ + ปุ่มหยุดค้าง + คำตอบสั้น → ยังรับได้เร็ว', async () => {
+  const r = await run(makePage({ stopForever: true, answer: 'ข'.repeat(120) }))
+  assert(r.text?.length === 120, `ได้ข้อความ ${r.text?.length} · ${r.error}`)
+  assert(r.secs < 60, `ใช้เวลา ${r.secs} วิ`)
+})
 await check('หัว "Thinking" สั้นๆ นิ่งนาน → ไม่เอาไปเป็นคำตอบ', async () => {
   const r = await run(makePage({ thinkingOnly: true, bar: false }))
   assert(!r.text, `ไม่ควรได้คำตอบ แต่ได้ "${r.text}"`)
