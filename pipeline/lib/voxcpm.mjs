@@ -113,6 +113,45 @@ export async function voxcpmJobSettings(options) {
 }
 
 /**
+ * Python ที่มี faster-whisper ไว้ตรวจเสียงเกินท้าย — VOXCPM_ASR_PYTHON (เครื่องพากย์ใส่ผ่าน --asr-python) หรือ tts/.venv ของโปรแกรม
+ * ไม่มี = ข้ามการตรวจ (ยังได้เสียง แค่บางประโยคอาจมีคำเกินท้าย)
+ */
+function asrPython() {
+  if (process.env.VOXCPM_ASR_PYTHON) return process.env.VOXCPM_ASR_PYTHON
+  try {
+    return ttsPython()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * พูดจบแล้วมีคำเกินท้าย — "…เสียที (เงียบ) เสียที", "…บ้านเกิด (เงียบ) เจน" (คลิปจริง 27 พ.ย. 2026: 2 ใน 18 ประโยค)
+ * tts/voxcpm/fix_tails.py ถอดเสียงทั้งประโยคกับแบบตัดก้อนท้าย แล้วตัดเมื่อแบบตัดตรงบทมากกว่า · ตรวจไม่ได้ ไม่ทำให้พากย์ล้ม
+ */
+async function fixTails(jobFile, onEvent) {
+  const python = asrPython()
+  if (!python || !existsSync(python)) return onEvent({ event: 'fix-skipped', message: 'ไม่มี Whisper ตรวจคำเกินท้าย (ตั้ง VOXCPM_ASR_PYTHON)' })
+  const env = { ...process.env, PYTHONIOENCODING: 'utf-8', KMP_DUPLICATE_LIB_OK: 'TRUE' }
+  delete env.PYTHONHOME
+  delete env.PYTHONPATH
+  let tail = ''
+  const code = await new Promise((resolve) => {
+    const proc = spawn(python, [join(ROOT, 'tts', 'voxcpm', 'fix_tails.py'), jobFile], { cwd: ROOT, env, windowsHide: true })
+    createInterface({ input: proc.stdout }).on('line', (line) => {
+      try {
+        const msg = JSON.parse(line)
+        if (msg.event === 'trimmed') onEvent({ ...msg, event: 'fixed' })
+      } catch {}
+    })
+    proc.stderr.on('data', (d) => (tail = (tail + d).slice(-1500)))
+    proc.on('close', resolve)
+    proc.on('error', () => resolve(1))
+  })
+  if (code !== 0) onEvent({ event: 'fix-skipped', message: `ตรวจคำเกินท้ายไม่สำเร็จ: ${tail.trim().split(/\r?\n/).pop() ?? code}` })
+}
+
+/**
  * options.ref = { wav, text } → ใช้คลิปอ้างอิงนี้ตรงๆ ไม่อ่าน tts/voices (เครื่องพากย์ที่รับงานจากเครื่องอื่น)
  */
 export async function synthVoxcpm(segments, options, onEvent = () => {}) {
@@ -163,6 +202,8 @@ export async function synthVoxcpm(segments, options, onEvent = () => {}) {
     })
   })
   if (code !== 0) throw new Error(error ?? (stderrTail.trim().split(/\r?\n/).slice(-3).join(' ') || `VoxCPM2 จบด้วย exit ${code}`))
+  // พูดจบแล้วมีคำเกินท้าย (พูดคำสุดท้ายซ้ำ / คำมั่ว) → ตรวจด้วย Whisper แล้วตัดออก — ทำทีละท่อนก่อนต่อกัน
+  await fixTails(jobFile, (msg) => userOnEvent({ ...msg, index: pieceToSeg[msg.index] ?? msg.index }))
   // ต่อท่อนย่อยกลับเป็นประโยคเดียว คั่นด้วยช่วงหยุดตรงที่บทเขียน "..."
   for (const s of segments) {
     if (s.pieces.length < 2) continue
