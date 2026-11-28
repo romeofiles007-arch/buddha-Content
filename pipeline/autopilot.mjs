@@ -317,11 +317,11 @@ async function scriptDepartment() {
     setAsideScript(existing.file)
   }
   let feedback = ''
-  let revise = null // บทรอบก่อนยาว/สั้นผิดเป้า → สั่งปรับในแชตเดิม (ไม่ส่ง Blueprint ทั้งก้อนซ้ำ)
+  let revise = null // บทรอบก่อนยาว/สั้นผิดเป้า → ส่งบทเดิม + สั่งปรับในแชตใหม่ (ไม่ส่ง Blueprint ทั้งก้อนซ้ำ · ไม่พึ่งแชตเดิมที่ค้างบ่อย)
   for (let attempt = 1; attempt <= 3; attempt++) {
     dept('script', { status: 'working', attempts: attempt, expectSec: 150 + config.script.targetMinutes * 20, detail: revise ? `ChatGPT กำลังปรับความยาวบท (รอบ ${attempt})` : `ChatGPT กำลังเขียนบท (${config.script.targetMinutes} นาที)` })
     const text = revise
-      ? await askChatGPT(revise, `ปรับความยาวบท "${title}"`, { newChat: false })
+      ? await askChatGPT(revise, `ปรับความยาวบท "${title}"`)
       : await askChatGPT(scriptPrompt(config, title, profile) + feedback, `เขียนบท "${title}"`)
     revise = null
     // จบด้วยสระหน้า (เ แ โ ใ ไ) = ขาดกลางคำแน่นอน (ไม่มีคำไทยจบแบบนี้) → ขอใหม่ ไม่งั้นเสียงท้ายคลิปขาด
@@ -347,8 +347,8 @@ async function scriptDepartment() {
       throw new Error(`ChatGPT เขียนบทยาว ${saved.minutes.toFixed(1)} นาที ห่างจากเป้า ${saved.target} นาทีเกินไป 3 รอบ — ลองกดทำคลิปอัตโนมัติอีกครั้ง หรือเพิ่มความยาวเป้าหมาย`)
     }
     const chars = (saved.script.match(/[฀-๿]/g) || []).length
-    revise = reviseLengthPrompt(config.script.language, { minutes: saved.minutes, target: saved.target, wordsPerMinute: config.script.wordsPerMinute, chars, pace: paceOf(profile) })
-    console.warn(`   บทยาว ${saved.minutes.toFixed(1)} นาที ห่างจากเป้า ${saved.target} นาทีเกินไป — สั่งปรับความยาวในแชตเดิม`)
+    revise = reviseLengthPrompt(config.script.language, { minutes: saved.minutes, target: saved.target, wordsPerMinute: config.script.wordsPerMinute, chars, pace: paceOf(profile), draft: saved.script })
+    console.warn(`   บทยาว ${saved.minutes.toFixed(1)} นาที ห่างจากเป้า ${saved.target} นาทีเกินไป — ส่งบทเดิมให้ ChatGPT ปรับความยาวในแชตใหม่`)
   }
 }
 
